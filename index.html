@@ -88,6 +88,7 @@
               <option value="name-asc">이름순</option>
               <option value="date-asc">수정 날짜 오래된 순</option>
               <option value="date-desc">수정 날짜 최신 순</option>
+              <option value="manual">수동 순서</option>
             </select>
           </label>
           <label>
@@ -96,8 +97,30 @@
               <option value="single">낱장</option>
               <option value="pair" selected>2장씩</option>
               <option value="triple">3장씩</option>
+              <option value="quad">4장씩</option>
+              <option value="custom">사용자 지정</option>
             </select>
           </label>
+          <div class="layout-preset-row" aria-label="분할 프리셋">
+            <button id="layoutOneButton" type="button">1분할</button>
+            <button id="layoutTwoButton" type="button">2분할</button>
+            <button id="layoutThreeButton" type="button">3분할</button>
+            <button id="layoutFourButton" type="button">4분할</button>
+          </div>
+          <div class="grid-controls">
+            <label>
+              가로 칸
+              <input id="gridCols" type="number" min="1" max="6" value="2" />
+            </label>
+            <label>
+              세로 칸
+              <input id="gridRows" type="number" min="1" max="4" value="1" />
+            </label>
+          </div>
+          <div class="segmented">
+            <button id="horizontalSplitButton" type="button">가로 분할</button>
+            <button id="verticalSplitButton" type="button">세로 분할</button>
+          </div>
         </section>
 
         <section class="panel-section">
@@ -117,6 +140,9 @@
           </button>
           <button id="exportButton" class="wide-button" type="button">
             HTML 내려받기
+          </button>
+          <button id="downloadImagesButton" class="wide-button" type="button">
+            설정 사진 다운로드
           </button>
           <div class="zoom-row">
             <button id="zoomOutButton" type="button">-</button>
@@ -148,6 +174,60 @@
           </button>
         </section>
 
+        <section class="panel-section">
+          <h2>배경 보정</h2>
+          <label>
+            배경 밝기 <output id="bgBrightnessValue">72%</output>
+            <input id="bgBrightness" type="range" min="30" max="130" value="72" />
+          </label>
+          <label>
+            배경 채도 <output id="bgSaturateValue">92%</output>
+            <input id="bgSaturate" type="range" min="0" max="160" value="92" />
+          </label>
+          <label>
+            배경 블러 <output id="bgBlurValue">150px</output>
+            <input id="bgBlur" type="range" min="0" max="220" value="150" />
+          </label>
+          <label>
+            배경 크기 <output id="bgScaleValue">176%</output>
+            <input id="bgScale" type="range" min="100" max="240" value="176" />
+          </label>
+          <label>
+            배경 세로 위치 <output id="bgYValue">62%</output>
+            <input id="bgY" type="range" min="0" max="100" value="62" />
+          </label>
+        </section>
+
+        <section class="panel-section">
+          <h2>사진 자르기</h2>
+          <label>
+            왼쪽 자르기 <output id="cropLeftValue">0%</output>
+            <input id="cropLeft" type="range" min="0" max="45" value="0" />
+          </label>
+          <label>
+            오른쪽 자르기 <output id="cropRightValue">0%</output>
+            <input id="cropRight" type="range" min="0" max="45" value="0" />
+          </label>
+        </section>
+
+        <section class="panel-section">
+          <h2>안내선</h2>
+          <label class="toggle-pill single-toggle">
+            <input id="showGuides" type="checkbox" checked />
+            <span>안내선 켜기</span>
+          </label>
+          <div class="segmented">
+            <button id="addVerticalGuideButton" type="button">세로 50%</button>
+            <button id="addHorizontalGuideButton" type="button">가로 50%</button>
+          </div>
+          <button id="clearGuidesButton" class="wide-button subtle" type="button">
+            안내선 모두 지우기
+          </button>
+          <p class="hint-text">
+            상단/좌측 ruler를 누르면 안내선이 생기고, 안내선을 드래그하거나 우클릭해서 퍼센트를 입력할 수 있습니다.
+          </p>
+        </section>
+
         <section class="panel-section shortcuts">
           <h2>단축키</h2>
           <p>← → Space: 페이지 이동</p>
@@ -167,6 +247,7 @@
           <button id="nextButton" type="button">다음</button>
         </div>
         <article id="stage" class="stage stage-cover"></article>
+        <div id="thumbnailRail" class="thumbnail-rail" aria-label="사진 순서"></div>
       </section>
     </main>
 

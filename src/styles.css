@@ -288,6 +288,7 @@ input[type="range"] {
 }
 
 .segmented,
+.layout-preset-row,
 .zoom-row,
 .deck-toolbar {
   display: flex;
@@ -296,9 +297,27 @@ input[type="range"] {
 }
 
 .segmented button,
+.layout-preset-row button,
 .zoom-row button,
 .deck-toolbar button {
   flex: 1;
+}
+
+.grid-controls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.55rem;
+}
+
+.single-toggle {
+  display: flex !important;
+}
+
+.hint-text {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.45;
 }
 
 .wide-button {
@@ -403,7 +422,7 @@ kbd {
 
 .stage-wrap {
   display: grid;
-  grid-template-rows: auto 1fr;
+  grid-template-rows: auto 1fr auto;
   gap: 1rem;
   min-width: 0;
 }
@@ -446,27 +465,28 @@ kbd {
 }
 
 .cover-card {
-  width: min(72%, 58rem);
+  width: min(78%, 58rem);
   border: 1px solid rgba(255, 253, 247, 0.18);
   border-radius: 2rem;
-  padding: clamp(1.5rem, 5vw, 4rem);
+  padding: clamp(2rem, 5vw, 4.4rem);
   background: rgba(255, 253, 247, 0.08);
   box-shadow: 0 20px 70px rgba(0, 0, 0, 0.24);
   backdrop-filter: blur(18px);
 }
 
 .cover-logo {
-  max-width: 10rem;
-  max-height: 5rem;
+  max-width: 7.8rem;
+  max-height: 7.8rem;
   object-fit: contain;
-  margin-bottom: 2rem;
+  margin-bottom: 2.3rem;
 }
 
 .cover-title {
   margin: 0;
-  font-size: clamp(2.4rem, 6vw, 6.3rem);
-  line-height: 0.9;
-  letter-spacing: -0.07em;
+  max-width: 13ch;
+  font-size: clamp(2.5rem, 5.4vw, 5.4rem);
+  line-height: 0.96;
+  letter-spacing: -0.055em;
   white-space: pre-line;
 }
 
@@ -498,6 +518,11 @@ kbd {
   padding: clamp(0.8rem, 2vw, 1.6rem);
 }
 
+.slide-grid.layout-custom {
+  grid-template-columns: repeat(var(--grid-cols), minmax(0, 1fr));
+  grid-template-rows: repeat(var(--grid-rows), minmax(0, 1fr));
+}
+
 .layout-single {
   grid-template-columns: 1fr;
 }
@@ -508,6 +533,11 @@ kbd {
 
 .layout-triple {
   grid-template-columns: repeat(3, 1fr);
+}
+
+.layout-quad {
+  grid-template-columns: repeat(2, 1fr);
+  grid-template-rows: repeat(2, 1fr);
 }
 
 .image-card {
@@ -552,6 +582,132 @@ kbd {
   object-fit: contain;
   transform-origin: center;
   transition: transform 160ms ease;
+}
+
+.guide-ruler {
+  position: absolute;
+  z-index: 8;
+  background: rgba(255, 253, 247, 0.12);
+  backdrop-filter: blur(8px);
+}
+
+.guide-ruler-top {
+  top: 0;
+  left: 1.6rem;
+  right: 0;
+  height: 1.3rem;
+  cursor: row-resize;
+}
+
+.guide-ruler-left {
+  top: 1.3rem;
+  left: 0;
+  bottom: 0;
+  width: 1.6rem;
+  cursor: col-resize;
+}
+
+.guide-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 9;
+  pointer-events: none;
+}
+
+.guide {
+  position: absolute;
+  pointer-events: auto;
+}
+
+.guide-x {
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: rgba(64, 210, 255, 0.9);
+  cursor: col-resize;
+  transform: translateX(-1px);
+}
+
+.guide-y {
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: rgba(64, 210, 255, 0.9);
+  cursor: row-resize;
+  transform: translateY(-1px);
+}
+
+.guide::after {
+  content: attr(data-label);
+  position: absolute;
+  border-radius: 999px;
+  padding: 0.16rem 0.4rem;
+  color: #052531;
+  background: rgba(185, 242, 255, 0.9);
+  font-size: 0.68rem;
+  font-weight: 800;
+}
+
+.guide-x::after {
+  top: 1.5rem;
+  left: 0.28rem;
+}
+
+.guide-y::after {
+  top: 0.26rem;
+  left: 1.9rem;
+}
+
+body.presenting .guide-layer,
+body.presenting .guide-ruler {
+  display: none;
+}
+
+.thumbnail-rail {
+  display: flex;
+  gap: 0.65rem;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 1.1rem;
+  padding: 0.6rem;
+  background: rgba(244, 239, 228, 0.72);
+}
+
+.thumbnail-card {
+  position: relative;
+  flex: 0 0 5.8rem;
+  height: 4.2rem;
+  overflow: hidden;
+  border: 2px solid transparent;
+  border-radius: 0.8rem;
+  padding: 0;
+  background: #111;
+}
+
+.thumbnail-card.is-active {
+  border-color: var(--accent);
+}
+
+.thumbnail-card img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  filter: brightness(0.86);
+}
+
+.thumbnail-card span {
+  position: absolute;
+  left: 0.28rem;
+  bottom: 0.24rem;
+  border-radius: 999px;
+  padding: 0.08rem 0.34rem;
+  color: var(--white);
+  background: rgba(0, 0, 0, 0.52);
+  font-size: 0.68rem;
+}
+
+.thumbnail-card[draggable="true"] {
+  cursor: grab;
 }
 
 .fit-fill .main-image {

@@ -6,10 +6,25 @@ const state = {
   logoUrl: "",
   pageIndex: 0,
   layoutMode: "pair",
+  gridRows: 1,
+  gridCols: 2,
   sortMode: "name-asc",
   fitMode: "fit",
   backgroundEnabled: true,
   zoom: 1,
+  guidesEnabled: true,
+  guides: [],
+  crop: {
+    left: 0,
+    right: 0,
+  },
+  backgroundFilters: {
+    brightness: 72,
+    saturate: 92,
+    blur: 150,
+    scale: 176,
+    y: 62,
+  },
   coverVisibility: {
     title: true,
     subtitle: true,
@@ -45,6 +60,14 @@ const els = {
   imageFileName: document.querySelector("#imageFileName"),
   sortMode: document.querySelector("#sortMode"),
   layoutMode: document.querySelector("#layoutMode"),
+  layoutOneButton: document.querySelector("#layoutOneButton"),
+  layoutTwoButton: document.querySelector("#layoutTwoButton"),
+  layoutThreeButton: document.querySelector("#layoutThreeButton"),
+  layoutFourButton: document.querySelector("#layoutFourButton"),
+  gridRows: document.querySelector("#gridRows"),
+  gridCols: document.querySelector("#gridCols"),
+  horizontalSplitButton: document.querySelector("#horizontalSplitButton"),
+  verticalSplitButton: document.querySelector("#verticalSplitButton"),
   prevButton: document.querySelector("#prevButton"),
   nextButton: document.querySelector("#nextButton"),
   fitButton: document.querySelector("#fitButton"),
@@ -55,6 +78,7 @@ const els = {
   closeShortcutHelpButton: document.querySelector("#closeShortcutHelpButton"),
   shortcutDialog: document.querySelector("#shortcutDialog"),
   exportButton: document.querySelector("#exportButton"),
+  downloadImagesButton: document.querySelector("#downloadImagesButton"),
   zoomOutButton: document.querySelector("#zoomOutButton"),
   zoomInButton: document.querySelector("#zoomInButton"),
   zoomOutput: document.querySelector("#zoomOutput"),
@@ -62,17 +86,38 @@ const els = {
   contrast: document.querySelector("#contrast"),
   saturate: document.querySelector("#saturate"),
   hue: document.querySelector("#hue"),
+  bgBrightness: document.querySelector("#bgBrightness"),
+  bgSaturate: document.querySelector("#bgSaturate"),
+  bgBlur: document.querySelector("#bgBlur"),
+  bgScale: document.querySelector("#bgScale"),
+  bgY: document.querySelector("#bgY"),
+  cropLeft: document.querySelector("#cropLeft"),
+  cropRight: document.querySelector("#cropRight"),
+  showGuides: document.querySelector("#showGuides"),
+  addVerticalGuideButton: document.querySelector("#addVerticalGuideButton"),
+  addHorizontalGuideButton: document.querySelector("#addHorizontalGuideButton"),
+  clearGuidesButton: document.querySelector("#clearGuidesButton"),
   brightnessValue: document.querySelector("#brightnessValue"),
   contrastValue: document.querySelector("#contrastValue"),
   saturateValue: document.querySelector("#saturateValue"),
   hueValue: document.querySelector("#hueValue"),
+  bgBrightnessValue: document.querySelector("#bgBrightnessValue"),
+  bgSaturateValue: document.querySelector("#bgSaturateValue"),
+  bgBlurValue: document.querySelector("#bgBlurValue"),
+  bgScaleValue: document.querySelector("#bgScaleValue"),
+  bgYValue: document.querySelector("#bgYValue"),
+  cropLeftValue: document.querySelector("#cropLeftValue"),
+  cropRightValue: document.querySelector("#cropRightValue"),
   resetFiltersButton: document.querySelector("#resetFiltersButton"),
+  thumbnailRail: document.querySelector("#thumbnailRail"),
 };
 
 const pageSizeByLayout = {
   single: 1,
   pair: 2,
   triple: 3,
+  quad: 4,
+  custom: null,
 };
 
 function clamp(value, min, max) {
@@ -80,6 +125,10 @@ function clamp(value, min, max) {
 }
 
 function getPageSize() {
+  if (state.layoutMode === "custom") {
+    return state.gridRows * state.gridCols;
+  }
+
   return pageSizeByLayout[state.layoutMode] ?? 2;
 }
 
@@ -88,6 +137,8 @@ function getTotalPages() {
 }
 
 function sortImages() {
+  if (state.sortMode === "manual") return;
+
   const collator = new Intl.Collator("ko-KR", {
     numeric: true,
     sensitivity: "base",
@@ -114,6 +165,15 @@ function getFilterStyle() {
     `saturate(${saturate}%)`,
     `hue-rotate(${hue}deg)`,
   ].join(" ");
+}
+
+function getBackgroundFilterStyle() {
+  const { brightness, saturate, blur } = state.backgroundFilters;
+  return `blur(${blur}px) brightness(${brightness / 100}) saturate(${saturate / 100})`;
+}
+
+function getCropStyle() {
+  return `inset(0 ${state.crop.right}% 0 ${state.crop.left}%)`;
 }
 
 function renderCover() {
@@ -150,21 +210,58 @@ function renderCover() {
 
 function renderImageCard(image) {
   const filter = getFilterStyle();
+  const backgroundFilter = getBackgroundFilterStyle();
   const zoomTransform = `scale(${state.zoom})`;
+  const cropStyle = getCropStyle();
 
   return `
     <figure class="image-card ${state.backgroundEnabled ? "background-enabled" : ""} ${
       state.fitMode === "fill" ? "fit-fill" : ""
     }">
-      <img class="blur-bg" src="${image.url}" alt="" aria-hidden="true" />
+      <img
+        class="blur-bg"
+        src="${image.url}"
+        alt=""
+        aria-hidden="true"
+        style="
+          width: ${state.backgroundFilters.scale}%;
+          height: ${state.backgroundFilters.scale}%;
+          object-position: center ${state.backgroundFilters.y}%;
+          filter: ${backgroundFilter};
+        "
+      />
       <img
         class="main-image"
         src="${image.url}"
         alt="${escapeHtml(image.name)}"
-        style="filter: ${filter}; transform: ${zoomTransform};"
+        style="clip-path: ${cropStyle}; filter: ${filter}; transform: ${zoomTransform};"
       />
       <figcaption class="image-label">${escapeHtml(image.name)}</figcaption>
     </figure>
+  `;
+}
+
+function renderGuides() {
+  if (!state.guidesEnabled || state.guides.length === 0) return "";
+
+  return `
+    <div class="guide-layer">
+      ${state.guides
+        .map(
+          (guide, index) => `
+            <div
+              class="guide guide-${guide.axis}"
+              data-guide-index="${index}"
+              data-label="${guide.percent.toFixed(1)}%"
+              style="${guide.axis === "x" ? `left:${guide.percent}%` : `top:${guide.percent}%`}"
+              title="드래그하거나 우클릭해서 위치 입력"
+            ></div>
+          `,
+        )
+        .join("")}
+    </div>
+    <div class="guide-ruler guide-ruler-top" data-ruler-axis="x" title="클릭/드래그해서 세로 안내선 추가"></div>
+    <div class="guide-ruler guide-ruler-left" data-ruler-axis="y" title="클릭/드래그해서 가로 안내선 추가"></div>
   `;
 }
 
@@ -188,11 +285,18 @@ function renderSlide() {
     return;
   }
 
+  const layoutClass = state.layoutMode === "custom" ? "layout-custom" : `layout-${state.layoutMode}`;
   els.stage.innerHTML = `
-    <div class="slide-grid layout-${state.layoutMode}">
+    <div
+      class="slide-grid ${layoutClass}"
+      style="--grid-cols:${state.gridCols}; --grid-rows:${state.gridRows};"
+    >
       ${pageImages.map(renderImageCard).join("")}
     </div>
+    ${renderGuides()}
   `;
+
+  bindGuideInteractions();
 }
 
 function render() {
@@ -214,6 +318,7 @@ function render() {
   els.backgroundButton.textContent = state.backgroundEnabled
     ? "배경 채우기 켜짐 Enter"
     : "배경 채우기 꺼짐 Enter";
+  renderThumbnails();
 }
 
 function escapeHtml(value) {
@@ -243,6 +348,15 @@ function updateZoom(delta) {
 function resetZoom() {
   state.zoom = 1;
   render();
+}
+
+function imageFromDataUrl(url) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.addEventListener("load", () => resolve(image));
+    image.addEventListener("error", reject);
+    image.src = url;
+  });
 }
 
 function fileToDataUrl(file) {
@@ -304,6 +418,221 @@ function bindFilter(input, output, suffix = "%") {
   });
 }
 
+function bindBackgroundFilter(input, output, key, suffix = "%") {
+  input.addEventListener("input", () => {
+    state.backgroundFilters[key] = Number(input.value);
+    output.textContent = `${input.value}${suffix}`;
+    render();
+  });
+}
+
+function bindCrop(input, output, key) {
+  input.addEventListener("input", () => {
+    state.crop[key] = Number(input.value);
+    output.textContent = `${input.value}%`;
+    render();
+  });
+}
+
+function setGrid(rows, cols, mode = "custom") {
+  state.gridRows = clamp(rows, 1, 4);
+  state.gridCols = clamp(cols, 1, 6);
+  state.layoutMode = mode;
+  els.gridRows.value = state.gridRows;
+  els.gridCols.value = state.gridCols;
+  els.layoutMode.value = mode;
+  state.pageIndex = Math.min(state.pageIndex, getTotalPages() - 1);
+  render();
+}
+
+function setLayoutPreset(mode) {
+  const preset = {
+    single: [1, 1],
+    pair: [1, 2],
+    triple: [1, 3],
+    quad: [2, 2],
+  }[mode];
+
+  setGrid(preset[0], preset[1], mode);
+}
+
+function addGuide(axis, percent = 50) {
+  state.guides.push({
+    axis,
+    percent: clamp(percent, 0, 100),
+  });
+  render();
+}
+
+function updateGuide(index, percent) {
+  if (!state.guides[index]) return;
+  state.guides[index].percent = clamp(percent, 0, 100);
+  render();
+}
+
+function bindGuideInteractions() {
+  els.stage.querySelectorAll(".guide").forEach((guideEl) => {
+    guideEl.addEventListener("pointerdown", (event) => {
+      event.preventDefault();
+      const index = Number(guideEl.dataset.guideIndex);
+      const guide = state.guides[index];
+      guideEl.setPointerCapture(event.pointerId);
+
+      const onMove = (moveEvent) => {
+        const rect = els.stage.getBoundingClientRect();
+        const percent =
+          guide.axis === "x"
+            ? ((moveEvent.clientX - rect.left) / rect.width) * 100
+            : ((moveEvent.clientY - rect.top) / rect.height) * 100;
+        guide.percent = clamp(percent, 0, 100);
+        guideEl.style[guide.axis === "x" ? "left" : "top"] = `${guide.percent}%`;
+        guideEl.dataset.label = `${guide.percent.toFixed(1)}%`;
+      };
+
+      const onUp = () => {
+        guideEl.removeEventListener("pointermove", onMove);
+        guideEl.removeEventListener("pointerup", onUp);
+        render();
+      };
+
+      guideEl.addEventListener("pointermove", onMove);
+      guideEl.addEventListener("pointerup", onUp);
+    });
+
+    guideEl.addEventListener("contextmenu", (event) => {
+      event.preventDefault();
+      const index = Number(guideEl.dataset.guideIndex);
+      const current = state.guides[index]?.percent ?? 50;
+      const next = window.prompt("안내선 위치를 퍼센트로 입력하세요.", current.toFixed(1));
+      if (next === null) return;
+      const value = Number(next);
+      if (!Number.isFinite(value)) return;
+      updateGuide(index, value);
+    });
+  });
+
+  els.stage.querySelectorAll(".guide-ruler").forEach((ruler) => {
+    ruler.addEventListener("pointerdown", (event) => {
+      event.preventDefault();
+      const axis = ruler.dataset.rulerAxis;
+      const rect = els.stage.getBoundingClientRect();
+      const percent =
+        axis === "x"
+          ? ((event.clientX - rect.left) / rect.width) * 100
+          : ((event.clientY - rect.top) / rect.height) * 100;
+      addGuide(axis, percent);
+    });
+  });
+}
+
+function renderThumbnails() {
+  if (!els.thumbnailRail) return;
+
+  if (state.images.length === 0) {
+    els.thumbnailRail.innerHTML = "";
+    return;
+  }
+
+  const pageSize = getPageSize();
+  const activeStart = state.pageIndex <= 0 ? -1 : (state.pageIndex - 1) * pageSize;
+  const activeEnd = activeStart + pageSize;
+
+  els.thumbnailRail.innerHTML = state.images
+    .map(
+      (image, index) => `
+        <button
+          class="thumbnail-card ${index >= activeStart && index < activeEnd ? "is-active" : ""}"
+          type="button"
+          draggable="true"
+          data-index="${index}"
+          title="${escapeHtml(image.name)}"
+        >
+          <img src="${image.url}" alt="" />
+          <span>${index + 1}</span>
+        </button>
+      `,
+    )
+    .join("");
+
+  els.thumbnailRail.querySelectorAll(".thumbnail-card").forEach((button) => {
+    button.addEventListener("click", () => {
+      const index = Number(button.dataset.index);
+      goToPage(1 + Math.floor(index / getPageSize()));
+    });
+
+    button.addEventListener("dragstart", (event) => {
+      event.dataTransfer.setData("text/plain", button.dataset.index);
+    });
+
+    button.addEventListener("dragover", (event) => {
+      event.preventDefault();
+    });
+
+    button.addEventListener("drop", (event) => {
+      event.preventDefault();
+      const from = Number(event.dataTransfer.getData("text/plain"));
+      const to = Number(button.dataset.index);
+      if (!Number.isFinite(from) || !Number.isFinite(to) || from === to) return;
+      const [moved] = state.images.splice(from, 1);
+      state.images.splice(to, 0, moved);
+      state.sortMode = "manual";
+      els.sortMode.value = "manual";
+      render();
+    });
+  });
+}
+
+async function downloadAdjustedImages() {
+  if (state.images.length === 0) {
+    alert("먼저 사진을 선택해주세요.");
+    return;
+  }
+
+  const { brightness, contrast, saturate, hue } = state.filters;
+
+  for (const [index, item] of state.images.entries()) {
+    const image = await imageFromDataUrl(item.url);
+    const cropLeftPx = Math.round(image.naturalWidth * (state.crop.left / 100));
+    const cropRightPx = Math.round(image.naturalWidth * (state.crop.right / 100));
+    const sourceWidth = Math.max(1, image.naturalWidth - cropLeftPx - cropRightPx);
+    const canvas = document.createElement("canvas");
+    canvas.width = sourceWidth;
+    canvas.height = image.naturalHeight;
+    const ctx = canvas.getContext("2d");
+    ctx.filter = `brightness(${brightness}%) contrast(${contrast}%) saturate(${saturate}%) hue-rotate(${hue}deg)`;
+    ctx.drawImage(
+      image,
+      cropLeftPx,
+      0,
+      sourceWidth,
+      image.naturalHeight,
+      0,
+      0,
+      sourceWidth,
+      image.naturalHeight,
+    );
+
+    await new Promise((resolve) => {
+      canvas.toBlob((blob) => {
+        if (!blob) {
+          resolve();
+          return;
+        }
+
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `${String(index + 1).padStart(3, "0")}-${item.name.replace(/\.[^.]+$/, "")}.png`;
+        document.body.append(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(url);
+        setTimeout(resolve, 120);
+      }, "image/png");
+    });
+  }
+}
+
 els.logoInput.addEventListener("change", async () => {
   const file = els.logoInput.files?.[0];
   if (!file) return;
@@ -336,9 +665,30 @@ els.sortMode.addEventListener("change", () => {
 
 els.layoutMode.addEventListener("change", () => {
   state.layoutMode = els.layoutMode.value;
+  if (state.layoutMode !== "custom") {
+    const preset = {
+      single: [1, 1],
+      pair: [1, 2],
+      triple: [1, 3],
+      quad: [2, 2],
+    }[state.layoutMode];
+    state.gridRows = preset[0];
+    state.gridCols = preset[1];
+    els.gridRows.value = state.gridRows;
+    els.gridCols.value = state.gridCols;
+  }
   state.pageIndex = Math.min(state.pageIndex, getTotalPages() - 1);
   render();
 });
+
+els.layoutOneButton.addEventListener("click", () => setLayoutPreset("single"));
+els.layoutTwoButton.addEventListener("click", () => setLayoutPreset("pair"));
+els.layoutThreeButton.addEventListener("click", () => setLayoutPreset("triple"));
+els.layoutFourButton.addEventListener("click", () => setLayoutPreset("quad"));
+els.horizontalSplitButton.addEventListener("click", () => setGrid(1, Math.max(2, state.gridCols)));
+els.verticalSplitButton.addEventListener("click", () => setGrid(Math.max(2, state.gridRows), 1));
+els.gridRows.addEventListener("input", () => setGrid(Number(els.gridRows.value), state.gridCols));
+els.gridCols.addEventListener("input", () => setGrid(state.gridRows, Number(els.gridCols.value)));
 
 els.prevButton.addEventListener("click", () => goToPage(state.pageIndex - 1));
 els.nextButton.addEventListener("click", () => goToPage(state.pageIndex + 1));
@@ -349,6 +699,7 @@ els.presentButton.addEventListener("click", togglePresentationMode);
 els.shortcutHelpButton.addEventListener("click", showShortcutHelp);
 els.closeShortcutHelpButton.addEventListener("click", hideShortcutHelp);
 els.exportButton.addEventListener("click", exportStandaloneHtml);
+els.downloadImagesButton.addEventListener("click", downloadAdjustedImages);
 els.zoomOutButton.addEventListener("click", () => updateZoom(-0.1));
 els.zoomInButton.addEventListener("click", () => updateZoom(0.1));
 
@@ -366,6 +717,23 @@ bindFilter(els.brightness, els.brightnessValue);
 bindFilter(els.contrast, els.contrastValue);
 bindFilter(els.saturate, els.saturateValue);
 bindFilter(els.hue, els.hueValue, "°");
+bindBackgroundFilter(els.bgBrightness, els.bgBrightnessValue, "brightness");
+bindBackgroundFilter(els.bgSaturate, els.bgSaturateValue, "saturate");
+bindBackgroundFilter(els.bgBlur, els.bgBlurValue, "blur", "px");
+bindBackgroundFilter(els.bgScale, els.bgScaleValue, "scale", "%");
+bindBackgroundFilter(els.bgY, els.bgYValue, "y", "%");
+bindCrop(els.cropLeft, els.cropLeftValue, "left");
+bindCrop(els.cropRight, els.cropRightValue, "right");
+els.showGuides.addEventListener("change", () => {
+  state.guidesEnabled = els.showGuides.checked;
+  render();
+});
+els.addVerticalGuideButton.addEventListener("click", () => addGuide("x", 50));
+els.addHorizontalGuideButton.addEventListener("click", () => addGuide("y", 50));
+els.clearGuidesButton.addEventListener("click", () => {
+  state.guides = [];
+  render();
+});
 
 els.resetFiltersButton.addEventListener("click", () => {
   state.filters = {
@@ -495,9 +863,13 @@ function getPresentationData() {
     coverVisibility: state.coverVisibility,
     images: state.images,
     layoutMode: state.layoutMode,
+    gridRows: state.gridRows,
+    gridCols: state.gridCols,
     sortMode: state.sortMode,
     fitMode: state.fitMode,
     backgroundEnabled: state.backgroundEnabled,
+    backgroundFilters: state.backgroundFilters,
+    crop: state.crop,
     zoom: state.zoom,
     filters: state.filters,
   };
