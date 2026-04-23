@@ -413,7 +413,7 @@ body.is-file-dragging .drop-card {
 
 .photo-list-card {
   display: grid;
-  grid-template-columns: 4.4rem minmax(0, 1fr);
+  grid-template-columns: 4.4rem minmax(0, 1fr) auto;
   gap: 0.58rem;
   align-items: center;
   border: 1px solid rgba(138, 75, 45, 0.16);
@@ -425,6 +425,17 @@ body.is-file-dragging .drop-card {
     border-color 160ms ease,
     transform 160ms ease,
     box-shadow 160ms ease;
+}
+
+.photo-list-card.is-in-slide {
+  border-color: rgba(91, 47, 27, 0.28);
+  background: rgba(230, 218, 195, 0.72);
+}
+
+.photo-list-card.is-unused {
+  border-style: dashed;
+  border-color: rgba(72, 92, 82, 0.28);
+  background: rgba(255, 253, 247, 0.72);
 }
 
 .photo-list-card:hover,
@@ -459,6 +470,27 @@ body.is-file-dragging .drop-card {
   font-size: 0.84rem;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.photo-list-card em {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-style: normal;
+}
+
+.photo-list-card b {
+  border: 1px solid rgba(138, 75, 45, 0.14);
+  border-radius: 999px;
+  padding: 0.2rem 0.46rem;
+  color: var(--accent-strong);
+  background: rgba(255, 253, 247, 0.7);
+  font-size: 0.66rem;
+  white-space: nowrap;
+}
+
+.photo-list-card.is-unused b {
+  color: #43584e;
+  border-color: rgba(67, 88, 78, 0.18);
 }
 
 .brand-block h1 {
@@ -976,6 +1008,40 @@ kbd {
     0 18px 48px rgba(0, 0, 0, 0.28);
 }
 
+.remove-slot-button {
+  position: absolute;
+  top: 0.62rem;
+  right: 0.62rem;
+  z-index: 4;
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border: 1px solid rgba(255, 253, 247, 0.24);
+  border-radius: 50%;
+  padding: 0;
+  color: var(--white);
+  background: rgba(0, 0, 0, 0.54);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.24);
+  opacity: 0;
+  transform: translateY(-0.25rem) scale(0.94);
+  transition:
+    opacity 140ms ease,
+    transform 140ms ease,
+    background 140ms ease;
+}
+
+.image-card:hover .remove-slot-button,
+.image-card:focus-within .remove-slot-button,
+.image-card.is-selected .remove-slot-button {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+.remove-slot-button:hover {
+  background: rgba(141, 38, 24, 0.88);
+}
+
 .selected-slot-label {
   margin: 0;
   border: 1px solid rgba(138, 75, 45, 0.18);
@@ -1459,6 +1525,15 @@ body.presenting .stage {
 
   .control-panel {
     max-height: none;
+  }
+
+  .photo-list-card {
+    grid-template-columns: 4.4rem minmax(0, 1fr);
+  }
+
+  .photo-list-card b {
+    justify-self: start;
+    grid-column: 2;
   }
 
   .stage {

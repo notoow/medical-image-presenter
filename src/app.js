@@ -151,6 +151,7 @@ const els = {
   photoListPanel: document.querySelector("#photoListPanel"),
   emptySlotToken: document.querySelector("#emptySlotToken"),
   addEmptySlotButton: document.querySelector("#addEmptySlotButton"),
+  clearSlideSlotsButton: document.querySelector("#clearSlideSlotsButton"),
 };
 
 const pageSizeByLayout = {
@@ -219,13 +220,6 @@ function getSlotTransformStyle(slotIndex) {
 
 function ensureSlideSlots() {
   const imageIds = state.images.map((image) => image.id);
-  const usedIds = new Set(state.slideSlots.filter(Boolean));
-
-  for (const id of imageIds) {
-    if (!usedIds.has(id)) {
-      state.slideSlots.push(id);
-    }
-  }
 
   state.slideSlots = state.slideSlots.filter((slot) => slot === null || imageIds.includes(slot));
 
@@ -334,6 +328,15 @@ function renderImageCard(image, slotIndex) {
     <figure class="image-card ${state.backgroundEnabled ? "background-enabled" : ""} ${
       state.fitMode === "fill" ? "fit-fill" : ""
     } ${selectedClass}" data-slot-index="${slotIndex}" tabindex="0">
+      <button
+        class="remove-slot-button"
+        type="button"
+        data-remove-slot="${slotIndex}"
+        title="이 칸에서 사진 제거"
+        aria-label="이 칸에서 사진 제거"
+      >
+        ×
+      </button>
       <img
         class="blur-bg"
         src="${image.url}"
@@ -850,6 +853,7 @@ function setSlot(slotIndex, imageId) {
 
   state.slideSlots[slotIndex] = imageId;
   if (imageId) state.selectedSlotIndex = slotIndex;
+  if (!imageId && state.selectedSlotIndex === slotIndex) state.selectedSlotIndex = null;
   render();
 }
 
@@ -858,7 +862,30 @@ function addEmptySlot() {
   goToPage(Math.max(1, Math.ceil(state.slideSlots.length / getPageSize())));
 }
 
+function clearSlideSlots() {
+  if (state.images.length === 0) {
+    state.slideSlots = [];
+    state.pageIndex = 0;
+    render();
+    return;
+  }
+
+  state.slideSlots = Array(getPageSize()).fill(null);
+  state.slotTransforms = {};
+  state.selectedSlotIndex = null;
+  state.pageIndex = 1;
+  render();
+}
+
 function bindSlotDropTargets() {
+  els.stage.querySelectorAll("[data-remove-slot]").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      setSlot(Number(button.dataset.removeSlot), null);
+    });
+  });
+
   els.stage.querySelectorAll("[data-slot-index]").forEach((slot) => {
     slot.addEventListener("click", () => {
       const slotIndex = Number(slot.dataset.slotIndex);
@@ -1101,11 +1128,19 @@ function renderPhotoList() {
     return;
   }
 
+  const usedCounts = state.slideSlots.reduce((counts, imageId) => {
+    if (!imageId) return counts;
+    counts.set(imageId, (counts.get(imageId) ?? 0) + 1);
+    return counts;
+  }, new Map());
+
   els.photoListPanel.innerHTML = state.images
     .map(
-      (image, index) => `
+      (image, index) => {
+        const usedCount = usedCounts.get(image.id) ?? 0;
+        return `
         <article
-          class="photo-list-card"
+          class="photo-list-card ${usedCount > 0 ? "is-in-slide" : "is-unused"}"
           draggable="true"
           data-image-id="${image.id}"
           data-index="${index}"
@@ -1115,9 +1150,12 @@ function renderPhotoList() {
           <div>
             <strong>${index + 1}</strong>
             <span>${escapeHtml(image.name)}</span>
+            <em>${usedCount > 0 ? `슬라이드 포함 ${usedCount}` : "미배치"}</em>
           </div>
+          <b>${usedCount > 0 ? "배치됨" : "미배치"}</b>
         </article>
-      `,
+      `;
+      },
     )
     .join("");
 
@@ -1282,6 +1320,7 @@ els.emptySlotToken.addEventListener("dragstart", (event) => {
   event.dataTransfer.setData("application/x-medical-presenter", "empty");
 });
 els.addEmptySlotButton.addEventListener("click", addEmptySlot);
+els.clearSlideSlotsButton.addEventListener("click", clearSlideSlots);
 els.zoomOutButton.addEventListener("click", () => updateZoom(-0.1));
 els.zoomInButton.addEventListener("click", () => updateZoom(0.1));
 
