@@ -1,3 +1,6 @@
+const DEFAULT_LOGO_URL = "./logos/haist-urology-logo.jpg";
+const DEFAULT_LOGO_NAME = "하이스트비뇨의학과로고.jpg";
+
 const state = {
   images: [],
   logoUrl: "",
@@ -23,7 +26,9 @@ const els = {
   hospitalName: document.querySelector("#hospitalName"),
   presenterName: document.querySelector("#presenterName"),
   logoInput: document.querySelector("#logoInput"),
+  logoFileName: document.querySelector("#logoFileName"),
   imageInput: document.querySelector("#imageInput"),
+  imageFileName: document.querySelector("#imageFileName"),
   sortMode: document.querySelector("#sortMode"),
   layoutMode: document.querySelector("#layoutMode"),
   prevButton: document.querySelector("#prevButton"),
@@ -223,6 +228,12 @@ function fileToDataUrl(file) {
   });
 }
 
+async function urlToDataUrl(url) {
+  const response = await fetch(url);
+  const blob = await response.blob();
+  return fileToDataUrl(blob);
+}
+
 function toggleBackground() {
   state.backgroundEnabled = !state.backgroundEnabled;
   render();
@@ -264,6 +275,7 @@ els.logoInput.addEventListener("change", async () => {
   const file = els.logoInput.files?.[0];
   if (!file) return;
   state.logoUrl = await fileToDataUrl(file);
+  els.logoFileName.textContent = file.name;
   render();
 });
 
@@ -277,6 +289,8 @@ els.imageInput.addEventListener("change", async () => {
     }));
 
   state.images = await Promise.all(files);
+  els.imageFileName.textContent =
+    state.images.length > 0 ? `${state.images.length}장 선택됨` : "선택된 사진 없음";
 
   state.pageIndex = state.images.length > 0 ? 1 : 0;
   render();
@@ -605,4 +619,15 @@ function createStandaloneHtml(data) {
 </html>`;
 }
 
-render();
+async function initializeDefaultLogo() {
+  try {
+    state.logoUrl = await urlToDataUrl(DEFAULT_LOGO_URL);
+    els.logoFileName.textContent = DEFAULT_LOGO_NAME;
+  } catch {
+    state.logoUrl = DEFAULT_LOGO_URL;
+  }
+
+  render();
+}
+
+initializeDefaultLogo();

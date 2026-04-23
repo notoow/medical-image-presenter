@@ -35,17 +35,25 @@
             발표자
             <input id="presenterName" type="text" value="Presenter" />
           </label>
-          <label>
-            로고
+          <label class="custom-file">
+            <span>로고</span>
             <input id="logoInput" type="file" accept="image/*" />
+            <span class="file-control" aria-hidden="true">
+              <span class="file-button">로고 변경</span>
+              <span id="logoFileName" class="file-name">하이스트비뇨의학과로고.jpg</span>
+            </span>
           </label>
         </section>
 
         <section class="panel-section">
           <h2>사진</h2>
-          <label class="file-drop">
+          <label class="custom-file file-drop">
             <span>사진 여러 장 선택</span>
             <input id="imageInput" type="file" accept="image/*" multiple />
+            <span class="file-control" aria-hidden="true">
+              <span class="file-button">사진 선택</span>
+              <span id="imageFileName" class="file-name">선택된 사진 없음</span>
+            </span>
           </label>
           <label>
             정렬
