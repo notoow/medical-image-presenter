@@ -75,7 +75,10 @@
             배경 채우기 Enter
           </button>
           <button id="presentButton" class="wide-button" type="button">
-            발표모드 P
+            발표모드 F5
+          </button>
+          <button id="shortcutHelpButton" class="wide-button" type="button">
+            단축키 보기 Shift+?
           </button>
           <button id="exportButton" class="wide-button" type="button">
             HTML 내려받기
@@ -115,6 +118,8 @@
           <p>← → Space: 페이지 이동</p>
           <p>Enter: 블러 배경 채우기</p>
           <p>F / Shift+F: 맞추기 / 채우기</p>
+          <p>F5 / Esc: 발표 시작 / 종료</p>
+          <p>Shift+?: 단축키 도움말</p>
           <p>+ - 0: 확대 / 축소 / 초기화</p>
           <p>C: 커버로 이동</p>
         </section>
@@ -129,6 +134,30 @@
         <article id="stage" class="stage stage-cover"></article>
       </section>
     </main>
+
+    <dialog id="shortcutDialog" class="shortcut-dialog">
+      <div class="shortcut-card">
+        <div class="shortcut-head">
+          <div>
+            <p class="eyebrow">Presentation shortcuts</p>
+            <h2>PPT 친화 단축키</h2>
+          </div>
+          <button id="closeShortcutHelpButton" type="button">닫기 Esc</button>
+        </div>
+        <div class="shortcut-grid">
+          <p><kbd>F5</kbd><span>처음부터 발표모드</span></p>
+          <p><kbd>Shift</kbd> + <kbd>F5</kbd><span>현재 페이지부터 발표모드</span></p>
+          <p><kbd>Esc</kbd><span>발표모드/도움말 종료</span></p>
+          <p><kbd>→</kbd> <kbd>↓</kbd> <kbd>Space</kbd> <kbd>N</kbd><span>다음 페이지</span></p>
+          <p><kbd>←</kbd> <kbd>↑</kbd> <kbd>P</kbd><span>이전 페이지</span></p>
+          <p><kbd>Home</kbd> / <kbd>End</kbd><span>커버 / 마지막 페이지</span></p>
+          <p><kbd>F</kbd> / <kbd>Shift</kbd> + <kbd>F</kbd><span>사진 맞추기 / 채우기</span></p>
+          <p><kbd>Enter</kbd><span>블러 배경 채우기 켜기/끄기</span></p>
+          <p><kbd>+</kbd> <kbd>-</kbd> <kbd>0</kbd><span>확대 / 축소 / 초기화</span></p>
+          <p><kbd>Shift</kbd> + <kbd>?</kbd><span>이 도움말 열기</span></p>
+        </div>
+      </div>
+    </dialog>
 
     <script type="module" src="./src/app.js"></script>
   </body>

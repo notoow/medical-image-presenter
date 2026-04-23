@@ -32,6 +32,9 @@ const els = {
   fillButton: document.querySelector("#fillButton"),
   backgroundButton: document.querySelector("#backgroundButton"),
   presentButton: document.querySelector("#presentButton"),
+  shortcutHelpButton: document.querySelector("#shortcutHelpButton"),
+  closeShortcutHelpButton: document.querySelector("#closeShortcutHelpButton"),
+  shortcutDialog: document.querySelector("#shortcutDialog"),
   exportButton: document.querySelector("#exportButton"),
   zoomOutButton: document.querySelector("#zoomOutButton"),
   zoomInButton: document.querySelector("#zoomInButton"),
@@ -235,6 +238,16 @@ function togglePresentationMode() {
   }
 }
 
+function showShortcutHelp() {
+  if (els.shortcutDialog.open) return;
+  els.shortcutDialog.showModal();
+}
+
+function hideShortcutHelp() {
+  if (!els.shortcutDialog.open) return;
+  els.shortcutDialog.close();
+}
+
 function bindInputRerender(input) {
   input.addEventListener("input", render);
 }
@@ -286,6 +299,8 @@ els.fitButton.addEventListener("click", () => updateFitMode("fit"));
 els.fillButton.addEventListener("click", () => updateFitMode("fill"));
 els.backgroundButton.addEventListener("click", toggleBackground);
 els.presentButton.addEventListener("click", togglePresentationMode);
+els.shortcutHelpButton.addEventListener("click", showShortcutHelp);
+els.closeShortcutHelpButton.addEventListener("click", hideShortcutHelp);
 els.exportButton.addEventListener("click", exportStandaloneHtml);
 els.zoomOutButton.addEventListener("click", () => updateZoom(-0.1));
 els.zoomInButton.addEventListener("click", () => updateZoom(0.1));
@@ -327,14 +342,59 @@ document.addEventListener("keydown", (event) => {
 
   if (isTyping) return;
 
-  if (event.key === "ArrowLeft") {
+  if (event.key === "?" || (event.shiftKey && event.key === "/")) {
+    event.preventDefault();
+    showShortcutHelp();
+    return;
+  }
+
+  if (event.key === "Escape") {
+    if (els.shortcutDialog.open) {
+      hideShortcutHelp();
+      return;
+    }
+
+    if (document.body.classList.contains("presenting")) {
+      document.body.classList.remove("presenting");
+      document.exitFullscreen?.().catch(() => {});
+    }
+  }
+
+  if (event.key === "ArrowLeft" || event.key === "ArrowUp" || event.key.toLowerCase() === "p") {
     event.preventDefault();
     goToPage(state.pageIndex - 1);
   }
 
-  if (event.key === "ArrowRight" || event.key === " ") {
+  if (
+    event.key === "ArrowRight" ||
+    event.key === "ArrowDown" ||
+    event.key === "PageDown" ||
+    event.key === " " ||
+    event.key.toLowerCase() === "n"
+  ) {
     event.preventDefault();
     goToPage(state.pageIndex + 1);
+  }
+
+  if (event.key === "PageUp") {
+    event.preventDefault();
+    goToPage(state.pageIndex - 1);
+  }
+
+  if (event.key === "Home") {
+    event.preventDefault();
+    goToPage(0);
+  }
+
+  if (event.key === "End") {
+    event.preventDefault();
+    goToPage(getTotalPages() - 1);
+  }
+
+  if (event.key === "F5") {
+    event.preventDefault();
+    if (!event.shiftKey) goToPage(0);
+    togglePresentationMode();
   }
 
   if (event.key === "Enter") {
@@ -367,10 +427,6 @@ document.addEventListener("keydown", (event) => {
     goToPage(0);
   }
 
-  if (event.key.toLowerCase() === "p") {
-    event.preventDefault();
-    togglePresentationMode();
-  }
 });
 
 function getPresentationData() {
@@ -463,10 +519,19 @@ function createStandaloneHtml(data) {
     .photo { position:absolute; inset:0; width:100%; height:100%; object-fit:contain; transform-origin:center; }
     .fill .photo { object-fit:cover; }
     .label { position:absolute; z-index:2; left:.8rem; right:.8rem; bottom:.7rem; overflow:hidden; color:rgba(255,253,247,.78); white-space:nowrap; text-overflow:ellipsis; font-size:.82rem; }
+    dialog { width:min(54rem,calc(100vw - 2rem)); border:1px solid var(--line); border-radius:1.5rem; padding:0; color:var(--ink); background:linear-gradient(145deg,rgba(37,34,30,.98),rgba(8,8,7,.98)); box-shadow:0 28px 90px rgba(0,0,0,.5); }
+    dialog::backdrop { background:rgba(0,0,0,.58); backdrop-filter:blur(10px); }
+    .help-card { padding:1.4rem; }
+    .help-head { display:flex; justify-content:space-between; align-items:center; gap:1rem; margin-bottom:1rem; }
+    .help-head h2 { margin:0; font-size:2.5rem; line-height:.95; letter-spacing:-.055em; }
+    .help-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:.65rem; }
+    .help-grid p { display:flex; align-items:center; gap:.35rem; margin:0; border:1px solid var(--line); border-radius:1rem; padding:.72rem; background:rgba(255,255,255,.07); }
+    .help-grid span { margin-left:auto; color:var(--muted); text-align:right; }
+    kbd { display:inline-grid; place-items:center; min-width:1.9rem; min-height:1.7rem; border:1px solid var(--line); border-radius:.45rem; padding:.12rem .38rem; background:rgba(255,255,255,.1); font-family:"Courier New",monospace; font-size:.78rem; }
     body.presenting .panel, body.presenting .toolbar { display:none; }
     body.presenting .app { display:grid; grid-template-columns:1fr; padding:0; }
     body.presenting .stage { width:100vw; height:100vh; border-radius:0; aspect-ratio:auto; }
-    @media (max-width:900px){ .app{grid-template-columns:1fr}.panel{max-height:none}.stage{width:100%} }
+    @media (max-width:900px){ .app{grid-template-columns:1fr}.panel{max-height:none}.stage{width:100%}.help-grid{grid-template-columns:1fr} }
   </style>
 </head>
 <body>
@@ -480,18 +545,37 @@ function createStandaloneHtml(data) {
       <label>페이지 구성 <select id="layout"><option value="single">낱장</option><option value="pair">2장씩</option><option value="triple">3장씩</option></select></label>
       <div class="row"><button id="fit">맞추기 F</button><button id="fill">채우기 ⇧F</button></div>
       <button id="bg">배경 채우기 Enter</button>
-      <button id="present">발표모드 P</button>
+      <button id="present">발표모드 F5</button>
+      <button id="help">단축키 보기 Shift+?</button>
       <label>밝기 <input id="brightness" type="range" min="50" max="150" /></label>
       <label>대비 <input id="contrast" type="range" min="50" max="160" /></label>
       <label>채도 <input id="saturate" type="range" min="0" max="180" /></label>
       <label>색조 <input id="hue" type="range" min="-45" max="45" /></label>
-      <p>← → Space: 페이지 이동 / + - 0: 확대 초기화 / C: 커버</p>
+      <p>F5: 발표 시작 / Esc: 종료 / Shift+?: 도움말</p>
+      <p>← → N P Space: 페이지 이동 / + - 0: 확대 초기화 / C: 커버</p>
     </aside>
     <section class="stage-wrap">
       <div class="toolbar"><button id="prev">이전</button><span id="status" class="status">Cover</span><button id="next">다음</button></div>
       <article id="stage" class="stage cover"></article>
     </section>
   </main>
+  <dialog id="shortcutDialog">
+    <div class="help-card">
+      <div class="help-head"><h2>PPT 친화 단축키</h2><button id="closeHelp">닫기 Esc</button></div>
+      <div class="help-grid">
+        <p><kbd>F5</kbd><span>처음부터 발표</span></p>
+        <p><kbd>Shift</kbd> + <kbd>F5</kbd><span>현재 페이지부터 발표</span></p>
+        <p><kbd>Esc</kbd><span>발표/도움말 종료</span></p>
+        <p><kbd>→</kbd> <kbd>↓</kbd> <kbd>N</kbd><span>다음 페이지</span></p>
+        <p><kbd>←</kbd> <kbd>↑</kbd> <kbd>P</kbd><span>이전 페이지</span></p>
+        <p><kbd>Home</kbd> / <kbd>End</kbd><span>커버 / 마지막</span></p>
+        <p><kbd>F</kbd> / <kbd>Shift</kbd> + <kbd>F</kbd><span>맞추기 / 채우기</span></p>
+        <p><kbd>Enter</kbd><span>블러 배경 토글</span></p>
+        <p><kbd>+</kbd> <kbd>-</kbd> <kbd>0</kbd><span>확대 / 축소 / 초기화</span></p>
+        <p><kbd>Shift</kbd> + <kbd>?</kbd><span>도움말</span></p>
+      </div>
+    </div>
+  </dialog>
   <script>
     const data = ${serialized};
     const state = { ...data, pageIndex: 0 };
@@ -507,10 +591,13 @@ function createStandaloneHtml(data) {
     function renderSlide(){ const start=(state.pageIndex-1)*pageSize(); const imgs=state.images.slice(start,start+pageSize()); $("stage").className="stage"; $("stage").innerHTML=\`<div class="grid \${state.layoutMode}">\${imgs.map(card).join("")}</div>\`; }
     function go(n){ state.pageIndex=n; render(); }
     function present(){ document.body.classList.toggle("presenting"); if(document.body.classList.contains("presenting")) $("stage").requestFullscreen?.().catch(()=>{}); else document.exitFullscreen?.().catch(()=>{}); }
+    function showHelp(){ if(!$("shortcutDialog").open) $("shortcutDialog").showModal(); }
+    function hideHelp(){ if($("shortcutDialog").open) $("shortcutDialog").close(); }
     $("prev").onclick=()=>go(state.pageIndex-1); $("next").onclick=()=>go(state.pageIndex+1); $("fit").onclick=()=>{state.fitMode="fit";render()}; $("fill").onclick=()=>{state.fitMode="fill";render()}; $("bg").onclick=()=>{state.backgroundEnabled=!state.backgroundEnabled;render()}; $("present").onclick=present;
+    $("help").onclick=showHelp; $("closeHelp").onclick=hideHelp;
     for (const id of ["title","subtitle","hospital","presenter"]) $(id).oninput=()=>{ const map={title:"title",subtitle:"subtitle",hospital:"hospitalName",presenter:"presenterName"}; state.cover[map[id]]=$(id).value; render(); };
     $("layout").onchange=()=>{state.layoutMode=$("layout").value;render()}; for (const key of ["brightness","contrast","saturate","hue"]) $(key).oninput=()=>{state.filters[key]=Number($(key).value);render()};
-    document.onkeydown=(e)=>{ if(["INPUT","SELECT"].includes(e.target.tagName)) return; if(e.key==="ArrowLeft")go(state.pageIndex-1); if(e.key==="ArrowRight"||e.key===" ")go(state.pageIndex+1); if(e.key==="Enter"){state.backgroundEnabled=!state.backgroundEnabled;render()} if(e.key.toLowerCase()==="f"){state.fitMode=e.shiftKey?"fill":"fit";render()} if(e.key==="+") {state.zoom=Math.min(state.zoom+.1,2.5);render()} if(e.key==="-") {state.zoom=Math.max(state.zoom-.1,.5);render()} if(e.key==="0"){state.zoom=1;render()} if(e.key.toLowerCase()==="c")go(0); if(e.key.toLowerCase()==="p")present(); };
+    document.onkeydown=(e)=>{ if(["INPUT","SELECT"].includes(e.target.tagName)) return; if(e.key==="?"||(e.shiftKey&&e.key==="/")){e.preventDefault();showHelp();return} if(e.key==="Escape"){ if($("shortcutDialog").open){hideHelp();return} if(document.body.classList.contains("presenting")){document.body.classList.remove("presenting");document.exitFullscreen?.().catch(()=>{})} } if(e.key==="F5"){e.preventDefault(); if(!e.shiftKey)go(0); present()} if(e.key==="ArrowLeft"||e.key==="ArrowUp"||e.key==="PageUp"||e.key.toLowerCase()==="p")go(state.pageIndex-1); if(e.key==="ArrowRight"||e.key==="ArrowDown"||e.key==="PageDown"||e.key===" "||e.key.toLowerCase()==="n")go(state.pageIndex+1); if(e.key==="Home")go(0); if(e.key==="End")go(totalPages()-1); if(e.key==="Enter"){state.backgroundEnabled=!state.backgroundEnabled;render()} if(e.key.toLowerCase()==="f"){state.fitMode=e.shiftKey?"fill":"fit";render()} if(e.key==="+") {state.zoom=Math.min(state.zoom+.1,2.5);render()} if(e.key==="-") {state.zoom=Math.max(state.zoom-.1,.5);render()} if(e.key==="0"){state.zoom=1;render()} if(e.key.toLowerCase()==="c")go(0); };
     syncInputs(); render();
   </script>
 </body>

@@ -179,6 +179,80 @@ input[type="range"] {
   font-size: 0.88rem;
 }
 
+.shortcut-dialog {
+  width: min(58rem, calc(100vw - 2rem));
+  border: 1px solid rgba(255, 253, 247, 0.2);
+  border-radius: 1.7rem;
+  padding: 0;
+  color: var(--white);
+  background:
+    radial-gradient(circle at 15% 10%, rgba(255, 255, 255, 0.12), transparent 22rem),
+    linear-gradient(145deg, rgba(39, 35, 30, 0.96), rgba(10, 10, 9, 0.96));
+  box-shadow: 0 28px 90px rgba(0, 0, 0, 0.48);
+}
+
+.shortcut-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.54);
+  backdrop-filter: blur(10px);
+}
+
+.shortcut-card {
+  padding: clamp(1.1rem, 3vw, 2rem);
+}
+
+.shortcut-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.2rem;
+}
+
+.shortcut-head h2 {
+  margin: 0.1rem 0 0;
+  font-size: clamp(1.8rem, 4vw, 3.2rem);
+  line-height: 0.95;
+  letter-spacing: -0.055em;
+}
+
+.shortcut-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.65rem;
+}
+
+.shortcut-grid p {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0;
+  border: 1px solid rgba(255, 253, 247, 0.14);
+  border-radius: 1rem;
+  padding: 0.72rem;
+  background: rgba(255, 253, 247, 0.07);
+}
+
+.shortcut-grid span {
+  margin-left: auto;
+  color: rgba(255, 253, 247, 0.74);
+  text-align: right;
+}
+
+kbd {
+  display: inline-grid;
+  place-items: center;
+  min-width: 1.9rem;
+  min-height: 1.7rem;
+  border: 1px solid rgba(255, 253, 247, 0.22);
+  border-radius: 0.45rem;
+  padding: 0.12rem 0.38rem;
+  color: var(--white);
+  background: rgba(255, 253, 247, 0.1);
+  box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.22);
+  font-family: "Courier New", monospace;
+  font-size: 0.78rem;
+}
+
 .stage-wrap {
   display: grid;
   grid-template-rows: auto 1fr;
@@ -404,5 +478,9 @@ body.presenting .stage {
 
   .stage {
     aspect-ratio: 9 / 14;
+  }
+
+  .shortcut-grid {
+    grid-template-columns: 1fr;
   }
 }
