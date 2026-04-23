@@ -21,7 +21,8 @@
           <h2>커버</h2>
           <label>
             제목
-            <input id="coverTitle" type="text" value="Before / After Case Review" />
+            <textarea id="coverTitle" rows="2">50대 중년 남성
+여유증 + 복부</textarea>
           </label>
           <label>
             부제
@@ -29,12 +30,38 @@
           </label>
           <label>
             병원명
-            <input id="hospitalName" type="text" value="Hospital Name" />
+            <input id="hospitalName" type="text" value="하이스트 비뇨기과" />
           </label>
           <label>
             발표자
             <input id="presenterName" type="text" value="Presenter" />
           </label>
+          <div class="toggle-grid" aria-label="커버 표시 항목">
+            <label class="toggle-pill">
+              <input id="showCoverTitle" type="checkbox" checked />
+              <span>제목</span>
+            </label>
+            <label class="toggle-pill">
+              <input id="showCoverSubtitle" type="checkbox" checked />
+              <span>부제</span>
+            </label>
+            <label class="toggle-pill">
+              <input id="showHospitalName" type="checkbox" checked />
+              <span>병원명</span>
+            </label>
+            <label class="toggle-pill">
+              <input id="showPresenterName" type="checkbox" checked />
+              <span>발표자</span>
+            </label>
+            <label class="toggle-pill">
+              <input id="showCoverDate" type="checkbox" checked />
+              <span>날짜</span>
+            </label>
+            <label class="toggle-pill">
+              <input id="showCoverLogo" type="checkbox" checked />
+              <span>로고</span>
+            </label>
+          </div>
           <label class="custom-file">
             <span>로고</span>
             <input id="logoInput" type="file" accept="image/*" />

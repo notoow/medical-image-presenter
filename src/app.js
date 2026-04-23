@@ -10,6 +10,14 @@ const state = {
   fitMode: "fit",
   backgroundEnabled: true,
   zoom: 1,
+  coverVisibility: {
+    title: true,
+    subtitle: true,
+    hospitalName: true,
+    presenterName: true,
+    date: true,
+    logo: true,
+  },
   filters: {
     brightness: 100,
     contrast: 100,
@@ -25,6 +33,12 @@ const els = {
   coverSubtitle: document.querySelector("#coverSubtitle"),
   hospitalName: document.querySelector("#hospitalName"),
   presenterName: document.querySelector("#presenterName"),
+  showCoverTitle: document.querySelector("#showCoverTitle"),
+  showCoverSubtitle: document.querySelector("#showCoverSubtitle"),
+  showHospitalName: document.querySelector("#showHospitalName"),
+  showPresenterName: document.querySelector("#showPresenterName"),
+  showCoverDate: document.querySelector("#showCoverDate"),
+  showCoverLogo: document.querySelector("#showCoverLogo"),
   logoInput: document.querySelector("#logoInput"),
   logoFileName: document.querySelector("#logoFileName"),
   imageInput: document.querySelector("#imageInput"),
@@ -103,21 +117,33 @@ function getFilterStyle() {
 }
 
 function renderCover() {
+  const metaItems = [
+    state.coverVisibility.hospitalName ? els.hospitalName.value : "",
+    state.coverVisibility.presenterName ? els.presenterName.value : "",
+    state.coverVisibility.date ? new Date().toLocaleDateString("ko-KR") : "",
+  ].filter(Boolean);
+
   els.stage.className = "stage stage-cover";
   els.stage.innerHTML = `
     <div class="cover-card">
       ${
-        state.logoUrl
+        state.coverVisibility.logo && state.logoUrl
           ? `<img class="cover-logo" src="${state.logoUrl}" alt="Hospital logo" />`
           : ""
       }
-      <h2 class="cover-title">${escapeHtml(els.coverTitle.value)}</h2>
-      <p class="cover-subtitle">${escapeHtml(els.coverSubtitle.value)}</p>
-      <div class="cover-meta">
-        <span>${escapeHtml(els.hospitalName.value)}</span>
-        <span>${escapeHtml(els.presenterName.value)}</span>
-        <span>${new Date().toLocaleDateString("ko-KR")}</span>
-      </div>
+      ${state.coverVisibility.title ? `<h2 class="cover-title">${escapeHtml(els.coverTitle.value)}</h2>` : ""}
+      ${
+        state.coverVisibility.subtitle
+          ? `<p class="cover-subtitle">${escapeHtml(els.coverSubtitle.value)}</p>`
+          : ""
+      }
+      ${
+        metaItems.length > 0
+          ? `<div class="cover-meta">${metaItems
+              .map((item) => `<span>${escapeHtml(item)}</span>`)
+              .join("")}</div>`
+          : ""
+      }
     </div>
   `;
 }
@@ -263,6 +289,13 @@ function bindInputRerender(input) {
   input.addEventListener("input", render);
 }
 
+function bindVisibilityToggle(input, key) {
+  input.addEventListener("change", () => {
+    state.coverVisibility[key] = input.checked;
+    render();
+  });
+}
+
 function bindFilter(input, output, suffix = "%") {
   input.addEventListener("input", () => {
     state.filters[input.id] = Number(input.value);
@@ -323,6 +356,12 @@ bindInputRerender(els.coverTitle);
 bindInputRerender(els.coverSubtitle);
 bindInputRerender(els.hospitalName);
 bindInputRerender(els.presenterName);
+bindVisibilityToggle(els.showCoverTitle, "title");
+bindVisibilityToggle(els.showCoverSubtitle, "subtitle");
+bindVisibilityToggle(els.showHospitalName, "hospitalName");
+bindVisibilityToggle(els.showPresenterName, "presenterName");
+bindVisibilityToggle(els.showCoverDate, "date");
+bindVisibilityToggle(els.showCoverLogo, "logo");
 bindFilter(els.brightness, els.brightnessValue);
 bindFilter(els.contrast, els.contrastValue);
 bindFilter(els.saturate, els.saturateValue);
@@ -453,6 +492,7 @@ function getPresentationData() {
       date: new Date().toLocaleDateString("ko-KR"),
       logoUrl: state.logoUrl,
     },
+    coverVisibility: state.coverVisibility,
     images: state.images,
     layoutMode: state.layoutMode,
     sortMode: state.sortMode,
@@ -507,14 +547,17 @@ function createStandaloneHtml(data) {
     :root { color-scheme: dark; --ink:#fffdf7; --muted:rgba(255,253,247,.68); --panel:rgba(20,19,17,.76); --line:rgba(255,253,247,.16); --accent:#d9a06f; }
     * { box-sizing: border-box; }
     body { margin:0; min-height:100vh; color:var(--ink); font-family:Pretendard,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; background:radial-gradient(circle at 15% 10%,rgba(217,160,111,.2),transparent 28rem),linear-gradient(135deg,#151512,#050505); }
-    button,input,select { font:inherit; }
+    button,input,textarea,select { font:inherit; }
     button,select,input[type="range"] { border:1px solid var(--line); border-radius:999px; padding:.55rem .8rem; color:var(--ink); background:rgba(255,255,255,.08); }
     button { cursor:pointer; }
     .app { display:grid; grid-template-columns:20rem 1fr; gap:1rem; min-height:100vh; padding:1rem; }
     .panel { display:grid; align-content:start; gap:.85rem; max-height:calc(100vh - 2rem); overflow:auto; border:1px solid var(--line); border-radius:1.3rem; padding:1rem; background:var(--panel); backdrop-filter:blur(16px); }
     .panel h1 { margin:0; font-size:1.65rem; line-height:1; letter-spacing:-.04em; }
     .panel label { display:grid; gap:.35rem; color:var(--muted); font-size:.88rem; }
-    .panel input[type="text"], .panel select { width:100%; border-radius:.8rem; }
+    .panel input[type="text"], .panel textarea, .panel select { width:100%; border-radius:.8rem; }
+    .panel textarea { min-height:5.2rem; resize:vertical; line-height:1.45; }
+    .toggle-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:.45rem; }
+    .toggle-pill { display:flex; align-items:center; gap:.45rem; color:var(--muted); font-size:.85rem; }
     .row { display:flex; gap:.5rem; align-items:center; }
     .row > * { flex:1; }
     .stage-wrap { display:grid; grid-template-rows:auto 1fr; gap:1rem; min-width:0; }
@@ -524,7 +567,7 @@ function createStandaloneHtml(data) {
     .cover { display:grid; place-items:center; padding:4rem; background:radial-gradient(circle at 20% 15%,rgba(255,255,255,.12),transparent 22rem),linear-gradient(145deg,#26231f,#080807); }
     .cover-card { width:min(75%,58rem); border:1px solid var(--line); border-radius:2rem; padding:3rem; background:rgba(255,255,255,.07); backdrop-filter:blur(18px); }
     .cover-logo { max-width:10rem; max-height:5rem; object-fit:contain; margin-bottom:2rem; }
-    .cover-title { margin:0; font-size:clamp(2.5rem,6vw,6rem); line-height:.9; letter-spacing:-.07em; }
+    .cover-title { margin:0; font-size:clamp(2.5rem,6vw,6rem); line-height:.9; letter-spacing:-.07em; white-space:pre-line; }
     .cover-subtitle,.meta { color:var(--muted); }
     .grid { position:absolute; inset:0; display:grid; gap:1rem; padding:1rem; }
     .single { grid-template-columns:1fr; } .pair { grid-template-columns:repeat(2,1fr); } .triple { grid-template-columns:repeat(3,1fr); }
@@ -553,10 +596,18 @@ function createStandaloneHtml(data) {
   <main class="app">
     <aside class="panel">
       <h1>Case Photo Presenter</h1>
-      <label>제목 <input id="title" type="text" /></label>
+      <label>제목 <textarea id="title" rows="2"></textarea></label>
       <label>부제 <input id="subtitle" type="text" /></label>
       <label>병원명 <input id="hospital" type="text" /></label>
       <label>발표자 <input id="presenter" type="text" /></label>
+      <div class="toggle-grid">
+        <label class="toggle-pill"><input id="showTitle" type="checkbox"> 제목</label>
+        <label class="toggle-pill"><input id="showSubtitle" type="checkbox"> 부제</label>
+        <label class="toggle-pill"><input id="showHospital" type="checkbox"> 병원명</label>
+        <label class="toggle-pill"><input id="showPresenter" type="checkbox"> 발표자</label>
+        <label class="toggle-pill"><input id="showDate" type="checkbox"> 날짜</label>
+        <label class="toggle-pill"><input id="showLogo" type="checkbox"> 로고</label>
+      </div>
       <label>페이지 구성 <select id="layout"><option value="single">낱장</option><option value="pair">2장씩</option><option value="triple">3장씩</option></select></label>
       <div class="row"><button id="fit">맞추기 F</button><button id="fill">채우기 ⇧F</button></div>
       <button id="bg">배경 채우기 Enter</button>
@@ -599,9 +650,9 @@ function createStandaloneHtml(data) {
     const $ = (id) => document.getElementById(id);
     const esc = (v) => String(v).replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#039;");
     const filter = () => \`brightness(\${state.filters.brightness}%) contrast(\${state.filters.contrast}%) saturate(\${state.filters.saturate}%) hue-rotate(\${state.filters.hue}deg)\`;
-    function syncInputs(){ $("title").value=state.cover.title; $("subtitle").value=state.cover.subtitle; $("hospital").value=state.cover.hospitalName; $("presenter").value=state.cover.presenterName; $("layout").value=state.layoutMode; for (const key of ["brightness","contrast","saturate","hue"]) $(key).value=state.filters[key]; }
+    function syncInputs(){ $("title").value=state.cover.title; $("subtitle").value=state.cover.subtitle; $("hospital").value=state.cover.hospitalName; $("presenter").value=state.cover.presenterName; $("layout").value=state.layoutMode; $("showTitle").checked=state.coverVisibility.title; $("showSubtitle").checked=state.coverVisibility.subtitle; $("showHospital").checked=state.coverVisibility.hospitalName; $("showPresenter").checked=state.coverVisibility.presenterName; $("showDate").checked=state.coverVisibility.date; $("showLogo").checked=state.coverVisibility.logo; for (const key of ["brightness","contrast","saturate","hue"]) $(key).value=state.filters[key]; }
     function render(){ state.pageIndex=Math.min(Math.max(state.pageIndex,0),totalPages()-1); if(state.pageIndex===0) renderCover(); else renderSlide(); $("status").textContent=state.pageIndex===0?\`Cover / \${totalPages()}\`:\`\${state.pageIndex+1} / \${totalPages()}\`; $("bg").textContent=state.backgroundEnabled?"배경 채우기 켜짐 Enter":"배경 채우기 꺼짐 Enter"; }
-    function renderCover(){ $("stage").className="stage cover"; $("stage").innerHTML=\`<div class="cover-card">\${state.cover.logoUrl?\`<img class="cover-logo" src="\${state.cover.logoUrl}" alt="logo">\`:""}<h2 class="cover-title">\${esc(state.cover.title)}</h2><p class="cover-subtitle">\${esc(state.cover.subtitle)}</p><p class="meta">\${esc(state.cover.hospitalName)} · \${esc(state.cover.presenterName)} · \${esc(state.cover.date)}</p></div>\`; }
+    function renderCover(){ const meta=[state.coverVisibility.hospitalName?state.cover.hospitalName:"",state.coverVisibility.presenterName?state.cover.presenterName:"",state.coverVisibility.date?state.cover.date:""].filter(Boolean); $("stage").className="stage cover"; $("stage").innerHTML=\`<div class="cover-card">\${state.coverVisibility.logo&&state.cover.logoUrl?\`<img class="cover-logo" src="\${state.cover.logoUrl}" alt="logo">\`:""}\${state.coverVisibility.title?\`<h2 class="cover-title">\${esc(state.cover.title)}</h2>\`:""}\${state.coverVisibility.subtitle?\`<p class="cover-subtitle">\${esc(state.cover.subtitle)}</p>\`:""}\${meta.length?\`<p class="meta">\${meta.map(esc).join(" · ")}</p>\`:""}</div>\`; }
     function card(img){ return \`<figure class="card \${state.backgroundEnabled?"bg-on":""} \${state.fitMode==="fill"?"fill":""}"><img class="blur" src="\${img.url}" alt=""><img class="photo" src="\${img.url}" alt="\${esc(img.name)}" style="filter:\${filter()};transform:scale(\${state.zoom})"><figcaption class="label">\${esc(img.name)}</figcaption></figure>\`; }
     function renderSlide(){ const start=(state.pageIndex-1)*pageSize(); const imgs=state.images.slice(start,start+pageSize()); $("stage").className="stage"; $("stage").innerHTML=\`<div class="grid \${state.layoutMode}">\${imgs.map(card).join("")}</div>\`; }
     function go(n){ state.pageIndex=n; render(); }
@@ -611,8 +662,9 @@ function createStandaloneHtml(data) {
     $("prev").onclick=()=>go(state.pageIndex-1); $("next").onclick=()=>go(state.pageIndex+1); $("fit").onclick=()=>{state.fitMode="fit";render()}; $("fill").onclick=()=>{state.fitMode="fill";render()}; $("bg").onclick=()=>{state.backgroundEnabled=!state.backgroundEnabled;render()}; $("present").onclick=present;
     $("help").onclick=showHelp; $("closeHelp").onclick=hideHelp;
     for (const id of ["title","subtitle","hospital","presenter"]) $(id).oninput=()=>{ const map={title:"title",subtitle:"subtitle",hospital:"hospitalName",presenter:"presenterName"}; state.cover[map[id]]=$(id).value; render(); };
+    for (const [id,key] of [["showTitle","title"],["showSubtitle","subtitle"],["showHospital","hospitalName"],["showPresenter","presenterName"],["showDate","date"],["showLogo","logo"]]) $(id).onchange=()=>{state.coverVisibility[key]=$(id).checked;render()};
     $("layout").onchange=()=>{state.layoutMode=$("layout").value;render()}; for (const key of ["brightness","contrast","saturate","hue"]) $(key).oninput=()=>{state.filters[key]=Number($(key).value);render()};
-    document.onkeydown=(e)=>{ if(["INPUT","SELECT"].includes(e.target.tagName)) return; if(e.key==="?"||(e.shiftKey&&e.key==="/")){e.preventDefault();showHelp();return} if(e.key==="Escape"){ if($("shortcutDialog").open){hideHelp();return} if(document.body.classList.contains("presenting")){document.body.classList.remove("presenting");document.exitFullscreen?.().catch(()=>{})} } if(e.key==="F5"){e.preventDefault(); if(!e.shiftKey)go(0); present()} if(e.key==="ArrowLeft"||e.key==="ArrowUp"||e.key==="PageUp"||e.key.toLowerCase()==="p")go(state.pageIndex-1); if(e.key==="ArrowRight"||e.key==="ArrowDown"||e.key==="PageDown"||e.key===" "||e.key.toLowerCase()==="n")go(state.pageIndex+1); if(e.key==="Home")go(0); if(e.key==="End")go(totalPages()-1); if(e.key==="Enter"){state.backgroundEnabled=!state.backgroundEnabled;render()} if(e.key.toLowerCase()==="f"){state.fitMode=e.shiftKey?"fill":"fit";render()} if(e.key==="+") {state.zoom=Math.min(state.zoom+.1,2.5);render()} if(e.key==="-") {state.zoom=Math.max(state.zoom-.1,.5);render()} if(e.key==="0"){state.zoom=1;render()} if(e.key.toLowerCase()==="c")go(0); };
+    document.onkeydown=(e)=>{ if(["INPUT","TEXTAREA","SELECT"].includes(e.target.tagName)) return; if(e.key==="?"||(e.shiftKey&&e.key==="/")){e.preventDefault();showHelp();return} if(e.key==="Escape"){ if($("shortcutDialog").open){hideHelp();return} if(document.body.classList.contains("presenting")){document.body.classList.remove("presenting");document.exitFullscreen?.().catch(()=>{})} } if(e.key==="F5"){e.preventDefault(); if(!e.shiftKey)go(0); present()} if(e.key==="ArrowLeft"||e.key==="ArrowUp"||e.key==="PageUp"||e.key.toLowerCase()==="p")go(state.pageIndex-1); if(e.key==="ArrowRight"||e.key==="ArrowDown"||e.key==="PageDown"||e.key===" "||e.key.toLowerCase()==="n")go(state.pageIndex+1); if(e.key==="Home")go(0); if(e.key==="End")go(totalPages()-1); if(e.key==="Enter"){state.backgroundEnabled=!state.backgroundEnabled;render()} if(e.key.toLowerCase()==="f"){state.fitMode=e.shiftKey?"fill":"fit";render()} if(e.key==="+") {state.zoom=Math.min(state.zoom+.1,2.5);render()} if(e.key==="-") {state.zoom=Math.max(state.zoom-.1,.5);render()} if(e.key==="0"){state.zoom=1;render()} if(e.key.toLowerCase()==="c")go(0); };
     syncInputs(); render();
   </script>
 </body>
