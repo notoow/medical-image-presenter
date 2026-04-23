@@ -399,6 +399,19 @@ function hideShortcutHelp() {
   els.shortcutDialog.close();
 }
 
+function closeDialogFromBackdrop(event) {
+  if (event.target !== els.shortcutDialog) return;
+
+  const rect = els.shortcutDialog.getBoundingClientRect();
+  const isInside =
+    event.clientX >= rect.left &&
+    event.clientX <= rect.right &&
+    event.clientY >= rect.top &&
+    event.clientY <= rect.bottom;
+
+  if (!isInside) hideShortcutHelp();
+}
+
 function bindInputRerender(input) {
   input.addEventListener("input", render);
 }
@@ -769,6 +782,7 @@ els.backgroundButton.addEventListener("click", toggleBackground);
 els.presentButton.addEventListener("click", togglePresentationMode);
 els.shortcutHelpButton.addEventListener("click", showShortcutHelp);
 els.closeShortcutHelpButton.addEventListener("click", hideShortcutHelp);
+els.shortcutDialog.addEventListener("click", closeDialogFromBackdrop);
 els.exportButton.addEventListener("click", exportStandaloneHtml);
 els.downloadImagesButton.addEventListener("click", downloadAdjustedImages);
 els.zoomOutButton.addEventListener("click", () => updateZoom(-0.1));
@@ -1102,8 +1116,10 @@ function createStandaloneHtml(data) {
     function present(){ document.body.classList.toggle("presenting"); if(document.body.classList.contains("presenting")) $("stage").requestFullscreen?.().catch(()=>{}); else document.exitFullscreen?.().catch(()=>{}); }
     function showHelp(){ if(!$("shortcutDialog").open) $("shortcutDialog").showModal(); }
     function hideHelp(){ if($("shortcutDialog").open) $("shortcutDialog").close(); }
+    function backdropClose(e){ if(e.target!==$("shortcutDialog")) return; const r=$("shortcutDialog").getBoundingClientRect(); if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom) hideHelp(); }
     $("prev").onclick=()=>go(state.pageIndex-1); $("next").onclick=()=>go(state.pageIndex+1); $("fit").onclick=()=>{state.fitMode="fit";render()}; $("fill").onclick=()=>{state.fitMode="fill";render()}; $("bg").onclick=()=>{state.backgroundEnabled=!state.backgroundEnabled;render()}; $("present").onclick=present;
     $("help").onclick=showHelp; $("closeHelp").onclick=hideHelp;
+    $("shortcutDialog").onclick=backdropClose;
     for (const id of ["title","subtitle","hospital","presenter"]) $(id).oninput=()=>{ const map={title:"title",subtitle:"subtitle",hospital:"hospitalName",presenter:"presenterName"}; state.cover[map[id]]=$(id).value; render(); };
     for (const [id,key] of [["showTitle","title"],["showSubtitle","subtitle"],["showHospital","hospitalName"],["showPresenter","presenterName"],["showDate","date"],["showLogo","logo"]]) $(id).onchange=()=>{state.coverVisibility[key]=$(id).checked;render()};
     $("layout").onchange=()=>{state.layoutMode=$("layout").value;render()}; for (const key of ["brightness","contrast","saturate","hue"]) $(key).oninput=()=>{state.filters[key]=Number($(key).value);render()};
