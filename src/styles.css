@@ -1,3 +1,5 @@
+@import url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css");
+
 :root {
   --ink: #20221f;
   --muted: #6f746b;
@@ -20,7 +22,12 @@ body {
   margin: 0;
   min-height: 100vh;
   color: var(--ink);
-  font-family: Georgia, "Times New Roman", serif;
+  font-family:
+    Pretendard,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
   background:
     radial-gradient(circle at 12% 8%, rgba(138, 75, 45, 0.18), transparent 28rem),
     radial-gradient(circle at 88% 12%, rgba(72, 92, 82, 0.18), transparent 30rem),
@@ -249,7 +256,12 @@ kbd {
   color: var(--white);
   background: rgba(255, 253, 247, 0.1);
   box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.22);
-  font-family: "Courier New", monospace;
+  font-family:
+    Pretendard,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
   font-size: 0.78rem;
 }
 
