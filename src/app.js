@@ -514,7 +514,7 @@ function createStandaloneHtml(data) {
     .grid { position:absolute; inset:0; display:grid; gap:1rem; padding:1rem; }
     .single { grid-template-columns:1fr; } .pair { grid-template-columns:repeat(2,1fr); } .triple { grid-template-columns:repeat(3,1fr); }
     .card { position:relative; overflow:hidden; border:1px solid var(--line); border-radius:1rem; background:#050505; }
-    .blur { position:absolute; inset:-8%; width:116%; height:116%; object-fit:cover; filter:blur(24px) brightness(.7) saturate(.9); opacity:0; transform:scale(1.08); }
+    .blur { position:absolute; top:50%; left:50%; width:176.2%; height:176.2%; object-fit:cover; object-position:center 62%; filter:blur(150px) brightness(.72) saturate(.92); opacity:0; transform:translate(-50%,-42%); }
     .bg-on .blur { opacity:1; }
     .photo { position:absolute; inset:0; width:100%; height:100%; object-fit:contain; transform-origin:center; }
     .fill .photo { object-fit:cover; }
