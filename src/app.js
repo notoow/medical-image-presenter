@@ -67,6 +67,7 @@ const els = {
   logoFileName: document.querySelector("#logoFileName"),
   imageInput: document.querySelector("#imageInput"),
   imageFileName: document.querySelector("#imageFileName"),
+  dropOverlay: document.querySelector("#dropOverlay"),
   sortMode: document.querySelector("#sortMode"),
   layoutMode: document.querySelector("#layoutMode"),
   layoutOneButton: document.querySelector("#layoutOneButton"),
@@ -488,6 +489,46 @@ async function urlToDataUrl(url) {
   const response = await fetch(url);
   const blob = await response.blob();
   return fileToDataUrl(blob);
+}
+
+function getImageFiles(fileList) {
+  return Array.from(fileList ?? []).filter((file) => file.type.startsWith("image/"));
+}
+
+async function loadImageFiles(fileList) {
+  const imageFiles = getImageFiles(fileList);
+  if (imageFiles.length === 0) return;
+
+  const files = imageFiles.map(async (file) => ({
+    id: crypto.randomUUID?.() ?? `${file.name}-${file.lastModified}-${Math.random()}`,
+    name: file.name,
+    modifiedAt: file.lastModified,
+    url: await fileToDataUrl(file),
+  }));
+
+  state.images = await Promise.all(files);
+  state.slideSlots = state.images.map((image) => image.id);
+  state.slotTransforms = {};
+  state.selectedSlotIndex = null;
+  els.imageFileName.textContent =
+    state.images.length > 0 ? `${state.images.length}장 선택됨` : "선택된 사진 없음";
+
+  state.pageIndex = state.images.length > 0 ? 1 : 0;
+  render();
+}
+
+function hasDraggedFiles(event) {
+  return Array.from(event.dataTransfer?.types ?? []).includes("Files");
+}
+
+function showDropOverlay() {
+  document.body.classList.add("is-file-dragging");
+  els.dropOverlay?.setAttribute("aria-hidden", "false");
+}
+
+function hideDropOverlay() {
+  document.body.classList.remove("is-file-dragging");
+  els.dropOverlay?.setAttribute("aria-hidden", "true");
 }
 
 function toggleBackground() {
@@ -1114,22 +1155,8 @@ els.logoInput.addEventListener("change", async () => {
 });
 
 els.imageInput.addEventListener("change", async () => {
-  const files = Array.from(els.imageInput.files ?? [])
-    .filter((file) => file.type.startsWith("image/"))
-    .map(async (file) => ({
-      id: crypto.randomUUID?.() ?? `${file.name}-${file.lastModified}-${Math.random()}`,
-      name: file.name,
-      modifiedAt: file.lastModified,
-      url: await fileToDataUrl(file),
-    }));
-
-  state.images = await Promise.all(files);
-  state.slideSlots = state.images.map((image) => image.id);
-  els.imageFileName.textContent =
-    state.images.length > 0 ? `${state.images.length}장 선택됨` : "선택된 사진 없음";
-
-  state.pageIndex = state.images.length > 0 ? 1 : 0;
-  render();
+  await loadImageFiles(els.imageInput.files);
+  els.imageInput.value = "";
 });
 
 els.sortMode.addEventListener("change", () => {
@@ -1247,6 +1274,32 @@ els.resetFiltersButton.addEventListener("click", () => {
   els.saturateValue.textContent = "100%";
   els.hueValue.textContent = "0°";
   render();
+});
+
+window.addEventListener("dragenter", (event) => {
+  if (!hasDraggedFiles(event)) return;
+  event.preventDefault();
+  showDropOverlay();
+});
+
+window.addEventListener("dragover", (event) => {
+  if (!hasDraggedFiles(event)) return;
+  event.preventDefault();
+  event.dataTransfer.dropEffect = "copy";
+  showDropOverlay();
+});
+
+window.addEventListener("dragleave", (event) => {
+  if (!hasDraggedFiles(event)) return;
+  if (event.relatedTarget && document.documentElement.contains(event.relatedTarget)) return;
+  hideDropOverlay();
+});
+
+window.addEventListener("drop", async (event) => {
+  if (!hasDraggedFiles(event)) return;
+  event.preventDefault();
+  hideDropOverlay();
+  await loadImageFiles(event.dataTransfer.files);
 });
 
 document.addEventListener("keydown", (event) => {
