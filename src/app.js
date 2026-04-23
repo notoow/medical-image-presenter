@@ -529,19 +529,81 @@ function renderThumbnails() {
   if (!els.thumbnailRail) return;
 
   if (state.images.length === 0) {
-    els.thumbnailRail.innerHTML = "";
+    els.thumbnailRail.innerHTML = `
+      <div class="thumbnail-empty">
+        사진을 선택하면 여기에 슬라이드 미리보기와 사진 순서가 표시됩니다.
+      </div>
+    `;
     return;
   }
 
   const pageSize = getPageSize();
-  const activeStart = state.pageIndex <= 0 ? -1 : (state.pageIndex - 1) * pageSize;
-  const activeEnd = activeStart + pageSize;
+  const slidePages = Array.from({ length: Math.ceil(state.images.length / pageSize) }, (_, pageIndex) => {
+    const start = pageIndex * pageSize;
+    return {
+      pageIndex: pageIndex + 1,
+      images: state.images.slice(start, start + pageSize),
+    };
+  });
 
-  els.thumbnailRail.innerHTML = state.images
-    .map(
-      (image, index) => `
+  const slideLayoutClass = state.layoutMode === "custom" ? "layout-custom" : `layout-${state.layoutMode}`;
+
+  els.thumbnailRail.innerHTML = `
+    <div class="thumbnail-section">
+      <div class="thumbnail-section-head">
+        <strong>슬라이드 미리보기</strong>
+        <span>${state.gridCols} x ${state.gridRows} · 페이지당 ${pageSize}장</span>
+      </div>
+      <div class="slide-preview-row">
         <button
-          class="thumbnail-card ${index >= activeStart && index < activeEnd ? "is-active" : ""}"
+          class="slide-thumb ${state.pageIndex === 0 ? "is-active" : ""}"
+          type="button"
+          data-page="0"
+        >
+          <div class="slide-thumb-cover">
+            <span>Cover</span>
+          </div>
+        </button>
+        ${slidePages
+          .map(
+            (page) => `
+              <button
+                class="slide-thumb ${state.pageIndex === page.pageIndex ? "is-active" : ""}"
+                type="button"
+                data-page="${page.pageIndex}"
+                title="${page.pageIndex}페이지"
+              >
+                <div
+                  class="slide-thumb-grid ${slideLayoutClass}"
+                  style="--grid-cols:${state.gridCols}; --grid-rows:${state.gridRows};"
+                >
+                  ${page.images
+                    .map(
+                      (image) => `
+                        <img src="${image.url}" alt="" />
+                      `,
+                    )
+                    .join("")}
+                </div>
+                <span class="slide-thumb-label">${page.pageIndex}</span>
+              </button>
+            `,
+          )
+          .join("")}
+      </div>
+    </div>
+
+    <div class="thumbnail-section">
+      <div class="thumbnail-section-head">
+        <strong>사진 순서</strong>
+        <span>드래그해서 순서 변경</span>
+      </div>
+      <div class="photo-order-row">
+        ${state.images
+          .map(
+            (image, index) => `
+        <button
+          class="photo-order-card"
           type="button"
           draggable="true"
           data-index="${index}"
@@ -551,10 +613,19 @@ function renderThumbnails() {
           <span>${index + 1}</span>
         </button>
       `,
-    )
-    .join("");
+          )
+          .join("")}
+      </div>
+    </div>
+  `;
 
-  els.thumbnailRail.querySelectorAll(".thumbnail-card").forEach((button) => {
+  els.thumbnailRail.querySelectorAll(".slide-thumb").forEach((button) => {
+    button.addEventListener("click", () => {
+      goToPage(Number(button.dataset.page));
+    });
+  });
+
+  els.thumbnailRail.querySelectorAll(".photo-order-card").forEach((button) => {
     button.addEventListener("click", () => {
       const index = Number(button.dataset.index);
       goToPage(1 + Math.floor(index / getPageSize()));
