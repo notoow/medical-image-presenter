@@ -247,8 +247,25 @@
           <button id="nextButton" type="button">다음</button>
         </div>
         <article id="stage" class="stage stage-cover"></article>
-        <div id="thumbnailRail" class="thumbnail-rail" aria-label="사진 순서"></div>
+        <div id="thumbnailRail" class="thumbnail-rail" aria-label="슬라이드 미리보기"></div>
       </section>
+
+      <aside class="photo-panel" aria-label="전체 사진 목록">
+        <div class="photo-panel-head">
+          <div>
+            <p class="eyebrow">Photo tray</p>
+            <h2>전체 사진 목록</h2>
+          </div>
+          <button id="addEmptySlotButton" type="button">빈칸 추가</button>
+        </div>
+        <p class="hint-text">
+          사진을 중앙 슬라이드 칸으로 끌어다 놓아 배치하세요. 빈칸 카드를 끌어다 놓으면 해당 칸을 비울 수 있습니다.
+        </p>
+        <button id="emptySlotToken" class="empty-token" type="button" draggable="true">
+          빈칸
+        </button>
+        <div id="photoListPanel" class="photo-list-panel"></div>
+      </aside>
     </main>
 
     <dialog id="shortcutDialog" class="shortcut-dialog">

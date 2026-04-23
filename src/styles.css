@@ -87,13 +87,14 @@ input[type="range"] {
 
 .shell {
   display: grid;
-  grid-template-columns: minmax(20rem, 24rem) 1fr;
+  grid-template-columns: minmax(19rem, 22rem) minmax(0, 1fr) minmax(16rem, 20rem);
   gap: 1.25rem;
   min-height: 100vh;
   padding: 1.25rem;
 }
 
-.control-panel {
+.control-panel,
+.photo-panel {
   overflow: auto;
   max-height: calc(100vh - 2.5rem);
   border: 1px solid var(--line);
@@ -102,6 +103,98 @@ input[type="range"] {
   background: rgba(244, 239, 228, 0.86);
   box-shadow: var(--shadow);
   backdrop-filter: blur(18px);
+}
+
+.photo-panel {
+  display: grid;
+  align-content: start;
+  gap: 0.85rem;
+}
+
+.photo-panel-head {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.photo-panel-head h2 {
+  margin: 0.15rem 0 0;
+  font-size: 1.2rem;
+}
+
+.photo-panel-head button {
+  flex: 0 0 auto;
+  padding-inline: 0.75rem;
+}
+
+.empty-token {
+  width: 100%;
+  border-style: dashed;
+  color: var(--accent-strong);
+  background: rgba(255, 253, 247, 0.58);
+  font-weight: 800;
+}
+
+.photo-list-panel {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.photo-list-empty {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.photo-list-card {
+  display: grid;
+  grid-template-columns: 4.4rem minmax(0, 1fr);
+  gap: 0.58rem;
+  align-items: center;
+  border: 1px solid rgba(138, 75, 45, 0.16);
+  border-radius: 0.9rem;
+  padding: 0.45rem;
+  background: rgba(255, 253, 247, 0.54);
+  cursor: grab;
+  transition:
+    border-color 160ms ease,
+    transform 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.photo-list-card:hover,
+.photo-list-card.is-reorder-target {
+  border-color: rgba(138, 75, 45, 0.5);
+  box-shadow: 0 10px 26px rgba(138, 75, 45, 0.1);
+  transform: translateY(-1px);
+}
+
+.photo-list-card img {
+  width: 4.4rem;
+  height: 3.1rem;
+  border-radius: 0.58rem;
+  object-fit: cover;
+  background: #111;
+}
+
+.photo-list-card div {
+  display: grid;
+  min-width: 0;
+  gap: 0.15rem;
+}
+
+.photo-list-card strong {
+  color: var(--accent-strong);
+  font-size: 0.78rem;
+}
+
+.photo-list-card span {
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 0.84rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .brand-block h1 {
@@ -548,6 +641,43 @@ kbd {
   background: #080808;
 }
 
+.image-card.is-drop-target {
+  outline: 4px solid rgba(64, 210, 255, 0.78);
+  outline-offset: -4px;
+}
+
+.empty-slot {
+  display: grid;
+  place-items: center;
+  border-style: dashed;
+  border-color: rgba(255, 253, 247, 0.3);
+  background:
+    repeating-linear-gradient(
+      -45deg,
+      rgba(255, 253, 247, 0.055),
+      rgba(255, 253, 247, 0.055) 10px,
+      rgba(255, 253, 247, 0.025) 10px,
+      rgba(255, 253, 247, 0.025) 20px
+    ),
+    #0d0d0c;
+}
+
+.empty-slot-inner {
+  display: grid;
+  place-items: center;
+  gap: 0.28rem;
+  color: rgba(255, 253, 247, 0.68);
+  text-align: center;
+}
+
+.empty-slot-inner strong {
+  font-size: 1.1rem;
+}
+
+.empty-slot-inner span {
+  font-size: 0.78rem;
+}
+
 .blur-bg {
   position: absolute;
   top: 50%;
@@ -761,6 +891,20 @@ body.presenting .guide-ruler {
   object-fit: cover;
 }
 
+.slide-thumb-empty {
+  min-width: 0;
+  min-height: 0;
+  border: 1px dashed rgba(255, 253, 247, 0.22);
+  background:
+    repeating-linear-gradient(
+      -45deg,
+      rgba(255, 253, 247, 0.08),
+      rgba(255, 253, 247, 0.08) 5px,
+      rgba(255, 253, 247, 0.03) 5px,
+      rgba(255, 253, 247, 0.03) 10px
+    );
+}
+
 .slide-thumb-cover {
   display: grid;
   place-items: center;
@@ -794,6 +938,21 @@ body.presenting .guide-ruler {
   border-radius: 0.8rem;
   padding: 0;
   background: #111;
+}
+
+.photo-order-card.is-empty {
+  border-style: dashed;
+  background: rgba(17, 17, 17, 0.84);
+}
+
+.photo-empty-thumb {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  color: rgba(255, 253, 247, 0.62);
+  font-size: 0.78rem;
+  font-weight: 800;
 }
 
 .photo-order-card img {
@@ -849,6 +1008,7 @@ body.presenting {
 }
 
 body.presenting .control-panel,
+body.presenting .photo-panel,
 body.presenting .deck-toolbar {
   display: none;
 }

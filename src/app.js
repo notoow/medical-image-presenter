@@ -3,6 +3,7 @@ const DEFAULT_LOGO_NAME = "하이스트비뇨의학과로고.jpg";
 
 const state = {
   images: [],
+  slideSlots: [],
   logoUrl: "",
   pageIndex: 0,
   layoutMode: "pair",
@@ -110,6 +111,9 @@ const els = {
   cropRightValue: document.querySelector("#cropRightValue"),
   resetFiltersButton: document.querySelector("#resetFiltersButton"),
   thumbnailRail: document.querySelector("#thumbnailRail"),
+  photoListPanel: document.querySelector("#photoListPanel"),
+  emptySlotToken: document.querySelector("#emptySlotToken"),
+  addEmptySlotButton: document.querySelector("#addEmptySlotButton"),
 };
 
 const pageSizeByLayout = {
@@ -133,7 +137,30 @@ function getPageSize() {
 }
 
 function getTotalPages() {
-  return 1 + Math.ceil(state.images.length / getPageSize());
+  return 1 + Math.ceil(state.slideSlots.length / getPageSize());
+}
+
+function getImageById(id) {
+  return state.images.find((image) => image.id === id);
+}
+
+function ensureSlideSlots() {
+  const imageIds = state.images.map((image) => image.id);
+  const usedIds = new Set(state.slideSlots.filter(Boolean));
+
+  for (const id of imageIds) {
+    if (!usedIds.has(id)) {
+      state.slideSlots.push(id);
+    }
+  }
+
+  state.slideSlots = state.slideSlots.filter((slot) => slot === null || imageIds.includes(slot));
+
+  const pageSize = getPageSize();
+  const remainder = state.slideSlots.length % pageSize;
+  if (state.slideSlots.length > 0 && remainder !== 0) {
+    state.slideSlots.push(...Array(pageSize - remainder).fill(null));
+  }
 }
 
 function sortImages() {
@@ -208,16 +235,31 @@ function renderCover() {
   `;
 }
 
-function renderImageCard(image) {
+function renderImageCard(image, slotIndex) {
   const filter = getFilterStyle();
   const backgroundFilter = getBackgroundFilterStyle();
   const zoomTransform = `scale(${state.zoom})`;
   const cropStyle = getCropStyle();
 
+  if (!image) {
+    return `
+      <figure
+        class="image-card empty-slot"
+        data-slot-index="${slotIndex}"
+        title="사진 또는 빈칸을 여기로 드래그하세요"
+      >
+        <div class="empty-slot-inner">
+          <strong>빈칸</strong>
+          <span>우측 사진을 끌어다 놓기</span>
+        </div>
+      </figure>
+    `;
+  }
+
   return `
     <figure class="image-card ${state.backgroundEnabled ? "background-enabled" : ""} ${
       state.fitMode === "fill" ? "fit-fill" : ""
-    }">
+    }" data-slot-index="${slotIndex}">
       <img
         class="blur-bg"
         src="${image.url}"
@@ -269,11 +311,11 @@ function renderSlide() {
   const pageSize = getPageSize();
   const imagePageIndex = state.pageIndex - 1;
   const start = imagePageIndex * pageSize;
-  const pageImages = state.images.slice(start, start + pageSize);
+  const pageSlots = state.slideSlots.slice(start, start + pageSize);
 
   els.stage.className = `stage layout-${state.layoutMode}`;
 
-  if (pageImages.length === 0) {
+  if (pageSlots.length === 0) {
     els.stage.innerHTML = `
       <div class="empty-state">
         <div>
@@ -291,16 +333,18 @@ function renderSlide() {
       class="slide-grid ${layoutClass}"
       style="--grid-cols:${state.gridCols}; --grid-rows:${state.gridRows};"
     >
-      ${pageImages.map(renderImageCard).join("")}
+      ${pageSlots.map((imageId, offset) => renderImageCard(getImageById(imageId), start + offset)).join("")}
     </div>
     ${renderGuides()}
   `;
 
   bindGuideInteractions();
+  bindSlotDropTargets();
 }
 
 function render() {
   sortImages();
+  ensureSlideSlots();
   state.pageIndex = clamp(state.pageIndex, 0, Math.max(getTotalPages() - 1, 0));
 
   if (state.pageIndex === 0) {
@@ -319,6 +363,7 @@ function render() {
     ? "배경 채우기 켜짐 Enter"
     : "배경 채우기 꺼짐 Enter";
   renderThumbnails();
+  renderPhotoList();
 }
 
 function escapeHtml(value) {
@@ -477,6 +522,49 @@ function addGuide(axis, percent = 50) {
   render();
 }
 
+function setSlot(slotIndex, imageId) {
+  if (slotIndex < 0) return;
+
+  while (state.slideSlots.length <= slotIndex) {
+    state.slideSlots.push(null);
+  }
+
+  state.slideSlots[slotIndex] = imageId;
+  render();
+}
+
+function addEmptySlot() {
+  state.slideSlots.push(null);
+  goToPage(Math.max(1, Math.ceil(state.slideSlots.length / getPageSize())));
+}
+
+function bindSlotDropTargets() {
+  els.stage.querySelectorAll("[data-slot-index]").forEach((slot) => {
+    slot.addEventListener("dragover", (event) => {
+      event.preventDefault();
+      slot.classList.add("is-drop-target");
+    });
+
+    slot.addEventListener("dragleave", () => {
+      slot.classList.remove("is-drop-target");
+    });
+
+    slot.addEventListener("drop", (event) => {
+      event.preventDefault();
+      slot.classList.remove("is-drop-target");
+      const slotIndex = Number(slot.dataset.slotIndex);
+      const payload = event.dataTransfer.getData("application/x-medical-presenter");
+
+      if (payload === "empty") {
+        setSlot(slotIndex, null);
+        return;
+      }
+
+      if (payload) setSlot(slotIndex, payload);
+    });
+  });
+}
+
 function updateGuide(index, percent) {
   if (!state.guides[index]) return;
   state.guides[index].percent = clamp(percent, 0, 100);
@@ -551,11 +639,11 @@ function renderThumbnails() {
   }
 
   const pageSize = getPageSize();
-  const slidePages = Array.from({ length: Math.ceil(state.images.length / pageSize) }, (_, pageIndex) => {
+  const slidePages = Array.from({ length: Math.ceil(state.slideSlots.length / pageSize) }, (_, pageIndex) => {
     const start = pageIndex * pageSize;
     return {
       pageIndex: pageIndex + 1,
-      images: state.images.slice(start, start + pageSize),
+      slots: state.slideSlots.slice(start, start + pageSize),
     };
   });
 
@@ -590,12 +678,13 @@ function renderThumbnails() {
                   class="slide-thumb-grid ${slideLayoutClass}"
                   style="--grid-cols:${state.gridCols}; --grid-rows:${state.gridRows};"
                 >
-                  ${page.images
-                    .map(
-                      (image) => `
-                        <img src="${image.url}" alt="" />
-                      `,
-                    )
+                  ${page.slots
+                    .map((imageId) => {
+                      const image = getImageById(imageId);
+                      return image
+                        ? `<img src="${image.url}" alt="" />`
+                        : `<div class="slide-thumb-empty"></div>`;
+                    })
                     .join("")}
                 </div>
                 <span class="slide-thumb-label">${page.pageIndex}</span>
@@ -606,26 +695,28 @@ function renderThumbnails() {
       </div>
     </div>
 
-    <div class="thumbnail-section">
+      <div class="thumbnail-section">
       <div class="thumbnail-section-head">
-        <strong>사진 순서</strong>
-        <span>드래그해서 순서 변경</span>
+        <strong>현재 슬라이드 슬롯</strong>
+        <span>비어 있는 칸도 슬라이드에 유지됩니다</span>
       </div>
-      <div class="photo-order-row">
-        ${state.images
+      <div class="photo-order-row slot-summary-row">
+        ${state.slideSlots
           .map(
-            (image, index) => `
+            (imageId, index) => {
+              const image = getImageById(imageId);
+              return `
         <button
-          class="photo-order-card"
+          class="photo-order-card ${image ? "" : "is-empty"}"
           type="button"
-          draggable="true"
-          data-index="${index}"
-          title="${escapeHtml(image.name)}"
+          data-slot-page="${1 + Math.floor(index / pageSize)}"
+          title="${image ? escapeHtml(image.name) : "빈칸"}"
         >
-          <img src="${image.url}" alt="" />
+          ${image ? `<img src="${image.url}" alt="" />` : `<div class="photo-empty-thumb">빈칸</div>`}
           <span>${index + 1}</span>
         </button>
-      `,
+      `;
+            },
           )
           .join("")}
       </div>
@@ -640,30 +731,79 @@ function renderThumbnails() {
 
   els.thumbnailRail.querySelectorAll(".photo-order-card").forEach((button) => {
     button.addEventListener("click", () => {
-      const index = Number(button.dataset.index);
-      goToPage(1 + Math.floor(index / getPageSize()));
+      goToPage(Number(button.dataset.slotPage));
+    });
+  });
+}
+
+function renderPhotoList() {
+  if (!els.photoListPanel) return;
+
+  if (state.images.length === 0) {
+    els.photoListPanel.innerHTML = `<p class="photo-list-empty">사진을 업로드하면 전체 목록이 표시됩니다.</p>`;
+    return;
+  }
+
+  els.photoListPanel.innerHTML = state.images
+    .map(
+      (image, index) => `
+        <article
+          class="photo-list-card"
+          draggable="true"
+          data-image-id="${image.id}"
+          data-index="${index}"
+          title="${escapeHtml(image.name)}"
+        >
+          <img src="${image.url}" alt="" />
+          <div>
+            <strong>${index + 1}</strong>
+            <span>${escapeHtml(image.name)}</span>
+          </div>
+        </article>
+      `,
+    )
+    .join("");
+
+  els.photoListPanel.querySelectorAll(".photo-list-card").forEach((card) => {
+    card.addEventListener("dragstart", (event) => {
+      event.dataTransfer.setData("application/x-medical-presenter", card.dataset.imageId);
+      event.dataTransfer.setData("text/plain", card.dataset.index);
     });
 
-    button.addEventListener("dragstart", (event) => {
-      event.dataTransfer.setData("text/plain", button.dataset.index);
-    });
-
-    button.addEventListener("dragover", (event) => {
+    card.addEventListener("dragover", (event) => {
       event.preventDefault();
+      card.classList.add("is-reorder-target");
     });
 
-    button.addEventListener("drop", (event) => {
+    card.addEventListener("dragleave", () => {
+      card.classList.remove("is-reorder-target");
+    });
+
+    card.addEventListener("drop", (event) => {
       event.preventDefault();
+      card.classList.remove("is-reorder-target");
       const from = Number(event.dataTransfer.getData("text/plain"));
-      const to = Number(button.dataset.index);
+      const to = Number(card.dataset.index);
       if (!Number.isFinite(from) || !Number.isFinite(to) || from === to) return;
+
       const [moved] = state.images.splice(from, 1);
       state.images.splice(to, 0, moved);
+
+      if (isSequentialSlotComposition()) {
+        state.slideSlots = state.images.map((image) => image.id);
+      }
+
       state.sortMode = "manual";
       els.sortMode.value = "manual";
       render();
     });
   });
+}
+
+function isSequentialSlotComposition() {
+  const compactSlots = state.slideSlots.filter(Boolean);
+  if (compactSlots.length !== state.images.length) return false;
+  return compactSlots.every((id) => state.images.some((image) => image.id === id));
 }
 
 async function downloadAdjustedImages() {
@@ -674,7 +814,9 @@ async function downloadAdjustedImages() {
 
   const { brightness, contrast, saturate, hue } = state.filters;
 
-  for (const [index, item] of state.images.entries()) {
+  const orderedImages = state.slideSlots.map(getImageById).filter(Boolean);
+
+  for (const [index, item] of orderedImages.entries()) {
     const image = await imageFromDataUrl(item.url);
     const cropLeftPx = Math.round(image.naturalWidth * (state.crop.left / 100));
     const cropRightPx = Math.round(image.naturalWidth * (state.crop.right / 100));
@@ -729,12 +871,14 @@ els.imageInput.addEventListener("change", async () => {
   const files = Array.from(els.imageInput.files ?? [])
     .filter((file) => file.type.startsWith("image/"))
     .map(async (file) => ({
+      id: crypto.randomUUID?.() ?? `${file.name}-${file.lastModified}-${Math.random()}`,
       name: file.name,
       modifiedAt: file.lastModified,
       url: await fileToDataUrl(file),
     }));
 
   state.images = await Promise.all(files);
+  state.slideSlots = state.images.map((image) => image.id);
   els.imageFileName.textContent =
     state.images.length > 0 ? `${state.images.length}장 선택됨` : "선택된 사진 없음";
 
@@ -785,6 +929,10 @@ els.closeShortcutHelpButton.addEventListener("click", hideShortcutHelp);
 els.shortcutDialog.addEventListener("click", closeDialogFromBackdrop);
 els.exportButton.addEventListener("click", exportStandaloneHtml);
 els.downloadImagesButton.addEventListener("click", downloadAdjustedImages);
+els.emptySlotToken.addEventListener("dragstart", (event) => {
+  event.dataTransfer.setData("application/x-medical-presenter", "empty");
+});
+els.addEmptySlotButton.addEventListener("click", addEmptySlot);
 els.zoomOutButton.addEventListener("click", () => updateZoom(-0.1));
 els.zoomInButton.addEventListener("click", () => updateZoom(0.1));
 
@@ -947,6 +1095,7 @@ function getPresentationData() {
     },
     coverVisibility: state.coverVisibility,
     images: state.images,
+    slideSlots: state.slideSlots,
     layoutMode: state.layoutMode,
     gridRows: state.gridRows,
     gridCols: state.gridCols,
