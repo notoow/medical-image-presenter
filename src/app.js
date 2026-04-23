@@ -117,6 +117,7 @@ const els = {
   showGuides: document.querySelector("#showGuides"),
   addVerticalGuideButton: document.querySelector("#addVerticalGuideButton"),
   addHorizontalGuideButton: document.querySelector("#addHorizontalGuideButton"),
+  guideListPanel: document.querySelector("#guideListPanel"),
   clearGuidesButton: document.querySelector("#clearGuidesButton"),
   brightnessValue: document.querySelector("#brightnessValue"),
   contrastValue: document.querySelector("#contrastValue"),
@@ -430,6 +431,7 @@ function render() {
     ? "배경 채우기 켜짐 Enter"
     : "배경 채우기 꺼짐 Enter";
   syncSelectedSlotControls();
+  renderGuideControls();
   renderThumbnails();
   renderPhotoList();
   queuePersist();
@@ -658,6 +660,68 @@ function addGuide(axis, percent = 50) {
     percent: clamp(percent, 0, 100),
   });
   render();
+}
+
+function renderGuideControls() {
+  if (!els.guideListPanel) return;
+
+  if (state.guides.length === 0) {
+    els.guideListPanel.innerHTML = `
+      <p class="guide-empty">아직 안내선이 없습니다. + 버튼으로 추가하세요.</p>
+    `;
+    return;
+  }
+
+  els.guideListPanel.innerHTML = state.guides
+    .map((guide, index) => {
+      const label = guide.axis === "x" ? "세로" : "가로";
+      return `
+        <div class="guide-control" data-guide-control="${index}">
+          <div class="guide-control-head">
+            <strong>${label} 안내선 ${index + 1}</strong>
+            <output>${guide.percent.toFixed(1)}%</output>
+            <button type="button" data-guide-delete="${index}" aria-label="${label} 안내선 삭제">×</button>
+          </div>
+          <input
+            type="range"
+            min="0"
+            max="100"
+            step="0.1"
+            value="${guide.percent}"
+            data-guide-slider="${index}"
+          />
+        </div>
+      `;
+    })
+    .join("");
+
+  els.guideListPanel.querySelectorAll("[data-guide-slider]").forEach((slider) => {
+    slider.addEventListener("input", () => {
+      const index = Number(slider.dataset.guideSlider);
+      const value = Number(slider.value);
+      if (!state.guides[index] || !Number.isFinite(value)) return;
+      state.guides[index].percent = clamp(value, 0, 100);
+      slider.closest(".guide-control")?.querySelector("output")?.replaceChildren(`${value.toFixed(1)}%`);
+
+      const guideEl = els.stage.querySelector(`[data-guide-index="${index}"]`);
+      if (guideEl) {
+        guideEl.style[state.guides[index].axis === "x" ? "left" : "top"] = `${state.guides[index].percent}%`;
+        guideEl.dataset.label = `${state.guides[index].percent.toFixed(1)}%`;
+      }
+
+      queuePersist();
+    });
+
+    slider.addEventListener("change", render);
+  });
+
+  els.guideListPanel.querySelectorAll("[data-guide-delete]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const index = Number(button.dataset.guideDelete);
+      state.guides.splice(index, 1);
+      render();
+    });
+  });
 }
 
 function setSlot(slotIndex, imageId) {
