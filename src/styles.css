@@ -235,6 +235,60 @@ body.is-file-dragging .drop-card {
   backdrop-filter: blur(18px);
 }
 
+.control-panel,
+.photo-panel {
+  scrollbar-color: transparent transparent;
+}
+
+.control-panel:hover,
+.control-panel:focus-within,
+.photo-panel:hover,
+.photo-panel:focus-within {
+  scrollbar-color: rgba(138, 75, 45, 0.6) transparent;
+}
+
+.control-panel::-webkit-scrollbar,
+.photo-panel::-webkit-scrollbar {
+  width: 1.05rem;
+}
+
+.control-panel::-webkit-scrollbar-track,
+.photo-panel::-webkit-scrollbar-track {
+  margin-block: 1.05rem;
+  border: 0;
+  background: transparent;
+}
+
+.control-panel::-webkit-scrollbar-thumb,
+.photo-panel::-webkit-scrollbar-thumb {
+  min-height: 3rem;
+  border: 0.36rem solid transparent;
+  border-radius: 999px;
+  background:
+    linear-gradient(180deg, rgba(138, 75, 45, 0), rgba(138, 75, 45, 0)) padding-box,
+    linear-gradient(180deg, rgba(138, 75, 45, 0.72), rgba(91, 47, 27, 0.68)) border-box;
+  background-clip: padding-box, border-box;
+  box-shadow: none;
+}
+
+.control-panel:hover::-webkit-scrollbar-thumb,
+.control-panel:focus-within::-webkit-scrollbar-thumb,
+.photo-panel:hover::-webkit-scrollbar-thumb,
+.photo-panel:focus-within::-webkit-scrollbar-thumb {
+  background:
+    linear-gradient(180deg, rgba(138, 75, 45, 0.72), rgba(91, 47, 27, 0.64)) padding-box,
+    linear-gradient(180deg, rgba(138, 75, 45, 0.72), rgba(91, 47, 27, 0.64)) border-box;
+  background-clip: padding-box, border-box;
+}
+
+.control-panel::-webkit-scrollbar-thumb:hover,
+.photo-panel::-webkit-scrollbar-thumb:hover {
+  background:
+    linear-gradient(180deg, rgba(166, 91, 54, 0.9), rgba(91, 47, 27, 0.82)) padding-box,
+    linear-gradient(180deg, rgba(166, 91, 54, 0.9), rgba(91, 47, 27, 0.82)) border-box;
+  background-clip: padding-box, border-box;
+}
+
 .photo-panel {
   display: grid;
   align-content: start;
