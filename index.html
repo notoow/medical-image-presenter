@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Medical Image Presenter</title>
+    <link rel="stylesheet" href="./src/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <aside class="control-panel" aria-label="Presentation controls">
+        <div class="brand-block">
+          <p class="eyebrow">Local-first clinical deck</p>
+          <h1>Case Photo Presenter</h1>
+          <p class="muted">
+            사진은 브라우저 안에서만 미리보기 처리됩니다. 원본 파일은 수정하지 않습니다.
+          </p>
+        </div>
+
+        <section class="panel-section">
+          <h2>커버</h2>
+          <label>
+            제목
+            <input id="coverTitle" type="text" value="Before / After Case Review" />
+          </label>
+          <label>
+            부제
+            <input id="coverSubtitle" type="text" value="Clinical photo presentation" />
+          </label>
+          <label>
+            병원명
+            <input id="hospitalName" type="text" value="Hospital Name" />
+          </label>
+          <label>
+            발표자
+            <input id="presenterName" type="text" value="Presenter" />
+          </label>
+          <label>
+            로고
+            <input id="logoInput" type="file" accept="image/*" />
+          </label>
+        </section>
+
+        <section class="panel-section">
+          <h2>사진</h2>
+          <label class="file-drop">
+            <span>사진 여러 장 선택</span>
+            <input id="imageInput" type="file" accept="image/*" multiple />
+          </label>
+          <label>
+            정렬
+            <select id="sortMode">
+              <option value="name-asc">이름순</option>
+              <option value="date-asc">수정 날짜 오래된 순</option>
+              <option value="date-desc">수정 날짜 최신 순</option>
+            </select>
+          </label>
+          <label>
+            페이지 구성
+            <select id="layoutMode">
+              <option value="single">낱장</option>
+              <option value="pair" selected>2장씩</option>
+              <option value="triple">3장씩</option>
+            </select>
+          </label>
+        </section>
+
+        <section class="panel-section">
+          <h2>화면</h2>
+          <div class="segmented">
+            <button id="fitButton" type="button">맞추기 F</button>
+            <button id="fillButton" type="button">채우기 ⇧F</button>
+          </div>
+          <button id="backgroundButton" class="wide-button" type="button">
+            배경 채우기 Enter
+          </button>
+          <div class="zoom-row">
+            <button id="zoomOutButton" type="button">-</button>
+            <output id="zoomOutput">100%</output>
+            <button id="zoomInButton" type="button">+</button>
+          </div>
+        </section>
+
+        <section class="panel-section">
+          <h2>일괄 보정</h2>
+          <label>
+            밝기 <output id="brightnessValue">100%</output>
+            <input id="brightness" type="range" min="50" max="150" value="100" />
+          </label>
+          <label>
+            대비 <output id="contrastValue">100%</output>
+            <input id="contrast" type="range" min="50" max="160" value="100" />
+          </label>
+          <label>
+            채도 <output id="saturateValue">100%</output>
+            <input id="saturate" type="range" min="0" max="180" value="100" />
+          </label>
+          <label>
+            색조 <output id="hueValue">0°</output>
+            <input id="hue" type="range" min="-45" max="45" value="0" />
+          </label>
+          <button id="resetFiltersButton" class="wide-button subtle" type="button">
+            보정 초기화
+          </button>
+        </section>
+
+        <section class="panel-section shortcuts">
+          <h2>단축키</h2>
+          <p>← → Space: 페이지 이동</p>
+          <p>Enter: 블러 배경 채우기</p>
+          <p>F / Shift+F: 맞추기 / 채우기</p>
+          <p>+ - 0: 확대 / 축소 / 초기화</p>
+          <p>C: 커버로 이동</p>
+        </section>
+      </aside>
+
+      <section class="stage-wrap" aria-label="Presentation preview">
+        <div class="deck-toolbar">
+          <button id="prevButton" type="button">이전</button>
+          <span id="pageStatus">Cover</span>
+          <button id="nextButton" type="button">다음</button>
+        </div>
+        <article id="stage" class="stage stage-cover"></article>
+      </section>
+    </main>
+
+    <script type="module" src="./src/app.js"></script>
+  </body>
+</html>
