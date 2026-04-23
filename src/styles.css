@@ -222,6 +222,86 @@ body.is-file-dragging .drop-card {
   line-height: 1.45;
 }
 
+.duplicate-dialog {
+  width: min(32rem, calc(100vw - 2rem));
+  border: 1px solid rgba(46, 43, 36, 0.16);
+  border-radius: 1.6rem;
+  padding: 0;
+  color: var(--ink);
+  background:
+    radial-gradient(circle at 12% 10%, rgba(138, 75, 45, 0.12), transparent 18rem),
+    rgba(251, 247, 238, 0.98);
+  box-shadow: 0 28px 90px rgba(18, 15, 10, 0.26);
+}
+
+.duplicate-dialog::backdrop {
+  background: rgba(18, 15, 10, 0.36);
+  backdrop-filter: blur(10px);
+}
+
+.duplicate-card {
+  display: grid;
+  gap: 0.9rem;
+  padding: clamp(1.2rem, 4vw, 1.7rem);
+}
+
+.duplicate-card h2 {
+  margin: 0;
+  font-size: clamp(1.55rem, 4vw, 2.1rem);
+  letter-spacing: -0.045em;
+}
+
+.duplicate-list {
+  display: grid;
+  gap: 0.46rem;
+  max-height: 15rem;
+  overflow: auto;
+  padding-right: 0.2rem;
+}
+
+.duplicate-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.8rem;
+  align-items: center;
+  border: 1px solid rgba(138, 75, 45, 0.14);
+  border-radius: 0.85rem;
+  padding: 0.65rem 0.75rem;
+  background: rgba(255, 253, 247, 0.72);
+}
+
+.duplicate-item strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.duplicate-item span,
+.duplicate-more {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.duplicate-more {
+  margin: 0.15rem 0 0;
+}
+
+.duplicate-actions {
+  display: flex;
+  gap: 0.55rem;
+  justify-content: flex-end;
+}
+
+.duplicate-actions button {
+  min-width: 8.8rem;
+}
+
+.duplicate-actions button:last-child {
+  color: var(--white);
+  border-color: rgba(91, 47, 27, 0.32);
+  background: linear-gradient(135deg, var(--accent), var(--accent-strong));
+}
+
 .control-panel,
 .photo-panel {
   overflow: auto;

@@ -68,6 +68,11 @@ const els = {
   imageInput: document.querySelector("#imageInput"),
   imageFileName: document.querySelector("#imageFileName"),
   dropOverlay: document.querySelector("#dropOverlay"),
+  duplicateDialog: document.querySelector("#duplicateDialog"),
+  duplicateMessage: document.querySelector("#duplicateMessage"),
+  duplicateList: document.querySelector("#duplicateList"),
+  skipDuplicateButton: document.querySelector("#skipDuplicateButton"),
+  uploadDuplicateButton: document.querySelector("#uploadDuplicateButton"),
   sortMode: document.querySelector("#sortMode"),
   layoutMode: document.querySelector("#layoutMode"),
   layoutOneButton: document.querySelector("#layoutOneButton"),
@@ -495,25 +500,96 @@ function getImageFiles(fileList) {
   return Array.from(fileList ?? []).filter((file) => file.type.startsWith("image/"));
 }
 
+function getDuplicateKey(item) {
+  return `${item.name}::${item.size}`;
+}
+
+function formatBytes(bytes) {
+  if (!Number.isFinite(bytes)) return "";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function askDuplicateUpload(duplicates) {
+  if (!els.duplicateDialog || duplicates.length === 0) return Promise.resolve("upload");
+
+  return new Promise((resolve) => {
+    const previewItems = duplicates.slice(0, 6);
+    const extraCount = Math.max(duplicates.length - previewItems.length, 0);
+    els.duplicateMessage.textContent = `이름과 크기가 같은 사진이 ${duplicates.length}개 있습니다. 중복으로 올리시겠습니까?`;
+    els.duplicateList.innerHTML = `
+      ${previewItems
+        .map(
+          (file) => `
+            <div class="duplicate-item">
+              <strong>${escapeHtml(file.name)}</strong>
+              <span>${formatBytes(file.size)}</span>
+            </div>
+          `,
+        )
+        .join("")}
+      ${extraCount > 0 ? `<p class="duplicate-more">외 ${extraCount}개 더 있음</p>` : ""}
+    `;
+
+    const cleanup = (choice) => {
+      els.skipDuplicateButton.removeEventListener("click", onSkip);
+      els.uploadDuplicateButton.removeEventListener("click", onUpload);
+      els.duplicateDialog.removeEventListener("cancel", onCancel);
+      if (els.duplicateDialog.open) els.duplicateDialog.close();
+      resolve(choice);
+    };
+    const onSkip = () => cleanup("skip");
+    const onUpload = () => cleanup("upload");
+    const onCancel = (event) => {
+      event.preventDefault();
+      cleanup("skip");
+    };
+
+    els.skipDuplicateButton.addEventListener("click", onSkip);
+    els.uploadDuplicateButton.addEventListener("click", onUpload);
+    els.duplicateDialog.addEventListener("cancel", onCancel);
+    els.duplicateDialog.showModal();
+  });
+}
+
 async function loadImageFiles(fileList) {
   const imageFiles = getImageFiles(fileList);
   if (imageFiles.length === 0) return;
 
-  const files = imageFiles.map(async (file) => ({
+  const existingKeys = new Set(state.images.map(getDuplicateKey));
+  const duplicates = imageFiles.filter((file) => existingKeys.has(getDuplicateKey(file)));
+  const duplicateChoice = await askDuplicateUpload(duplicates);
+  const uploadFiles =
+    duplicateChoice === "skip"
+      ? imageFiles.filter((file) => !existingKeys.has(getDuplicateKey(file)))
+      : imageFiles;
+
+  if (uploadFiles.length === 0) {
+    els.imageFileName.textContent = "중복 사진을 건너뜀";
+    return;
+  }
+
+  const files = uploadFiles.map(async (file) => ({
     id: crypto.randomUUID?.() ?? `${file.name}-${file.lastModified}-${Math.random()}`,
     name: file.name,
+    size: file.size,
     modifiedAt: file.lastModified,
     url: await fileToDataUrl(file),
   }));
 
-  state.images = await Promise.all(files);
-  state.slideSlots = state.images.map((image) => image.id);
-  state.slotTransforms = {};
+  const addedImages = await Promise.all(files);
+  const wasEmpty = state.images.length === 0;
+  state.images = [...state.images, ...addedImages];
+  state.slideSlots = [...state.slideSlots, ...addedImages.map((image) => image.id)];
   state.selectedSlotIndex = null;
-  els.imageFileName.textContent =
-    state.images.length > 0 ? `${state.images.length}장 선택됨` : "선택된 사진 없음";
 
-  state.pageIndex = state.images.length > 0 ? 1 : 0;
+  els.imageFileName.textContent =
+    duplicateChoice === "skip" && duplicates.length > 0
+      ? `${addedImages.length}장 추가됨, 중복 ${duplicates.length}장 건너뜀`
+      : `${addedImages.length}장 추가됨`;
+
+  state.pageIndex = wasEmpty ? 1 : state.pageIndex;
   render();
 }
 

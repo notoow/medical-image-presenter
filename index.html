@@ -335,6 +335,21 @@
       </div>
     </div>
 
+    <dialog id="duplicateDialog" class="duplicate-dialog">
+      <div class="duplicate-card">
+        <p class="eyebrow">Duplicate photos</p>
+        <h2>동일한 사진이 있습니다</h2>
+        <p id="duplicateMessage" class="muted">
+          이름과 크기가 같은 사진이 포함되어 있습니다. 어떻게 처리할까요?
+        </p>
+        <div id="duplicateList" class="duplicate-list"></div>
+        <div class="duplicate-actions">
+          <button id="skipDuplicateButton" type="button">중복 건너뛰기</button>
+          <button id="uploadDuplicateButton" type="button">그래도 업로드</button>
+        </div>
+      </div>
+    </dialog>
+
     <dialog id="shortcutDialog" class="shortcut-dialog">
       <div class="shortcut-card">
         <div class="shortcut-head">
