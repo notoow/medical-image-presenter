@@ -355,6 +355,33 @@ input[type="range"] {
   text-align: center;
 }
 
+body.presenting {
+  background: #050505;
+}
+
+body.presenting .control-panel,
+body.presenting .deck-toolbar {
+  display: none;
+}
+
+body.presenting .shell {
+  display: grid;
+  grid-template-columns: 1fr;
+  min-height: 100vh;
+  padding: 0;
+}
+
+body.presenting .stage-wrap {
+  display: grid;
+}
+
+body.presenting .stage {
+  width: 100vw;
+  height: 100vh;
+  border-radius: 0;
+  aspect-ratio: auto;
+}
+
 @media (max-width: 980px) {
   .shell {
     grid-template-columns: 1fr;
