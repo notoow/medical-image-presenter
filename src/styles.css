@@ -646,6 +646,30 @@ kbd {
   outline-offset: -4px;
 }
 
+.image-card.is-selected {
+  border-color: rgba(0, 255, 242, 0.95);
+  box-shadow:
+    inset 0 0 0 2px rgba(0, 255, 242, 0.72),
+    0 0 0 3px rgba(0, 255, 242, 0.16),
+    0 18px 48px rgba(0, 0, 0, 0.28);
+}
+
+.selected-slot-label {
+  margin: 0;
+  border: 1px solid rgba(138, 75, 45, 0.18);
+  border-radius: 0.85rem;
+  padding: 0.65rem 0.75rem;
+  color: var(--accent-strong);
+  background: rgba(255, 253, 247, 0.56);
+  font-weight: 800;
+}
+
+.selected-photo-panel input:disabled,
+.selected-photo-panel button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .empty-slot {
   display: grid;
   place-items: center;
@@ -717,8 +741,24 @@ kbd {
 .guide-ruler {
   position: absolute;
   z-index: 8;
-  background: rgba(255, 253, 247, 0.12);
+  border-color: rgba(255, 253, 247, 0.34);
+  background-color: rgba(8, 9, 10, 0.78);
   backdrop-filter: blur(8px);
+}
+
+.guide-ruler::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  opacity: 0.86;
+}
+
+.guide-ruler::after {
+  position: absolute;
+  color: rgba(255, 253, 247, 0.82);
+  font-size: 0.62rem;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
 }
 
 .guide-ruler-top {
@@ -726,7 +766,35 @@ kbd {
   left: 1.6rem;
   right: 0;
   height: 1.3rem;
+  border-bottom: 1px solid rgba(255, 253, 247, 0.32);
   cursor: row-resize;
+}
+
+.guide-ruler-top::before {
+  background:
+    repeating-linear-gradient(
+      90deg,
+      transparent 0,
+      transparent calc(5% - 1px),
+      rgba(255, 253, 247, 0.42) calc(5% - 1px),
+      rgba(255, 253, 247, 0.42) 5%
+    ),
+    repeating-linear-gradient(
+      90deg,
+      transparent 0,
+      transparent calc(25% - 1px),
+      rgba(255, 253, 247, 0.78) calc(25% - 1px),
+      rgba(255, 253, 247, 0.78) 25%
+    );
+  background-size: 100% 42%, 100% 100%;
+  background-position: left bottom, left bottom;
+  background-repeat: no-repeat;
+}
+
+.guide-ruler-top::after {
+  content: "0        25        50        75        100";
+  inset: 0.1rem 0.35rem auto;
+  word-spacing: clamp(1.3rem, 7vw, 6rem);
 }
 
 .guide-ruler-left {
@@ -734,7 +802,37 @@ kbd {
   left: 0;
   bottom: 0;
   width: 1.6rem;
+  border-right: 1px solid rgba(255, 253, 247, 0.32);
   cursor: col-resize;
+}
+
+.guide-ruler-left::before {
+  background:
+    repeating-linear-gradient(
+      180deg,
+      transparent 0,
+      transparent calc(5% - 1px),
+      rgba(255, 253, 247, 0.42) calc(5% - 1px),
+      rgba(255, 253, 247, 0.42) 5%
+    ),
+    repeating-linear-gradient(
+      180deg,
+      transparent 0,
+      transparent calc(25% - 1px),
+      rgba(255, 253, 247, 0.78) calc(25% - 1px),
+      rgba(255, 253, 247, 0.78) 25%
+    );
+  background-size: 42% 100%, 100% 100%;
+  background-position: right top, right top;
+  background-repeat: no-repeat;
+}
+
+.guide-ruler-left::after {
+  content: "0\A 25\A 50\A 75\A 100";
+  top: 0.25rem;
+  left: 0.2rem;
+  white-space: pre;
+  line-height: clamp(2.4rem, 8vw, 7rem);
 }
 
 .guide-layer {

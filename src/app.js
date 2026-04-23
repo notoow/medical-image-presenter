@@ -1,9 +1,12 @@
 const DEFAULT_LOGO_URL = "./logos/haist-urology-logo.jpg";
+const STORAGE_KEY = "medical-image-presenter:v2";
 const DEFAULT_LOGO_NAME = "하이스트비뇨의학과로고.jpg";
 
 const state = {
   images: [],
   slideSlots: [],
+  slotTransforms: {},
+  selectedSlotIndex: null,
   logoUrl: "",
   pageIndex: 0,
   layoutMode: "pair",
@@ -18,6 +21,8 @@ const state = {
   crop: {
     left: 0,
     right: 0,
+    top: 0,
+    bottom: 0,
   },
   backgroundFilters: {
     brightness: 72,
@@ -41,6 +46,9 @@ const state = {
     hue: 0,
   },
 };
+
+let persistTimer = null;
+let isRestoring = true;
 
 const els = {
   stage: document.querySelector("#stage"),
@@ -94,6 +102,18 @@ const els = {
   bgY: document.querySelector("#bgY"),
   cropLeft: document.querySelector("#cropLeft"),
   cropRight: document.querySelector("#cropRight"),
+  cropTop: document.querySelector("#cropTop"),
+  cropBottom: document.querySelector("#cropBottom"),
+  selectedSlotLabel: document.querySelector("#selectedSlotLabel"),
+  slotScale: document.querySelector("#slotScale"),
+  slotX: document.querySelector("#slotX"),
+  slotY: document.querySelector("#slotY"),
+  slotRotate: document.querySelector("#slotRotate"),
+  slotCropLeft: document.querySelector("#slotCropLeft"),
+  slotCropRight: document.querySelector("#slotCropRight"),
+  slotCropTop: document.querySelector("#slotCropTop"),
+  slotCropBottom: document.querySelector("#slotCropBottom"),
+  resetSlotTransformButton: document.querySelector("#resetSlotTransformButton"),
   showGuides: document.querySelector("#showGuides"),
   addVerticalGuideButton: document.querySelector("#addVerticalGuideButton"),
   addHorizontalGuideButton: document.querySelector("#addHorizontalGuideButton"),
@@ -109,6 +129,16 @@ const els = {
   bgYValue: document.querySelector("#bgYValue"),
   cropLeftValue: document.querySelector("#cropLeftValue"),
   cropRightValue: document.querySelector("#cropRightValue"),
+  cropTopValue: document.querySelector("#cropTopValue"),
+  cropBottomValue: document.querySelector("#cropBottomValue"),
+  slotScaleValue: document.querySelector("#slotScaleValue"),
+  slotXValue: document.querySelector("#slotXValue"),
+  slotYValue: document.querySelector("#slotYValue"),
+  slotRotateValue: document.querySelector("#slotRotateValue"),
+  slotCropLeftValue: document.querySelector("#slotCropLeftValue"),
+  slotCropRightValue: document.querySelector("#slotCropRightValue"),
+  slotCropTopValue: document.querySelector("#slotCropTopValue"),
+  slotCropBottomValue: document.querySelector("#slotCropBottomValue"),
   resetFiltersButton: document.querySelector("#resetFiltersButton"),
   thumbnailRail: document.querySelector("#thumbnailRail"),
   photoListPanel: document.querySelector("#photoListPanel"),
@@ -142,6 +172,42 @@ function getTotalPages() {
 
 function getImageById(id) {
   return state.images.find((image) => image.id === id);
+}
+
+function getDefaultSlotTransform() {
+  return {
+    scale: 100,
+    x: 0,
+    y: 0,
+    rotate: 0,
+    cropLeft: 0,
+    cropRight: 0,
+    cropTop: 0,
+    cropBottom: 0,
+  };
+}
+
+function getSlotTransform(slotIndex) {
+  if (!Number.isFinite(slotIndex) || slotIndex < 0) return getDefaultSlotTransform();
+
+  state.slotTransforms[slotIndex] = {
+    ...getDefaultSlotTransform(),
+    ...(state.slotTransforms[slotIndex] ?? {}),
+  };
+  return state.slotTransforms[slotIndex];
+}
+
+function getSlotCropStyle(slotIndex) {
+  const transform = getSlotTransform(slotIndex);
+  return `inset(${state.crop.top + transform.cropTop}% ${state.crop.right + transform.cropRight}% ${
+    state.crop.bottom + transform.cropBottom
+  }% ${state.crop.left + transform.cropLeft}%)`;
+}
+
+function getSlotTransformStyle(slotIndex) {
+  const transform = getSlotTransform(slotIndex);
+  const scale = state.zoom * (transform.scale / 100);
+  return `translate(${transform.x}%, ${transform.y}%) scale(${scale}) rotate(${transform.rotate}deg)`;
 }
 
 function ensureSlideSlots() {
@@ -200,7 +266,7 @@ function getBackgroundFilterStyle() {
 }
 
 function getCropStyle() {
-  return `inset(0 ${state.crop.right}% 0 ${state.crop.left}%)`;
+  return `inset(${state.crop.top}% ${state.crop.right}% ${state.crop.bottom}% ${state.crop.left}%)`;
 }
 
 function renderCover() {
@@ -238,13 +304,14 @@ function renderCover() {
 function renderImageCard(image, slotIndex) {
   const filter = getFilterStyle();
   const backgroundFilter = getBackgroundFilterStyle();
-  const zoomTransform = `scale(${state.zoom})`;
-  const cropStyle = getCropStyle();
+  const imageTransform = getSlotTransformStyle(slotIndex);
+  const cropStyle = getSlotCropStyle(slotIndex);
+  const selectedClass = state.selectedSlotIndex === slotIndex ? "is-selected" : "";
 
   if (!image) {
     return `
       <figure
-        class="image-card empty-slot"
+        class="image-card empty-slot ${selectedClass}"
         data-slot-index="${slotIndex}"
         title="사진 또는 빈칸을 여기로 드래그하세요"
       >
@@ -259,7 +326,7 @@ function renderImageCard(image, slotIndex) {
   return `
     <figure class="image-card ${state.backgroundEnabled ? "background-enabled" : ""} ${
       state.fitMode === "fill" ? "fit-fill" : ""
-    }" data-slot-index="${slotIndex}">
+    } ${selectedClass}" data-slot-index="${slotIndex}" tabindex="0">
       <img
         class="blur-bg"
         src="${image.url}"
@@ -276,7 +343,7 @@ function renderImageCard(image, slotIndex) {
         class="main-image"
         src="${image.url}"
         alt="${escapeHtml(image.name)}"
-        style="clip-path: ${cropStyle}; filter: ${filter}; transform: ${zoomTransform};"
+        style="clip-path: ${cropStyle}; filter: ${filter}; transform: ${imageTransform};"
       />
       <figcaption class="image-label">${escapeHtml(image.name)}</figcaption>
     </figure>
@@ -284,7 +351,7 @@ function renderImageCard(image, slotIndex) {
 }
 
 function renderGuides() {
-  if (!state.guidesEnabled || state.guides.length === 0) return "";
+  if (!state.guidesEnabled) return "";
 
   return `
     <div class="guide-layer">
@@ -362,8 +429,10 @@ function render() {
   els.backgroundButton.textContent = state.backgroundEnabled
     ? "배경 채우기 켜짐 Enter"
     : "배경 채우기 꺼짐 Enter";
+  syncSelectedSlotControls();
   renderThumbnails();
   renderPhotoList();
+  queuePersist();
 }
 
 function escapeHtml(value) {
@@ -492,6 +561,75 @@ function bindCrop(input, output, key) {
   });
 }
 
+function syncSelectedSlotControls() {
+  const slotIndex = Number(state.selectedSlotIndex);
+  const hasSlot =
+    Number.isFinite(slotIndex) &&
+    slotIndex >= 0 &&
+    state.slideSlots[slotIndex] &&
+    Boolean(getImageById(state.slideSlots[slotIndex]));
+
+  if (!els.selectedSlotLabel) return;
+
+  const controls = [
+    els.slotScale,
+    els.slotX,
+    els.slotY,
+    els.slotRotate,
+    els.slotCropLeft,
+    els.slotCropRight,
+    els.slotCropTop,
+    els.slotCropBottom,
+    els.resetSlotTransformButton,
+  ].filter(Boolean);
+
+  for (const control of controls) control.disabled = !hasSlot;
+
+  if (!hasSlot) {
+    els.selectedSlotLabel.textContent = "Select a photo slot";
+    return;
+  }
+
+  const transform = getSlotTransform(slotIndex);
+  els.selectedSlotLabel.textContent = `Slot ${slotIndex + 1}`;
+  const bindings = [
+    [els.slotScale, els.slotScaleValue, transform.scale, "%"],
+    [els.slotX, els.slotXValue, transform.x, "%"],
+    [els.slotY, els.slotYValue, transform.y, "%"],
+    [els.slotRotate, els.slotRotateValue, transform.rotate, "deg"],
+    [els.slotCropLeft, els.slotCropLeftValue, transform.cropLeft, "%"],
+    [els.slotCropRight, els.slotCropRightValue, transform.cropRight, "%"],
+    [els.slotCropTop, els.slotCropTopValue, transform.cropTop, "%"],
+    [els.slotCropBottom, els.slotCropBottomValue, transform.cropBottom, "%"],
+  ];
+
+  for (const [input, output, value, suffix] of bindings) {
+    if (!input || !output) continue;
+    input.value = value;
+    output.textContent = `${value}${suffix}`;
+  }
+}
+
+function selectSlot(slotIndex) {
+  state.selectedSlotIndex = Number(slotIndex);
+  render();
+}
+
+function updateSelectedSlotTransform(key, value) {
+  const slotIndex = Number(state.selectedSlotIndex);
+  if (!Number.isFinite(slotIndex) || slotIndex < 0 || !state.slideSlots[slotIndex]) return;
+  getSlotTransform(slotIndex)[key] = Number(value);
+  render();
+}
+
+function bindSlotTransform(input, output, key, suffix = "%") {
+  if (!input || !output) return;
+  input.addEventListener("input", () => {
+    output.textContent = `${input.value}${suffix}`;
+    updateSelectedSlotTransform(key, input.value);
+  });
+}
+
 function setGrid(rows, cols, mode = "custom") {
   state.gridRows = clamp(rows, 1, 4);
   state.gridCols = clamp(cols, 1, 6);
@@ -530,6 +668,7 @@ function setSlot(slotIndex, imageId) {
   }
 
   state.slideSlots[slotIndex] = imageId;
+  if (imageId) state.selectedSlotIndex = slotIndex;
   render();
 }
 
@@ -540,6 +679,18 @@ function addEmptySlot() {
 
 function bindSlotDropTargets() {
   els.stage.querySelectorAll("[data-slot-index]").forEach((slot) => {
+    slot.addEventListener("click", () => {
+      const slotIndex = Number(slot.dataset.slotIndex);
+      if (state.slideSlots[slotIndex]) selectSlot(slotIndex);
+    });
+
+    slot.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      const slotIndex = Number(slot.dataset.slotIndex);
+      if (state.slideSlots[slotIndex]) selectSlot(slotIndex);
+    });
+
     slot.addEventListener("dragover", (event) => {
       event.preventDefault();
       slot.classList.add("is-drop-target");
@@ -616,12 +767,37 @@ function bindGuideInteractions() {
     ruler.addEventListener("pointerdown", (event) => {
       event.preventDefault();
       const axis = ruler.dataset.rulerAxis;
-      const rect = els.stage.getBoundingClientRect();
-      const percent =
-        axis === "x"
-          ? ((event.clientX - rect.left) / rect.width) * 100
-          : ((event.clientY - rect.top) / rect.height) * 100;
-      addGuide(axis, percent);
+      const guide = { axis, percent: 50 };
+      state.guides.push(guide);
+
+      const updateFromPointer = (pointerEvent) => {
+        const rect = els.stage.getBoundingClientRect();
+        const percent =
+          axis === "x"
+            ? ((pointerEvent.clientX - rect.left) / rect.width) * 100
+            : ((pointerEvent.clientY - rect.top) / rect.height) * 100;
+        guide.percent = clamp(percent, 0, 100);
+      };
+
+      updateFromPointer(event);
+
+      const onMove = (moveEvent) => {
+        updateFromPointer(moveEvent);
+        const createdGuide = els.stage.querySelector(`[data-guide-index="${state.guides.length - 1}"]`);
+        if (!createdGuide) return;
+        createdGuide.style[axis === "x" ? "left" : "top"] = `${guide.percent}%`;
+        createdGuide.dataset.label = `${guide.percent.toFixed(1)}%`;
+      };
+
+      const onUp = () => {
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+        render();
+      };
+
+      render();
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
     });
   });
 }
@@ -814,28 +990,34 @@ async function downloadAdjustedImages() {
 
   const { brightness, contrast, saturate, hue } = state.filters;
 
-  const orderedImages = state.slideSlots.map(getImageById).filter(Boolean);
+  const orderedImages = state.slideSlots
+    .map((imageId, slotIndex) => ({ item: getImageById(imageId), slotIndex }))
+    .filter(({ item }) => Boolean(item));
 
-  for (const [index, item] of orderedImages.entries()) {
+  for (const [index, { item, slotIndex }] of orderedImages.entries()) {
     const image = await imageFromDataUrl(item.url);
-    const cropLeftPx = Math.round(image.naturalWidth * (state.crop.left / 100));
-    const cropRightPx = Math.round(image.naturalWidth * (state.crop.right / 100));
+    const transform = getSlotTransform(slotIndex);
+    const cropLeftPx = Math.round(image.naturalWidth * ((state.crop.left + transform.cropLeft) / 100));
+    const cropRightPx = Math.round(image.naturalWidth * ((state.crop.right + transform.cropRight) / 100));
+    const cropTopPx = Math.round(image.naturalHeight * ((state.crop.top + transform.cropTop) / 100));
+    const cropBottomPx = Math.round(image.naturalHeight * ((state.crop.bottom + transform.cropBottom) / 100));
     const sourceWidth = Math.max(1, image.naturalWidth - cropLeftPx - cropRightPx);
+    const sourceHeight = Math.max(1, image.naturalHeight - cropTopPx - cropBottomPx);
     const canvas = document.createElement("canvas");
     canvas.width = sourceWidth;
-    canvas.height = image.naturalHeight;
+    canvas.height = sourceHeight;
     const ctx = canvas.getContext("2d");
     ctx.filter = `brightness(${brightness}%) contrast(${contrast}%) saturate(${saturate}%) hue-rotate(${hue}deg)`;
     ctx.drawImage(
       image,
       cropLeftPx,
+      cropTopPx,
+      sourceWidth,
+      sourceHeight,
+      0,
       0,
       sourceWidth,
-      image.naturalHeight,
-      0,
-      0,
-      sourceWidth,
-      image.naturalHeight,
+      sourceHeight,
     );
 
     await new Promise((resolve) => {
@@ -957,6 +1139,22 @@ bindBackgroundFilter(els.bgScale, els.bgScaleValue, "scale", "%");
 bindBackgroundFilter(els.bgY, els.bgYValue, "y", "%");
 bindCrop(els.cropLeft, els.cropLeftValue, "left");
 bindCrop(els.cropRight, els.cropRightValue, "right");
+bindCrop(els.cropTop, els.cropTopValue, "top");
+bindCrop(els.cropBottom, els.cropBottomValue, "bottom");
+bindSlotTransform(els.slotScale, els.slotScaleValue, "scale");
+bindSlotTransform(els.slotX, els.slotXValue, "x");
+bindSlotTransform(els.slotY, els.slotYValue, "y");
+bindSlotTransform(els.slotRotate, els.slotRotateValue, "rotate", "deg");
+bindSlotTransform(els.slotCropLeft, els.slotCropLeftValue, "cropLeft");
+bindSlotTransform(els.slotCropRight, els.slotCropRightValue, "cropRight");
+bindSlotTransform(els.slotCropTop, els.slotCropTopValue, "cropTop");
+bindSlotTransform(els.slotCropBottom, els.slotCropBottomValue, "cropBottom");
+els.resetSlotTransformButton?.addEventListener("click", () => {
+  const slotIndex = Number(state.selectedSlotIndex);
+  if (!Number.isFinite(slotIndex) || slotIndex < 0) return;
+  state.slotTransforms[slotIndex] = getDefaultSlotTransform();
+  render();
+});
 els.showGuides.addEventListener("change", () => {
   state.guidesEnabled = els.showGuides.checked;
   render();
@@ -1096,6 +1294,7 @@ function getPresentationData() {
     coverVisibility: state.coverVisibility,
     images: state.images,
     slideSlots: state.slideSlots,
+    slotTransforms: state.slotTransforms,
     layoutMode: state.layoutMode,
     gridRows: state.gridRows,
     gridCols: state.gridCols,
@@ -1105,6 +1304,8 @@ function getPresentationData() {
     backgroundFilters: state.backgroundFilters,
     crop: state.crop,
     zoom: state.zoom,
+    guidesEnabled: state.guidesEnabled,
+    guides: state.guides,
     filters: state.filters,
   };
 }
@@ -1119,6 +1320,126 @@ function downloadTextFile(fileName, text) {
   link.click();
   link.remove();
   URL.revokeObjectURL(url);
+}
+
+function getPersistData() {
+  return {
+    ...getPresentationData(),
+    pageIndex: state.pageIndex,
+    selectedSlotIndex: state.selectedSlotIndex,
+  };
+}
+
+function queuePersist() {
+  if (isRestoring) return;
+  window.clearTimeout(persistTimer);
+  persistTimer = window.setTimeout(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(getPersistData()));
+    } catch {
+      try {
+        const settingsOnly = {
+          ...getPersistData(),
+          images: [],
+          slideSlots: [],
+          logoUrl: "",
+          cover: { ...getPersistData().cover, logoUrl: "" },
+        };
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(settingsOnly));
+      } catch {
+        // Ignore storage quota failures; exporting HTML still preserves the full deck.
+      }
+    }
+  }, 250);
+}
+
+function applyPersistedState() {
+  const saved = localStorage.getItem(STORAGE_KEY);
+  if (!saved) return false;
+
+  try {
+    const data = JSON.parse(saved);
+    if (data.cover) {
+      els.coverTitle.value = data.cover.title ?? els.coverTitle.value;
+      els.coverSubtitle.value = data.cover.subtitle ?? els.coverSubtitle.value;
+      els.hospitalName.value = data.cover.hospitalName ?? els.hospitalName.value;
+      els.presenterName.value = data.cover.presenterName ?? els.presenterName.value;
+      state.logoUrl = data.cover.logoUrl || data.logoUrl || state.logoUrl;
+    }
+
+    state.images = Array.isArray(data.images) ? data.images : state.images;
+    state.slideSlots = Array.isArray(data.slideSlots) ? data.slideSlots : state.slideSlots;
+    state.slotTransforms = data.slotTransforms ?? state.slotTransforms;
+    state.selectedSlotIndex = data.selectedSlotIndex ?? state.selectedSlotIndex;
+    state.layoutMode = data.layoutMode ?? state.layoutMode;
+    state.gridRows = data.gridRows ?? state.gridRows;
+    state.gridCols = data.gridCols ?? state.gridCols;
+    state.sortMode = data.sortMode ?? state.sortMode;
+    state.fitMode = data.fitMode ?? state.fitMode;
+    state.backgroundEnabled = data.backgroundEnabled ?? state.backgroundEnabled;
+    state.backgroundFilters = { ...state.backgroundFilters, ...(data.backgroundFilters ?? {}) };
+    state.crop = { ...state.crop, ...(data.crop ?? {}) };
+    state.zoom = data.zoom ?? state.zoom;
+    state.guidesEnabled = data.guidesEnabled ?? state.guidesEnabled;
+    state.guides = Array.isArray(data.guides) ? data.guides : state.guides;
+    state.coverVisibility = { ...state.coverVisibility, ...(data.coverVisibility ?? {}) };
+    state.filters = { ...state.filters, ...(data.filters ?? {}) };
+    state.pageIndex = data.pageIndex ?? state.pageIndex;
+
+    els.sortMode.value = state.sortMode;
+    els.layoutMode.value = state.layoutMode;
+    els.gridRows.value = state.gridRows;
+    els.gridCols.value = state.gridCols;
+    els.showGuides.checked = state.guidesEnabled;
+    els.cropLeft.value = state.crop.left;
+    els.cropRight.value = state.crop.right;
+    if (els.cropTop) els.cropTop.value = state.crop.top;
+    if (els.cropBottom) els.cropBottom.value = state.crop.bottom;
+    els.cropLeftValue.textContent = `${state.crop.left}%`;
+    els.cropRightValue.textContent = `${state.crop.right}%`;
+    if (els.cropTopValue) els.cropTopValue.textContent = `${state.crop.top}%`;
+    if (els.cropBottomValue) els.cropBottomValue.textContent = `${state.crop.bottom}%`;
+
+    for (const [key, value] of Object.entries(state.coverVisibility)) {
+      const input = {
+        title: els.showCoverTitle,
+        subtitle: els.showCoverSubtitle,
+        hospitalName: els.showHospitalName,
+        presenterName: els.showPresenterName,
+        date: els.showCoverDate,
+        logo: els.showCoverLogo,
+      }[key];
+      if (input) input.checked = value;
+    }
+
+    for (const key of ["brightness", "contrast", "saturate", "hue"]) {
+      if (els[key]) els[key].value = state.filters[key];
+    }
+    els.brightnessValue.textContent = `${state.filters.brightness}%`;
+    els.contrastValue.textContent = `${state.filters.contrast}%`;
+    els.saturateValue.textContent = `${state.filters.saturate}%`;
+    els.hueValue.textContent = `${state.filters.hue}째`;
+
+    for (const [key, input] of [
+      ["brightness", els.bgBrightness],
+      ["saturate", els.bgSaturate],
+      ["blur", els.bgBlur],
+      ["scale", els.bgScale],
+      ["y", els.bgY],
+    ]) {
+      if (input) input.value = state.backgroundFilters[key];
+    }
+    els.bgBrightnessValue.textContent = `${state.backgroundFilters.brightness}%`;
+    els.bgSaturateValue.textContent = `${state.backgroundFilters.saturate}%`;
+    els.bgBlurValue.textContent = `${state.backgroundFilters.blur}px`;
+    els.bgScaleValue.textContent = `${state.backgroundFilters.scale}%`;
+    els.bgYValue.textContent = `${state.backgroundFilters.y}%`;
+    if (state.logoUrl) els.logoFileName.textContent = "saved logo";
+    if (state.images.length > 0) els.imageFileName.textContent = `${state.images.length} files restored`;
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function exportStandaloneHtml() {
@@ -1176,8 +1497,9 @@ function createStandaloneHtml(data) {
     .cover-title { margin:0; font-size:clamp(2.5rem,6vw,6rem); line-height:.9; letter-spacing:-.07em; white-space:pre-line; }
     .cover-subtitle,.meta { color:var(--muted); }
     .grid { position:absolute; inset:0; display:grid; gap:1rem; padding:1rem; }
-    .single { grid-template-columns:1fr; } .pair { grid-template-columns:repeat(2,1fr); } .triple { grid-template-columns:repeat(3,1fr); }
+    .single { grid-template-columns:1fr; } .pair { grid-template-columns:repeat(2,1fr); } .triple { grid-template-columns:repeat(3,1fr); } .quad { grid-template-columns:repeat(2,1fr); grid-template-rows:repeat(2,1fr); } .custom { grid-template-columns:repeat(var(--grid-cols),1fr); grid-template-rows:repeat(var(--grid-rows),1fr); }
     .card { position:relative; overflow:hidden; border:1px solid var(--line); border-radius:1rem; background:#050505; }
+    .card.empty { border-style:dashed; background:rgba(255,255,255,.04); }
     .blur { position:absolute; top:50%; left:50%; width:176.2%; height:176.2%; object-fit:cover; object-position:center 62%; filter:blur(150px) brightness(.72) saturate(.92); opacity:0; transform:translate(-50%,-42%); }
     .bg-on .blur { opacity:1; }
     .photo { position:absolute; inset:0; width:100%; height:100%; object-fit:contain; transform-origin:center; }
@@ -1251,16 +1573,20 @@ function createStandaloneHtml(data) {
   <script>
     const data = ${serialized};
     const state = { ...data, pageIndex: 0 };
-    const pageSize = () => ({ single:1, pair:2, triple:3 }[state.layoutMode] || 2);
-    const totalPages = () => 1 + Math.ceil(state.images.length / pageSize());
+    const pageSize = () => state.layoutMode==="custom" ? (state.gridRows||1)*(state.gridCols||1) : ({ single:1, pair:2, triple:3, quad:4 }[state.layoutMode] || 2);
+    const totalPages = () => 1 + Math.ceil((state.slideSlots?.length || state.images.length) / pageSize());
     const $ = (id) => document.getElementById(id);
     const esc = (v) => String(v).replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#039;");
     const filter = () => \`brightness(\${state.filters.brightness}%) contrast(\${state.filters.contrast}%) saturate(\${state.filters.saturate}%) hue-rotate(\${state.filters.hue}deg)\`;
     function syncInputs(){ $("title").value=state.cover.title; $("subtitle").value=state.cover.subtitle; $("hospital").value=state.cover.hospitalName; $("presenter").value=state.cover.presenterName; $("layout").value=state.layoutMode; $("showTitle").checked=state.coverVisibility.title; $("showSubtitle").checked=state.coverVisibility.subtitle; $("showHospital").checked=state.coverVisibility.hospitalName; $("showPresenter").checked=state.coverVisibility.presenterName; $("showDate").checked=state.coverVisibility.date; $("showLogo").checked=state.coverVisibility.logo; for (const key of ["brightness","contrast","saturate","hue"]) $(key).value=state.filters[key]; }
     function render(){ state.pageIndex=Math.min(Math.max(state.pageIndex,0),totalPages()-1); if(state.pageIndex===0) renderCover(); else renderSlide(); $("status").textContent=state.pageIndex===0?\`Cover / \${totalPages()}\`:\`\${state.pageIndex+1} / \${totalPages()}\`; $("bg").textContent=state.backgroundEnabled?"배경 채우기 켜짐 Enter":"배경 채우기 꺼짐 Enter"; }
     function renderCover(){ const meta=[state.coverVisibility.hospitalName?state.cover.hospitalName:"",state.coverVisibility.presenterName?state.cover.presenterName:"",state.coverVisibility.date?state.cover.date:""].filter(Boolean); $("stage").className="stage cover"; $("stage").innerHTML=\`<div class="cover-card">\${state.coverVisibility.logo&&state.cover.logoUrl?\`<img class="cover-logo" src="\${state.cover.logoUrl}" alt="logo">\`:""}\${state.coverVisibility.title?\`<h2 class="cover-title">\${esc(state.cover.title)}</h2>\`:""}\${state.coverVisibility.subtitle?\`<p class="cover-subtitle">\${esc(state.cover.subtitle)}</p>\`:""}\${meta.length?\`<p class="meta">\${meta.map(esc).join(" · ")}</p>\`:""}</div>\`; }
-    function card(img){ return \`<figure class="card \${state.backgroundEnabled?"bg-on":""} \${state.fitMode==="fill"?"fill":""}"><img class="blur" src="\${img.url}" alt=""><img class="photo" src="\${img.url}" alt="\${esc(img.name)}" style="filter:\${filter()};transform:scale(\${state.zoom})"><figcaption class="label">\${esc(img.name)}</figcaption></figure>\`; }
-    function renderSlide(){ const start=(state.pageIndex-1)*pageSize(); const imgs=state.images.slice(start,start+pageSize()); $("stage").className="stage"; $("stage").innerHTML=\`<div class="grid \${state.layoutMode}">\${imgs.map(card).join("")}</div>\`; }
+    function getImage(id){ return state.images.find((image)=>image.id===id); }
+    function slotTransform(i){ return {scale:100,x:0,y:0,rotate:0,cropLeft:0,cropRight:0,cropTop:0,cropBottom:0,...(state.slotTransforms?.[i]||{})}; }
+    function crop(i){ const t=slotTransform(i), c=state.crop||{left:0,right:0,top:0,bottom:0}; return \`inset(\${(c.top||0)+t.cropTop}% \${(c.right||0)+t.cropRight}% \${(c.bottom||0)+t.cropBottom}% \${(c.left||0)+t.cropLeft}%)\`; }
+    function photoTransform(i){ const t=slotTransform(i); return \`translate(\${t.x}%, \${t.y}%) scale(\${(state.zoom||1)*(t.scale/100)}) rotate(\${t.rotate}deg)\`; }
+    function card(img, slotIndex){ if(!img) return \`<figure class="card empty"></figure>\`; return \`<figure class="card \${state.backgroundEnabled?"bg-on":""} \${state.fitMode==="fill"?"fill":""}"><img class="blur" src="\${img.url}" alt=""><img class="photo" src="\${img.url}" alt="\${esc(img.name)}" style="clip-path:\${crop(slotIndex)};filter:\${filter()};transform:\${photoTransform(slotIndex)}"><figcaption class="label">\${esc(img.name)}</figcaption></figure>\`; }
+    function renderSlide(){ const start=(state.pageIndex-1)*pageSize(); const slots=(state.slideSlots?.length?state.slideSlots:state.images.map((image)=>image.id)).slice(start,start+pageSize()); const cls=state.layoutMode==="custom"?"custom":state.layoutMode; $("stage").className="stage"; $("stage").innerHTML=\`<div class="grid \${cls}" style="--grid-cols:\${state.gridCols||2};--grid-rows:\${state.gridRows||1}">\${slots.map((id,offset)=>card(getImage(id),start+offset)).join("")}</div>\`; }
     function go(n){ state.pageIndex=n; render(); }
     function present(){ document.body.classList.toggle("presenting"); if(document.body.classList.contains("presenting")) $("stage").requestFullscreen?.().catch(()=>{}); else document.exitFullscreen?.().catch(()=>{}); }
     function showHelp(){ if(!$("shortcutDialog").open) $("shortcutDialog").showModal(); }
@@ -1280,6 +1606,14 @@ function createStandaloneHtml(data) {
 }
 
 async function initializeDefaultLogo() {
+  applyPersistedState();
+
+  if (state.logoUrl) {
+    isRestoring = false;
+    render();
+    return;
+  }
+
   try {
     state.logoUrl = await urlToDataUrl(DEFAULT_LOGO_URL);
     els.logoFileName.textContent = DEFAULT_LOGO_NAME;
@@ -1287,6 +1621,7 @@ async function initializeDefaultLogo() {
     state.logoUrl = DEFAULT_LOGO_URL;
   }
 
+  isRestoring = false;
   render();
 }
 

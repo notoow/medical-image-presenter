@@ -208,6 +208,59 @@
             오른쪽 자르기 <output id="cropRightValue">0%</output>
             <input id="cropRight" type="range" min="0" max="45" value="0" />
           </label>
+          <label>
+            위쪽 자르기 <output id="cropTopValue">0%</output>
+            <input id="cropTop" type="range" min="0" max="45" value="0" />
+          </label>
+          <label>
+            아래쪽 자르기 <output id="cropBottomValue">0%</output>
+            <input id="cropBottom" type="range" min="0" max="45" value="0" />
+          </label>
+        </section>
+
+        <section class="panel-section selected-photo-panel">
+          <h2>선택 사진 편집</h2>
+          <p id="selectedSlotLabel" class="selected-slot-label">슬라이드 사진을 클릭하세요</p>
+          <label>
+            크기 <output id="slotScaleValue">100%</output>
+            <input id="slotScale" type="range" min="40" max="240" value="100" disabled />
+          </label>
+          <label>
+            좌우 위치 <output id="slotXValue">0%</output>
+            <input id="slotX" type="range" min="-100" max="100" value="0" disabled />
+          </label>
+          <label>
+            상하 위치 <output id="slotYValue">0%</output>
+            <input id="slotY" type="range" min="-100" max="100" value="0" disabled />
+          </label>
+          <label>
+            회전 <output id="slotRotateValue">0deg</output>
+            <input id="slotRotate" type="range" min="-45" max="45" value="0" disabled />
+          </label>
+          <div class="grid-controls">
+            <label>
+              왼쪽 crop <output id="slotCropLeftValue">0%</output>
+              <input id="slotCropLeft" type="range" min="0" max="60" value="0" disabled />
+            </label>
+            <label>
+              오른쪽 crop <output id="slotCropRightValue">0%</output>
+              <input id="slotCropRight" type="range" min="0" max="60" value="0" disabled />
+            </label>
+            <label>
+              위 crop <output id="slotCropTopValue">0%</output>
+              <input id="slotCropTop" type="range" min="0" max="60" value="0" disabled />
+            </label>
+            <label>
+              아래 crop <output id="slotCropBottomValue">0%</output>
+              <input id="slotCropBottom" type="range" min="0" max="60" value="0" disabled />
+            </label>
+          </div>
+          <button id="resetSlotTransformButton" class="wide-button subtle" type="button" disabled>
+            선택 사진 초기화
+          </button>
+          <p class="hint-text">
+            슬라이드 사진을 클릭한 뒤 이 칸만 확대, 이동, 회전, crop 할 수 있습니다. HTML 다운로드에도 그대로 저장됩니다.
+          </p>
         </section>
 
         <section class="panel-section">
