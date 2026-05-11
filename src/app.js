@@ -63,6 +63,7 @@ let photoListRenderToken = 0;
 let activeThumbnailButton = null;
 let activeReorderTarget = null;
 let activeStageSlotDropTarget = null;
+let activeGuideDrag = null;
 let previewRefreshTimer = null;
 let previewWarmHandle = null;
 let previewWarmQueue = [];
@@ -516,7 +517,6 @@ function renderSlide() {
     ${renderGuides()}
   `;
 
-  bindGuideInteractions();
   els.stage.querySelectorAll("[data-slot-index]").forEach((card) => {
     const slotIndex = Number(card.getAttribute("data-slot-index"));
     if (!Number.isFinite(slotIndex)) return;
@@ -1306,90 +1306,28 @@ function clearSlideSlots() {
   render();
 }
 
+function getGuidePercentFromPointer(axis, pointerEvent) {
+  const rect = els.stage.getBoundingClientRect();
+  const percent =
+    axis === "x"
+      ? ((pointerEvent.clientX - rect.left) / rect.width) * 100
+      : ((pointerEvent.clientY - rect.top) / rect.height) * 100;
+  return clamp(percent, 0, 100);
+}
+
+function syncGuideVisual(index) {
+  const guide = state.guides[index];
+  if (!guide) return;
+  const guideEl = els.stage.querySelector(`[data-guide-index="${index}"]`);
+  if (!guideEl) return;
+  guideEl.style[guide.axis === "x" ? "left" : "top"] = `${guide.percent}%`;
+  guideEl.dataset.label = `${guide.percent.toFixed(1)}%`;
+}
+
 function updateGuide(index, percent) {
   if (!state.guides[index]) return;
   state.guides[index].percent = clamp(percent, 0, 100);
   render();
-}
-
-function bindGuideInteractions() {
-  els.stage.querySelectorAll(".guide").forEach((guideEl) => {
-    guideEl.addEventListener("pointerdown", (event) => {
-      event.preventDefault();
-      const index = Number(guideEl.dataset.guideIndex);
-      const guide = state.guides[index];
-      guideEl.setPointerCapture(event.pointerId);
-
-      const onMove = (moveEvent) => {
-        const rect = els.stage.getBoundingClientRect();
-        const percent =
-          guide.axis === "x"
-            ? ((moveEvent.clientX - rect.left) / rect.width) * 100
-            : ((moveEvent.clientY - rect.top) / rect.height) * 100;
-        guide.percent = clamp(percent, 0, 100);
-        guideEl.style[guide.axis === "x" ? "left" : "top"] = `${guide.percent}%`;
-        guideEl.dataset.label = `${guide.percent.toFixed(1)}%`;
-      };
-
-      const onUp = () => {
-        guideEl.removeEventListener("pointermove", onMove);
-        guideEl.removeEventListener("pointerup", onUp);
-        render();
-      };
-
-      guideEl.addEventListener("pointermove", onMove);
-      guideEl.addEventListener("pointerup", onUp);
-    });
-
-    guideEl.addEventListener("contextmenu", (event) => {
-      event.preventDefault();
-      const index = Number(guideEl.dataset.guideIndex);
-      const current = state.guides[index]?.percent ?? 50;
-      const next = window.prompt("안내선 위치를 퍼센트로 입력하세요.", current.toFixed(1));
-      if (next === null) return;
-      const value = Number(next);
-      if (!Number.isFinite(value)) return;
-      updateGuide(index, value);
-    });
-  });
-
-  els.stage.querySelectorAll(".guide-ruler").forEach((ruler) => {
-    ruler.addEventListener("pointerdown", (event) => {
-      event.preventDefault();
-      const axis = ruler.dataset.rulerAxis;
-      const guide = { axis, percent: 50 };
-      state.guides.push(guide);
-
-      const updateFromPointer = (pointerEvent) => {
-        const rect = els.stage.getBoundingClientRect();
-        const percent =
-          axis === "x"
-            ? ((pointerEvent.clientX - rect.left) / rect.width) * 100
-            : ((pointerEvent.clientY - rect.top) / rect.height) * 100;
-        guide.percent = clamp(percent, 0, 100);
-      };
-
-      updateFromPointer(event);
-
-      const onMove = (moveEvent) => {
-        updateFromPointer(moveEvent);
-        const createdGuide = els.stage.querySelector(`[data-guide-index="${state.guides.length - 1}"]`);
-        if (!createdGuide) return;
-        createdGuide.style[axis === "x" ? "left" : "top"] = `${guide.percent}%`;
-        createdGuide.dataset.label = `${guide.percent.toFixed(1)}%`;
-      };
-
-      const onUp = () => {
-        window.removeEventListener("pointermove", onMove);
-        window.removeEventListener("pointerup", onUp);
-        render();
-      };
-
-      render();
-      window.addEventListener("pointermove", onMove);
-      window.addEventListener("pointerup", onUp);
-    });
-  });
 }
 
 function renderThumbnails() {
@@ -1697,6 +1635,69 @@ els.guideListPanel?.addEventListener("click", (event) => {
   if (!(button instanceof HTMLButtonElement)) return;
   const index = Number(button.dataset.guideDelete);
   state.guides.splice(index, 1);
+  render();
+});
+
+els.stage?.addEventListener("pointerdown", (event) => {
+  const target = event.target instanceof Element ? event.target : null;
+  const guideEl = target?.closest(".guide");
+  if (guideEl instanceof HTMLElement) {
+    event.preventDefault();
+    const index = Number(guideEl.dataset.guideIndex);
+    const guide = state.guides[index];
+    if (!guide) return;
+    activeGuideDrag = {
+      index,
+      axis: guide.axis,
+      pointerId: event.pointerId,
+    };
+    return;
+  }
+
+  const ruler = target?.closest(".guide-ruler");
+  if (!(ruler instanceof HTMLElement)) return;
+
+  event.preventDefault();
+  const axis = ruler.dataset.rulerAxis;
+  if (axis !== "x" && axis !== "y") return;
+  state.guides.push({
+    axis,
+    percent: getGuidePercentFromPointer(axis, event),
+  });
+  const index = state.guides.length - 1;
+  activeGuideDrag = {
+    index,
+    axis,
+    pointerId: event.pointerId,
+  };
+  render();
+  syncGuideVisual(index);
+});
+
+els.stage?.addEventListener("contextmenu", (event) => {
+  const target = event.target instanceof Element ? event.target.closest(".guide") : null;
+  if (!(target instanceof HTMLElement)) return;
+  event.preventDefault();
+  const index = Number(target.dataset.guideIndex);
+  const current = state.guides[index]?.percent ?? 50;
+  const next = window.prompt("안내선 위치를 퍼센트로 입력하세요.", current.toFixed(1));
+  if (next === null) return;
+  const value = Number(next);
+  if (!Number.isFinite(value)) return;
+  updateGuide(index, value);
+});
+
+window.addEventListener("pointermove", (event) => {
+  if (!activeGuideDrag || event.pointerId !== activeGuideDrag.pointerId) return;
+  const guide = state.guides[activeGuideDrag.index];
+  if (!guide) return;
+  guide.percent = getGuidePercentFromPointer(activeGuideDrag.axis, event);
+  syncGuideVisual(activeGuideDrag.index);
+});
+
+window.addEventListener("pointerup", (event) => {
+  if (!activeGuideDrag || event.pointerId !== activeGuideDrag.pointerId) return;
+  activeGuideDrag = null;
   render();
 });
 
