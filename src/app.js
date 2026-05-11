@@ -58,6 +58,8 @@ let isRestoring = true;
 let thumbnailRenderKey = "";
 let photoListRenderKey = "";
 let previewRefreshTimer = null;
+let previewWarmHandle = null;
+let previewWarmQueue = [];
 const previewCache = new Map();
 const previewJobs = new Map();
 
@@ -575,6 +577,42 @@ function schedulePreviewRefresh() {
   }, 80);
 }
 
+function cancelPreviewWarm() {
+  if (!previewWarmHandle) return;
+  if (typeof window.cancelIdleCallback === "function" && String(previewWarmHandle).startsWith("idle:")) {
+    window.cancelIdleCallback(Number(String(previewWarmHandle).slice(5)));
+  } else {
+    window.clearTimeout(Number(previewWarmHandle));
+  }
+  previewWarmHandle = null;
+}
+
+function queuePreviewWarmTick() {
+  cancelPreviewWarm();
+
+  const run = () => {
+    previewWarmHandle = null;
+    if (previewWarmQueue.length === 0) return;
+
+    const batch = previewWarmQueue.splice(0, 2);
+    batch.forEach((image) => {
+      void ensurePreviewForImage(image);
+    });
+
+    if (previewWarmQueue.length > 0) {
+      queuePreviewWarmTick();
+    }
+  };
+
+  if (typeof window.requestIdleCallback === "function") {
+    const idleId = window.requestIdleCallback(run, { timeout: 180 });
+    previewWarmHandle = `idle:${idleId}`;
+    return;
+  }
+
+  previewWarmHandle = window.setTimeout(run, 90);
+}
+
 async function ensurePreviewForImage(image) {
   if (!image?.id) return image?.url ?? "";
   if (previewCache.has(image.id)) return previewCache.get(image.id);
@@ -606,9 +644,23 @@ function getRenderableImageUrl(image) {
 }
 
 function warmPreviewCache(images) {
-  images.slice(0, 12).forEach((image) => {
-    void ensurePreviewForImage(image);
+  if (!Array.isArray(images) || images.length === 0) return;
+
+  const seen = new Set();
+  const currentPageStart = Math.max(0, (state.pageIndex - 1) * getPageSize());
+  const currentPagePriority = state.slideSlots
+    .slice(currentPageStart, currentPageStart + getPageSize())
+    .map((imageId) => getImageById(imageId))
+    .filter(Boolean);
+  const prioritized = [...currentPagePriority, ...images].filter((image) => {
+    if (!image?.id || seen.has(image.id) || previewCache.has(image.id) || previewJobs.has(image.id)) return false;
+    seen.add(image.id);
+    return true;
   });
+
+  if (prioritized.length === 0) return;
+  previewWarmQueue = prioritized;
+  queuePreviewWarmTick();
 }
 
 function fileToDataUrl(file) {
@@ -709,9 +761,6 @@ async function loadImageFiles(fileList) {
       updateLoading(`사진 불러오는 중: ${file.name}`, index / uploadFiles.length);
       const url = await fileToDataUrl(file);
       const id = crypto.randomUUID?.() ?? `${file.name}-${file.lastModified}-${Math.random()}`;
-      updateLoading(`미리보기 최적화 중: ${file.name}`, (index + 0.5) / uploadFiles.length);
-      const previewUrl = await createPreviewDataUrl(url);
-      previewCache.set(id, previewUrl);
       addedImages.push({
         id,
         name: file.name,
@@ -719,6 +768,7 @@ async function loadImageFiles(fileList) {
         modifiedAt: file.lastModified,
         url,
       });
+      updateLoading(`사진 등록 중: ${file.name}`, (index + 1) / uploadFiles.length);
       await new Promise((resolve) => requestAnimationFrame(() => resolve()));
     }
 
@@ -736,6 +786,7 @@ async function loadImageFiles(fileList) {
 
     state.pageIndex = wasEmpty ? 1 : state.pageIndex;
     render();
+    warmPreviewCache(addedImages);
     queuePersistAssets();
   } finally {
     hideLoading();
