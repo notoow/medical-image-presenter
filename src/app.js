@@ -74,6 +74,7 @@ let pendingLightweightSlotIndices = null;
 let selectedSlotUiKey = "";
 let visibleSlideCardCache = new Map();
 let visibleGuideCache = new Map();
+let renderableImageNodeCache = new Map();
 let imageIndexDirty = true;
 let imageSortDirty = true;
 let lastAppliedSortMode = state.sortMode;
@@ -375,6 +376,7 @@ function getCropStyle() {
 function renderCover() {
   visibleSlideCardCache = new Map();
   visibleGuideCache = new Map();
+  renderableImageNodeCache = new Map();
   activeStageSlotDropTarget = null;
   const metaItems = [
     state.coverVisibility.hospitalName ? els.hospitalName.value : "",
@@ -502,6 +504,7 @@ function renderSlide() {
 
   if (pageSlots.length === 0) {
     visibleGuideCache = new Map();
+    renderableImageNodeCache = new Map();
     els.stage.innerHTML = `
       <div class="empty-state">
         <div>
@@ -543,6 +546,7 @@ function renderSlide() {
     if (!Number.isFinite(index)) return;
     visibleGuideCache.set(index, guideEl);
   });
+  rebuildRenderableImageNodeCache(els.stage);
 }
 
 function syncDeckStatus() {
@@ -841,33 +845,26 @@ function getRenderableImageUrl(image) {
   return image.url;
 }
 
-function escapeAttributeValue(value) {
-  return String(value).replaceAll("\\", "\\\\").replaceAll('"', '\\"');
+function rebuildRenderableImageNodeCache(root = document) {
+  renderableImageNodeCache = new Map();
+  root.querySelectorAll?.("[data-renderable-image-id]").forEach((node) => {
+    const imageId = node.getAttribute("data-renderable-image-id");
+    if (!imageId) return;
+    const nodes = renderableImageNodeCache.get(imageId) ?? [];
+    nodes.push(node);
+    renderableImageNodeCache.set(imageId, nodes);
+  });
 }
 
 function syncRenderableImageSources(imageIds = null) {
-  const targetIds = imageIds ? Array.from(new Set(imageIds.filter(Boolean))) : null;
-
-  if (!targetIds) {
-    document.querySelectorAll("[data-renderable-image-id]").forEach((node) => {
-      const imageId = node.getAttribute("data-renderable-image-id");
-      if (!imageId) return;
-      const image = getImageById(imageId);
-      if (!image) return;
-      const nextUrl = getRenderableImageUrl(image);
-      if (node.getAttribute("src") !== nextUrl) {
-        node.setAttribute("src", nextUrl);
-      }
-    });
-    return;
-  }
+  const targetIds = imageIds ? Array.from(new Set(imageIds.filter(Boolean))) : Array.from(renderableImageNodeCache.keys());
 
   targetIds.forEach((imageId) => {
     const image = getImageById(imageId);
     if (!image) return;
     const nextUrl = getRenderableImageUrl(image);
-    const selector = `[data-renderable-image-id="${escapeAttributeValue(imageId)}"]`;
-    document.querySelectorAll(selector).forEach((node) => {
+    const nodes = renderableImageNodeCache.get(imageId) ?? [];
+    nodes.forEach((node) => {
       if (node.getAttribute("src") !== nextUrl) {
         node.setAttribute("src", nextUrl);
       }
@@ -1463,6 +1460,7 @@ function renderThumbnails() {
         </div>
       </div>
     `;
+    rebuildRenderableImageNodeCache(document);
   }
 
   if (activeThumbnailButton && !els.thumbnailRail.contains(activeThumbnailButton)) {
@@ -1485,6 +1483,7 @@ function renderPhotoList() {
     photoListRenderKey = "empty";
     photoListRenderToken += 1;
     els.photoListPanel.innerHTML = `<p class="photo-list-empty">사진을 업로드하면 전체 목록이 표시됩니다.</p>`;
+    rebuildRenderableImageNodeCache(document);
     return;
   }
 
@@ -1536,6 +1535,7 @@ function renderPhotoList() {
       .join("");
 
     els.photoListPanel.insertAdjacentHTML("beforeend", batchHtml);
+    rebuildRenderableImageNodeCache(document);
     startIndex = endIndex;
 
     if (startIndex < state.images.length) {
