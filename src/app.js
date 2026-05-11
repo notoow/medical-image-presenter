@@ -69,6 +69,7 @@ let pendingPreviewRefreshIds = new Set();
 let lightweightRefreshFrame = null;
 let pendingLightweightSlotIndices = null;
 let selectedSlotUiKey = "";
+let visibleSlideCardCache = new Map();
 let imageIndexDirty = true;
 let imageSortDirty = true;
 let lastAppliedSortMode = state.sortMode;
@@ -363,6 +364,7 @@ function getCropStyle() {
 }
 
 function renderCover() {
+  visibleSlideCardCache = new Map();
   const metaItems = [
     state.coverVisibility.hospitalName ? els.hospitalName.value : "",
     state.coverVisibility.presenterName ? els.presenterName.value : "",
@@ -500,6 +502,7 @@ function renderSlide() {
   }
 
   const layoutClass = state.layoutMode === "custom" ? "layout-custom" : `layout-${state.layoutMode}`;
+  visibleSlideCardCache = new Map();
   els.stage.innerHTML = `
     <div
       class="slide-grid ${layoutClass}"
@@ -512,6 +515,16 @@ function renderSlide() {
 
   bindGuideInteractions();
   bindSlotDropTargets();
+  els.stage.querySelectorAll("[data-slot-index]").forEach((card) => {
+    const slotIndex = Number(card.getAttribute("data-slot-index"));
+    if (!Number.isFinite(slotIndex)) return;
+    visibleSlideCardCache.set(slotIndex, {
+      card,
+      blurImage: card.querySelector(".blur-bg"),
+      mainImage: card.querySelector(".main-image"),
+      label: card.querySelector(".image-label"),
+    });
+  });
 }
 
 function syncDeckStatus() {
@@ -534,14 +547,15 @@ function getVisibleSlideSlotIndices() {
 }
 
 function refreshVisibleSlideCards(slotIndices = getVisibleSlideSlotIndices()) {
-  if (state.pageIndex <= 0 || !els.stage.querySelector(".slide-grid")) return false;
+  if (state.pageIndex <= 0 || visibleSlideCardCache.size === 0) return false;
 
   const filter = getFilterStyle();
   const backgroundFilter = getBackgroundFilterStyle();
 
   slotIndices.forEach((slotIndex) => {
-    const card = els.stage.querySelector(`[data-slot-index="${slotIndex}"]`);
-    if (!card) return;
+    const refs = visibleSlideCardCache.get(slotIndex);
+    if (!refs) return;
+    const { card, blurImage, mainImage, label } = refs;
 
     card.classList.toggle("is-selected", state.selectedSlotIndex === slotIndex);
 
@@ -555,7 +569,6 @@ function refreshVisibleSlideCards(slotIndices = getVisibleSlideSlotIndices()) {
     card.classList.toggle("background-enabled", state.backgroundEnabled);
     card.classList.toggle("fit-fill", state.fitMode === "fill");
 
-    const blurImage = card.querySelector(".blur-bg");
     if (blurImage) {
       if (blurImage.getAttribute("src") !== displayUrl) blurImage.setAttribute("src", displayUrl);
       blurImage.style.width = `${state.backgroundFilters.scale}%`;
@@ -564,7 +577,6 @@ function refreshVisibleSlideCards(slotIndices = getVisibleSlideSlotIndices()) {
       blurImage.style.filter = backgroundFilter;
     }
 
-    const mainImage = card.querySelector(".main-image");
     if (mainImage) {
       if (mainImage.getAttribute("src") !== displayUrl) mainImage.setAttribute("src", displayUrl);
       if (mainImage.getAttribute("alt") !== image.name) mainImage.setAttribute("alt", image.name);
@@ -573,7 +585,6 @@ function refreshVisibleSlideCards(slotIndices = getVisibleSlideSlotIndices()) {
       mainImage.style.transform = getSlotTransformStyle(slotIndex);
     }
 
-    const label = card.querySelector(".image-label");
     if (label) label.textContent = image.name;
   });
 
