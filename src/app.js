@@ -61,6 +61,7 @@ let thumbnailRenderKey = "";
 let photoListRenderKey = "";
 let photoListRenderToken = 0;
 let activeThumbnailButton = null;
+let activeReorderTarget = null;
 let previewRefreshTimer = null;
 let previewWarmHandle = null;
 let previewWarmQueue = [];
@@ -1714,9 +1715,10 @@ els.photoListPanel?.addEventListener("dragover", (event) => {
   const target = event.target instanceof Element ? event.target.closest(".photo-list-card") : null;
   if (!(target instanceof HTMLElement)) return;
   event.preventDefault();
-  els.photoListPanel
-    .querySelectorAll(".photo-list-card.is-reorder-target")
-    .forEach((card) => card.classList.toggle("is-reorder-target", card === target));
+  if (activeReorderTarget === target) return;
+  activeReorderTarget?.classList.remove("is-reorder-target");
+  activeReorderTarget = target;
+  activeReorderTarget.classList.add("is-reorder-target");
 });
 
 els.photoListPanel?.addEventListener("dragleave", (event) => {
@@ -1725,6 +1727,7 @@ els.photoListPanel?.addEventListener("dragleave", (event) => {
   const nextTarget = event.relatedTarget instanceof Element ? event.relatedTarget.closest(".photo-list-card") : null;
   if (nextTarget === target) return;
   target.classList.remove("is-reorder-target");
+  if (activeReorderTarget === target) activeReorderTarget = null;
 });
 
 els.photoListPanel?.addEventListener("drop", (event) => {
@@ -1732,6 +1735,7 @@ els.photoListPanel?.addEventListener("drop", (event) => {
   if (!(target instanceof HTMLElement)) return;
   event.preventDefault();
   target.classList.remove("is-reorder-target");
+  if (activeReorderTarget === target) activeReorderTarget = null;
 
   const from = Number(event.dataTransfer?.getData("text/plain"));
   const to = Number(target.dataset.index);
@@ -1753,9 +1757,8 @@ els.photoListPanel?.addEventListener("drop", (event) => {
 });
 
 els.photoListPanel?.addEventListener("dragend", () => {
-  els.photoListPanel.querySelectorAll(".photo-list-card.is-reorder-target").forEach((card) => {
-    card.classList.remove("is-reorder-target");
-  });
+  activeReorderTarget?.classList.remove("is-reorder-target");
+  activeReorderTarget = null;
 });
 
 els.sortMode.addEventListener("change", () => {
