@@ -54,6 +54,8 @@ const state = {
 
 let settingsPersistTimer = null;
 let assetsPersistTimer = null;
+let settingsPersistIdleHandle = null;
+let assetsPersistIdleHandle = null;
 let isRestoring = true;
 let thumbnailRenderKey = "";
 let photoListRenderKey = "";
@@ -69,6 +71,8 @@ let imagesVersion = 0;
 let slideSlotsVersion = 0;
 let layoutVersion = 0;
 let previewVersion = 0;
+let lastPersistedSettingsJson = "";
+let lastPersistedAssetsJson = "";
 const previewCache = new Map();
 const previewJobs = new Map();
 const imageNameCollator = new Intl.Collator("ko-KR", {
@@ -2005,15 +2009,42 @@ function downloadTextFile(fileName, text) {
   URL.revokeObjectURL(url);
 }
 
+function clearScheduledIdle(handle) {
+  if (!handle) return null;
+  if (typeof window.cancelIdleCallback === "function" && String(handle).startsWith("idle:")) {
+    window.cancelIdleCallback(Number(String(handle).slice(5)));
+    return null;
+  }
+
+  window.clearTimeout(Number(handle));
+  return null;
+}
+
+function scheduleIdleTask(task, delay = 0) {
+  if (typeof window.requestIdleCallback === "function") {
+    const idleId = window.requestIdleCallback(task, { timeout: Math.max(240, delay) });
+    return `idle:${idleId}`;
+  }
+
+  return window.setTimeout(task, delay);
+}
+
 function queuePersistSettings() {
   if (isRestoring) return;
   window.clearTimeout(settingsPersistTimer);
   settingsPersistTimer = window.setTimeout(() => {
-    try {
-      localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(getSettingsData()));
-    } catch {
-      // Ignore storage failures here; the editor still works and HTML export preserves the full deck.
-    }
+    settingsPersistIdleHandle = clearScheduledIdle(settingsPersistIdleHandle);
+    settingsPersistIdleHandle = scheduleIdleTask(() => {
+      settingsPersistIdleHandle = null;
+      try {
+        const nextJson = JSON.stringify(getSettingsData());
+        if (nextJson === lastPersistedSettingsJson) return;
+        localStorage.setItem(SETTINGS_STORAGE_KEY, nextJson);
+        lastPersistedSettingsJson = nextJson;
+      } catch {
+        // Ignore storage failures here; the editor still works and HTML export preserves the full deck.
+      }
+    }, 250);
   }, 250);
 }
 
@@ -2021,11 +2052,18 @@ function queuePersistAssets() {
   if (isRestoring) return;
   window.clearTimeout(assetsPersistTimer);
   assetsPersistTimer = window.setTimeout(() => {
-    try {
-      localStorage.setItem(ASSETS_STORAGE_KEY, JSON.stringify(getAssetsData()));
-    } catch {
-      // Asset persistence can exceed storage quota; keep settings persistence working regardless.
-    }
+    assetsPersistIdleHandle = clearScheduledIdle(assetsPersistIdleHandle);
+    assetsPersistIdleHandle = scheduleIdleTask(() => {
+      assetsPersistIdleHandle = null;
+      try {
+        const nextJson = JSON.stringify(getAssetsData());
+        if (nextJson === lastPersistedAssetsJson) return;
+        localStorage.setItem(ASSETS_STORAGE_KEY, nextJson);
+        lastPersistedAssetsJson = nextJson;
+      } catch {
+        // Asset persistence can exceed storage quota; keep settings persistence working regardless.
+      }
+    }, 500);
   }, 500);
 }
 
@@ -2048,6 +2086,8 @@ function applyPersistedState() {
   try {
     const data = legacySaved ? JSON.parse(legacySaved) : savedSettings ? JSON.parse(savedSettings) : {};
     const assets = legacySaved ? data : savedAssets ? JSON.parse(savedAssets) : {};
+    lastPersistedSettingsJson = savedSettings || "";
+    lastPersistedAssetsJson = savedAssets || "";
 
     state.images = Array.isArray(assets.images) ? assets.images : state.images;
     markImagesDirty();
