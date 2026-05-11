@@ -479,6 +479,28 @@ function resetZoom() {
   render();
 }
 
+function isZoomInKey(event) {
+  return (
+    event.key === "+" ||
+    event.key === "=" ||
+    event.code === "NumpadAdd"
+  );
+}
+
+function isZoomOutKey(event) {
+  return event.key === "-" || event.key === "_" || event.code === "NumpadSubtract";
+}
+
+function handleStageWheelZoom(event) {
+  if (!(event.target instanceof Element) || !event.target.closest("#stage")) return;
+  event.preventDefault();
+  if (event.deltaY < 0) {
+    updateZoom(0.1);
+  } else if (event.deltaY > 0) {
+    updateZoom(-0.1);
+  }
+}
+
 function imageFromDataUrl(url) {
   return new Promise((resolve, reject) => {
     const image = new Image();
@@ -1501,12 +1523,12 @@ document.addEventListener("keydown", (event) => {
     updateFitMode(event.shiftKey ? "fill" : "fit");
   }
 
-  if (event.key === "+" || event.key === "=") {
+  if (isZoomInKey(event)) {
     event.preventDefault();
     updateZoom(0.1);
   }
 
-  if (event.key === "-" || event.key === "_") {
+  if (isZoomOutKey(event)) {
     event.preventDefault();
     updateZoom(-0.1);
   }
@@ -1522,6 +1544,8 @@ document.addEventListener("keydown", (event) => {
   }
 
 });
+
+document.addEventListener("wheel", handleStageWheelZoom, { passive: false });
 
 function getPresentationData() {
   return {
@@ -1769,6 +1793,7 @@ function createStandaloneHtml(data) {
     button { border:1px solid var(--line); border-radius:999px; padding:.62rem .88rem; color:var(--ink); background:rgba(255,255,255,.08); cursor:pointer; transition:transform 160ms ease,border-color 160ms ease,background 160ms ease; }
     button:hover { transform:translateY(-1px); border-color:rgba(217,160,111,.42); background:rgba(255,255,255,.12); }
     input,textarea,select { width:100%; border:1px solid rgba(255,253,247,.14); border-radius:1rem; padding:.68rem .8rem; color:var(--ink); background:rgba(255,255,255,.11); box-shadow:inset 0 1px 0 rgba(255,255,255,.06); }
+    select, select option { color:var(--ink); background:#201d1a; }
     input[type="range"] { padding:0; background:transparent; box-shadow:none; border:0; }
     .app { display:grid; grid-template-columns:20rem 1fr; gap:1rem; min-height:100vh; padding:1rem; }
     .panel { display:grid; align-content:start; gap:1rem; max-height:calc(100vh - 2rem); overflow:auto; border:1px solid var(--line); border-radius:1.45rem; padding:1.05rem; background:linear-gradient(180deg,rgba(26,24,22,.92),rgba(14,13,12,.84)); backdrop-filter:blur(16px); box-shadow:0 20px 70px rgba(0,0,0,.28); }
@@ -1851,7 +1876,7 @@ function createStandaloneHtml(data) {
       <label>채도 <input id="saturate" type="range" min="0" max="180" /></label>
       <label>색조 <input id="hue" type="range" min="-45" max="45" /></label>
       <p>F5: 발표 시작 / Esc: 종료 / Shift+?: 도움말</p>
-      <p>화살표 N P Space: 페이지 이동 / + - 0: 확대 초기화 / C: 커버</p>
+      <p>화살표 N P Space: 페이지 이동 / = - 휠 키패드 +/-: 확대 축소 / 0: 초기화 / C: 커버</p>
     </aside>
     <section class="stage-wrap">
       <div class="toolbar"><button id="prev">이전</button><span id="status" class="status">Cover</span><button id="next">다음</button></div>
@@ -1870,7 +1895,8 @@ function createStandaloneHtml(data) {
         <p><kbd>Home</kbd> / <kbd>End</kbd><span>커버 / 마지막</span></p>
         <p><kbd>F</kbd> / <kbd>Shift</kbd> + <kbd>F</kbd><span>맞추기 / 채우기</span></p>
         <p><kbd>Enter</kbd><span>블러 배경 토글</span></p>
-        <p><kbd>+</kbd> <kbd>-</kbd> <kbd>0</kbd><span>확대 / 축소 / 초기화</span></p>
+        <p><kbd>=</kbd> <kbd>-</kbd> <kbd>휠</kbd><span>확대 / 축소</span></p>
+        <p><kbd>Num +</kbd> <kbd>Num -</kbd> <kbd>0</kbd><span>키패드 확대 / 축소 / 초기화</span></p>
         <p><kbd>Shift</kbd> + <kbd>?</kbd><span>도움말</span></p>
       </div>
     </div>
@@ -1894,18 +1920,24 @@ function createStandaloneHtml(data) {
     function card(img, slotIndex){ if(!img) return \`<figure class="card empty"></figure>\`; return \`<figure class="card \${state.backgroundEnabled?"bg-on":""} \${state.fitMode==="fill"?"fill":""}"><img class="blur" src="\${img.url}" alt=""><img class="photo" src="\${img.url}" alt="\${esc(img.name)}" style="clip-path:\${crop(slotIndex)};filter:\${filter()};transform:\${photoTransform(slotIndex)}"><figcaption class="label">\${esc(img.name)}</figcaption></figure>\`; }
     function renderSlide(){ const start=(state.pageIndex-1)*pageSize(); const slots=(state.slideSlots?.length?state.slideSlots:state.images.map((image)=>image.id)).slice(start,start+pageSize()); const cls=state.layoutMode==="custom"?"custom":state.layoutMode; $("stage").className="stage"; $("stage").innerHTML=\`<div class="grid \${cls}" style="--grid-cols:\${state.gridCols||2};--grid-rows:\${state.gridRows||1}">\${slots.map((id,offset)=>card(getImage(id),start+offset)).join("")}</div>\`; }
     async function downloadImages(){ if(!state.images.length){ alert("먼저 사진을 넣어주세요."); return; } const ordered = (state.slideSlots?.length?state.slideSlots:state.images.map((image)=>image.id)).map((id,slotIndex)=>({ item:getImage(id), slotIndex })).filter(({item})=>Boolean(item)); for(const [index,{item,slotIndex}] of ordered.entries()){ const image = await imageFromUrl(item.url); const t = slotTransform(slotIndex); const c = state.crop||{left:0,right:0,top:0,bottom:0}; const cropLeftPx = Math.round(image.naturalWidth * (((c.left||0)+t.cropLeft) / 100)); const cropRightPx = Math.round(image.naturalWidth * (((c.right||0)+t.cropRight) / 100)); const cropTopPx = Math.round(image.naturalHeight * (((c.top||0)+t.cropTop) / 100)); const cropBottomPx = Math.round(image.naturalHeight * (((c.bottom||0)+t.cropBottom) / 100)); const sourceWidth = Math.max(1, image.naturalWidth - cropLeftPx - cropRightPx); const sourceHeight = Math.max(1, image.naturalHeight - cropTopPx - cropBottomPx); const canvas = document.createElement("canvas"); canvas.width = sourceWidth; canvas.height = sourceHeight; const ctx = canvas.getContext("2d"); ctx.filter = filter(); ctx.drawImage(image,cropLeftPx,cropTopPx,sourceWidth,sourceHeight,0,0,sourceWidth,sourceHeight); await new Promise((resolve)=>{ canvas.toBlob((blob)=>{ if(!blob){ resolve(); return; } const url = URL.createObjectURL(blob); const link = document.createElement("a"); link.href = url; link.download = \`\${String(index+1).padStart(3,"0")}-\${item.name.replace(/\\.[^.]+$/,"")}.png\`; document.body.append(link); link.click(); link.remove(); URL.revokeObjectURL(url); setTimeout(resolve,120); }, "image/png"); }); } }
+    function isZoomInKey(e){ return e.key==="+" || e.key==="=" || e.code==="NumpadAdd"; }
+    function isZoomOutKey(e){ return e.key==="-" || e.key==="_" || e.code==="NumpadSubtract"; }
     function go(n){ state.pageIndex=n; render(); }
+    function updateZoom(delta){ state.zoom=Math.min(Math.max(Number((state.zoom+delta).toFixed(2)),.5),2.5); render(); }
+    function resetZoom(){ state.zoom=1; render(); }
     function present(){ document.body.classList.toggle("presenting"); if(document.body.classList.contains("presenting")) $("stage").requestFullscreen?.().catch(()=>{}); else document.exitFullscreen?.().catch(()=>{}); }
     function showHelp(){ if(!$("shortcutDialog").open) $("shortcutDialog").showModal(); }
     function hideHelp(){ if($("shortcutDialog").open) $("shortcutDialog").close(); }
     function backdropClose(e){ if(e.target!==$("shortcutDialog")) return; const r=$("shortcutDialog").getBoundingClientRect(); if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom) hideHelp(); }
+    function onWheelZoom(e){ if(!(e.target instanceof Element) || !e.target.closest("#stage")) return; e.preventDefault(); if(e.deltaY<0) updateZoom(.1); else if(e.deltaY>0) updateZoom(-.1); }
     $("prev").onclick=()=>go(state.pageIndex-1); $("next").onclick=()=>go(state.pageIndex+1); $("fit").onclick=()=>{state.fitMode="fit";render()}; $("fill").onclick=()=>{state.fitMode="fill";render()}; $("bg").onclick=()=>{state.backgroundEnabled=!state.backgroundEnabled;render()}; $("present").onclick=present;
     $("help").onclick=showHelp; $("closeHelp").onclick=hideHelp; $("downloadImages").onclick=downloadImages;
     $("shortcutDialog").onclick=backdropClose;
+    document.addEventListener("wheel", onWheelZoom, { passive:false });
     for (const id of ["title","subtitle","hospital","presenter"]) $(id).oninput=()=>{ const map={title:"title",subtitle:"subtitle",hospital:"hospitalName",presenter:"presenterName"}; state.cover[map[id]]=$(id).value; render(); };
     for (const [id,key] of [["showTitle","title"],["showSubtitle","subtitle"],["showHospital","hospitalName"],["showPresenter","presenterName"],["showDate","date"],["showLogo","logo"]]) $(id).onchange=()=>{state.coverVisibility[key]=$(id).checked;render()};
     $("layout").onchange=()=>{state.layoutMode=$("layout").value;render()}; for (const key of ["brightness","contrast","saturate","hue"]) $(key).oninput=()=>{state.filters[key]=Number($(key).value);render()};
-    document.onkeydown=(e)=>{ if(["INPUT","TEXTAREA","SELECT"].includes(e.target.tagName)) return; if(e.key==="?"||(e.shiftKey&&e.key==="/")){e.preventDefault();showHelp();return} if(e.key==="Escape"){ if($("shortcutDialog").open){hideHelp();return} if(document.body.classList.contains("presenting")){document.body.classList.remove("presenting");document.exitFullscreen?.().catch(()=>{})} } if(e.key==="F5"){e.preventDefault(); if(!e.shiftKey)go(0); present()} if(e.key==="ArrowLeft"||e.key==="ArrowUp"||e.key==="PageUp"||e.key.toLowerCase()==="p")go(state.pageIndex-1); if(e.key==="ArrowRight"||e.key==="ArrowDown"||e.key==="PageDown"||e.key===" "||e.key.toLowerCase()==="n")go(state.pageIndex+1); if(e.key==="Home")go(0); if(e.key==="End")go(totalPages()-1); if(e.key==="Enter"){state.backgroundEnabled=!state.backgroundEnabled;render()} if(e.key.toLowerCase()==="f"){state.fitMode=e.shiftKey?"fill":"fit";render()} if(e.key==="+") {state.zoom=Math.min(state.zoom+.1,2.5);render()} if(e.key==="-") {state.zoom=Math.max(state.zoom-.1,.5);render()} if(e.key==="0"){state.zoom=1;render()} if(e.key.toLowerCase()==="c")go(0); };
+    document.onkeydown=(e)=>{ if(["INPUT","TEXTAREA","SELECT"].includes(e.target.tagName)) return; if(e.key==="?"||(e.shiftKey&&e.key==="/")){e.preventDefault();showHelp();return} if(e.key==="Escape"){ if($("shortcutDialog").open){hideHelp();return} if(document.body.classList.contains("presenting")){document.body.classList.remove("presenting");document.exitFullscreen?.().catch(()=>{})} } if(e.key==="F5"){e.preventDefault(); if(!e.shiftKey)go(0); present()} if(e.key==="ArrowLeft"||e.key==="ArrowUp"||e.key==="PageUp"||e.key.toLowerCase()==="p")go(state.pageIndex-1); if(e.key==="ArrowRight"||e.key==="ArrowDown"||e.key==="PageDown"||e.key===" "||e.key.toLowerCase()==="n")go(state.pageIndex+1); if(e.key==="Home")go(0); if(e.key==="End")go(totalPages()-1); if(e.key==="Enter"){state.backgroundEnabled=!state.backgroundEnabled;render()} if(e.key.toLowerCase()==="f"){state.fitMode=e.shiftKey?"fill":"fit";render()} if(isZoomInKey(e)) {e.preventDefault(); updateZoom(.1)} if(isZoomOutKey(e)) {e.preventDefault(); updateZoom(-.1)} if(e.key==="0"){resetZoom()} if(e.key.toLowerCase()==="c")go(0); };
     syncInputs(); render();
   </script>
 </body>
