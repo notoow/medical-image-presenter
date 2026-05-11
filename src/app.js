@@ -60,6 +60,7 @@ let isRestoring = true;
 let thumbnailRenderKey = "";
 let photoListRenderKey = "";
 let photoListRenderToken = 0;
+let activeThumbnailButton = null;
 let previewRefreshTimer = null;
 let previewWarmHandle = null;
 let previewWarmQueue = [];
@@ -68,6 +69,8 @@ let imageIndexDirty = true;
 let imageSortDirty = true;
 let lastAppliedSortMode = state.sortMode;
 let imageByIdIndex = new Map();
+let usedCountsCacheVersion = -1;
+let usedCountsCache = new Map();
 let imagesVersion = 0;
 let slideSlotsVersion = 0;
 let layoutVersion = 0;
@@ -235,6 +238,18 @@ function syncImageIndex() {
 function getImageById(id) {
   syncImageIndex();
   return imageByIdIndex.get(id);
+}
+
+function getUsedCounts() {
+  if (usedCountsCacheVersion === slideSlotsVersion) return usedCountsCache;
+
+  usedCountsCache = state.slideSlots.reduce((counts, imageId) => {
+    if (!imageId) return counts;
+    counts.set(imageId, (counts.get(imageId) ?? 0) + 1);
+    return counts;
+  }, new Map());
+  usedCountsCacheVersion = slideSlotsVersion;
+  return usedCountsCache;
 }
 
 function getDefaultSlotTransform() {
@@ -1405,6 +1420,7 @@ function renderThumbnails() {
 
   if (state.images.length === 0) {
     thumbnailRenderKey = "empty";
+    activeThumbnailButton = null;
     els.thumbnailRail.innerHTML = `
       <div class="thumbnail-empty">
         사진을 선택하면 여기에 슬라이드 미리보기와 사진 순서가 표시됩니다.
@@ -1436,6 +1452,7 @@ function renderThumbnails() {
 
   if (thumbnailRenderKey !== nextKey) {
     thumbnailRenderKey = nextKey;
+    activeThumbnailButton = null;
     els.thumbnailRail.innerHTML = `
       <div class="thumbnail-section">
         <div class="thumbnail-section-head">
@@ -1511,9 +1528,17 @@ function renderThumbnails() {
     `;
   }
 
-  els.thumbnailRail.querySelectorAll(".slide-thumb").forEach((button) => {
-    button.classList.toggle("is-active", Number(button.dataset.page) === state.pageIndex);
-  });
+  if (activeThumbnailButton && !els.thumbnailRail.contains(activeThumbnailButton)) {
+    activeThumbnailButton = null;
+  }
+
+  if (activeThumbnailButton && Number(activeThumbnailButton.dataset.page) === state.pageIndex) {
+    return;
+  }
+
+  activeThumbnailButton?.classList.remove("is-active");
+  activeThumbnailButton = els.thumbnailRail.querySelector(`.slide-thumb[data-page="${state.pageIndex}"]`);
+  activeThumbnailButton?.classList.add("is-active");
 }
 
 function renderPhotoList() {
@@ -1526,11 +1551,7 @@ function renderPhotoList() {
     return;
   }
 
-  const usedCounts = state.slideSlots.reduce((counts, imageId) => {
-    if (!imageId) return counts;
-    counts.set(imageId, (counts.get(imageId) ?? 0) + 1);
-    return counts;
-  }, new Map());
+  const usedCounts = getUsedCounts();
   const nextKey = [
     imagesVersion,
     slideSlotsVersion,
