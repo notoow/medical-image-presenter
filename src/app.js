@@ -62,6 +62,7 @@ let photoListRenderKey = "";
 let photoListRenderToken = 0;
 let guidePanelRenderKey = "";
 let activeThumbnailButton = null;
+let thumbnailPageButtonCache = new Map();
 let activeReorderTarget = null;
 let activeStageSlotDropTarget = null;
 let activeGuideDrag = null;
@@ -75,6 +76,7 @@ let selectedSlotUiKey = "";
 let visibleSlideCardCache = new Map();
 let visibleGuideCache = new Map();
 let renderableImageNodeCache = new Map();
+let guideControlOutputCache = new Map();
 let imageIndexDirty = true;
 let imageSortDirty = true;
 let lastAppliedSortMode = state.sortMode;
@@ -1283,6 +1285,7 @@ function renderGuideControls() {
   const nextKey = `${guidesVersion}:${state.guides.length}`;
   if (guidePanelRenderKey === nextKey) return;
   guidePanelRenderKey = nextKey;
+  guideControlOutputCache = new Map();
 
   if (state.guides.length === 0) {
     els.guideListPanel.innerHTML = `
@@ -1313,6 +1316,13 @@ function renderGuideControls() {
       `;
     })
     .join("");
+
+  els.guideListPanel.querySelectorAll("[data-guide-control]").forEach((control) => {
+    const index = Number(control.getAttribute("data-guide-control"));
+    if (!Number.isFinite(index)) return;
+    const output = control.querySelector("output");
+    if (output) guideControlOutputCache.set(index, output);
+  });
 }
 
 function setSlot(slotIndex, imageId) {
@@ -1383,6 +1393,7 @@ function renderThumbnails() {
   if (state.images.length === 0) {
     thumbnailRenderKey = "empty";
     activeThumbnailButton = null;
+    thumbnailPageButtonCache = new Map();
     unregisterRenderableImageNodesInRoot(els.thumbnailRail);
     els.thumbnailRail.innerHTML = `
       <div class="thumbnail-empty">
@@ -1416,6 +1427,7 @@ function renderThumbnails() {
   if (thumbnailRenderKey !== nextKey) {
     thumbnailRenderKey = nextKey;
     activeThumbnailButton = null;
+    thumbnailPageButtonCache = new Map();
     unregisterRenderableImageNodesInRoot(els.thumbnailRail);
     const thumbnailHtml = `
       <div class="thumbnail-section">
@@ -1493,6 +1505,11 @@ function renderThumbnails() {
     const fragment = createFragmentFromHtml(thumbnailHtml);
     registerRenderableImageNodesInRoot(fragment);
     els.thumbnailRail.replaceChildren(fragment);
+    els.thumbnailRail.querySelectorAll(".slide-thumb[data-page]").forEach((button) => {
+      const page = Number(button.getAttribute("data-page"));
+      if (!Number.isFinite(page)) return;
+      thumbnailPageButtonCache.set(page, button);
+    });
   }
 
   if (activeThumbnailButton && !els.thumbnailRail.contains(activeThumbnailButton)) {
@@ -1504,7 +1521,7 @@ function renderThumbnails() {
   }
 
   activeThumbnailButton?.classList.remove("is-active");
-  activeThumbnailButton = els.thumbnailRail.querySelector(`.slide-thumb[data-page="${state.pageIndex}"]`);
+  activeThumbnailButton = thumbnailPageButtonCache.get(state.pageIndex) ?? null;
   activeThumbnailButton?.classList.add("is-active");
 }
 
@@ -1670,7 +1687,7 @@ els.guideListPanel?.addEventListener("input", (event) => {
 
   state.guides[index].percent = clamp(value, 0, 100);
   markGuidesDirty();
-  slider.closest(".guide-control")?.querySelector("output")?.replaceChildren(`${value.toFixed(1)}%`);
+  guideControlOutputCache.get(index)?.replaceChildren(`${value.toFixed(1)}%`);
   syncGuideVisual(index);
 
   queuePersistSettings();
