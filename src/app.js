@@ -1501,18 +1501,6 @@ function renderThumbnails() {
         </div>
       </div>
     `;
-
-    els.thumbnailRail.querySelectorAll(".slide-thumb").forEach((button) => {
-      button.addEventListener("click", () => {
-        goToPage(Number(button.dataset.page));
-      });
-    });
-
-    els.thumbnailRail.querySelectorAll(".photo-order-card").forEach((button) => {
-      button.addEventListener("click", () => {
-        goToPage(Number(button.dataset.slotPage));
-      });
-    });
   }
 
   els.thumbnailRail.querySelectorAll(".slide-thumb").forEach((button) => {
@@ -1570,45 +1558,6 @@ function renderPhotoList() {
     `;
   };
 
-  const bindCards = (cards) => {
-    cards.forEach((card) => {
-      card.addEventListener("dragstart", (event) => {
-        event.dataTransfer.setData("application/x-medical-presenter", card.dataset.imageId);
-        event.dataTransfer.setData("text/plain", card.dataset.index);
-      });
-
-      card.addEventListener("dragover", (event) => {
-        event.preventDefault();
-        card.classList.add("is-reorder-target");
-      });
-
-      card.addEventListener("dragleave", () => {
-        card.classList.remove("is-reorder-target");
-      });
-
-      card.addEventListener("drop", (event) => {
-        event.preventDefault();
-        card.classList.remove("is-reorder-target");
-        const from = Number(event.dataTransfer.getData("text/plain"));
-        const to = Number(card.dataset.index);
-        if (!Number.isFinite(from) || !Number.isFinite(to) || from === to) return;
-
-      const [moved] = state.images.splice(from, 1);
-      state.images.splice(to, 0, moved);
-      markImagesDirty();
-
-      if (isSequentialSlotComposition()) {
-        state.slideSlots = state.images.map((image) => image.id);
-      }
-
-        state.sortMode = "manual";
-        els.sortMode.value = "manual";
-        render();
-        queuePersistAssets();
-      });
-    });
-  };
-
   const batchSize = state.images.length > 48 ? 24 : state.images.length;
   let startIndex = 0;
   const appendBatch = () => {
@@ -1621,7 +1570,6 @@ function renderPhotoList() {
       .join("");
 
     els.photoListPanel.insertAdjacentHTML("beforeend", batchHtml);
-    bindCards(Array.from(els.photoListPanel.querySelectorAll(".photo-list-card")).slice(startIndex, endIndex));
     startIndex = endIndex;
 
     if (startIndex < state.images.length) {
@@ -1709,6 +1657,75 @@ els.logoInput.addEventListener("change", async () => {
 els.imageInput.addEventListener("change", async () => {
   await loadImageFiles(els.imageInput.files);
   els.imageInput.value = "";
+});
+
+els.thumbnailRail?.addEventListener("click", (event) => {
+  const target = event.target instanceof Element ? event.target : null;
+  const slideThumb = target?.closest(".slide-thumb");
+  if (slideThumb instanceof HTMLButtonElement) {
+    goToPage(Number(slideThumb.dataset.page));
+    return;
+  }
+
+  const photoOrderCard = target?.closest(".photo-order-card");
+  if (photoOrderCard instanceof HTMLButtonElement) {
+    goToPage(Number(photoOrderCard.dataset.slotPage));
+  }
+});
+
+els.photoListPanel?.addEventListener("dragstart", (event) => {
+  const target = event.target instanceof Element ? event.target.closest(".photo-list-card") : null;
+  if (!(target instanceof HTMLElement) || !event.dataTransfer) return;
+  event.dataTransfer.setData("application/x-medical-presenter", target.dataset.imageId);
+  event.dataTransfer.setData("text/plain", target.dataset.index);
+});
+
+els.photoListPanel?.addEventListener("dragover", (event) => {
+  const target = event.target instanceof Element ? event.target.closest(".photo-list-card") : null;
+  if (!(target instanceof HTMLElement)) return;
+  event.preventDefault();
+  els.photoListPanel
+    .querySelectorAll(".photo-list-card.is-reorder-target")
+    .forEach((card) => card.classList.toggle("is-reorder-target", card === target));
+});
+
+els.photoListPanel?.addEventListener("dragleave", (event) => {
+  const target = event.target instanceof Element ? event.target.closest(".photo-list-card") : null;
+  if (!(target instanceof HTMLElement)) return;
+  const nextTarget = event.relatedTarget instanceof Element ? event.relatedTarget.closest(".photo-list-card") : null;
+  if (nextTarget === target) return;
+  target.classList.remove("is-reorder-target");
+});
+
+els.photoListPanel?.addEventListener("drop", (event) => {
+  const target = event.target instanceof Element ? event.target.closest(".photo-list-card") : null;
+  if (!(target instanceof HTMLElement)) return;
+  event.preventDefault();
+  target.classList.remove("is-reorder-target");
+
+  const from = Number(event.dataTransfer?.getData("text/plain"));
+  const to = Number(target.dataset.index);
+  if (!Number.isFinite(from) || !Number.isFinite(to) || from === to) return;
+
+  const [moved] = state.images.splice(from, 1);
+  state.images.splice(to, 0, moved);
+  markImagesDirty();
+
+  if (isSequentialSlotComposition()) {
+    state.slideSlots = state.images.map((image) => image.id);
+    markSlideSlotsDirty();
+  }
+
+  state.sortMode = "manual";
+  els.sortMode.value = "manual";
+  render();
+  queuePersistAssets();
+});
+
+els.photoListPanel?.addEventListener("dragend", () => {
+  els.photoListPanel.querySelectorAll(".photo-list-card.is-reorder-target").forEach((card) => {
+    card.classList.remove("is-reorder-target");
+  });
 });
 
 els.sortMode.addEventListener("change", () => {
