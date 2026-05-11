@@ -47,6 +47,9 @@ const state = {
     saturate: 100,
     hue: 0,
   },
+  isLoading: false,
+  loadingProgress: 0,
+  loadingMessage: "",
 };
 
 let settingsPersistTimer = null;
@@ -70,6 +73,9 @@ const els = {
   logoFileName: document.querySelector("#logoFileName"),
   imageInput: document.querySelector("#imageInput"),
   imageFileName: document.querySelector("#imageFileName"),
+  loadingOverlay: document.querySelector("#loadingOverlay"),
+  loadingLabel: document.querySelector("#loadingLabel"),
+  loadingMeta: document.querySelector("#loadingMeta"),
   dropOverlay: document.querySelector("#dropOverlay"),
   duplicateDialog: document.querySelector("#duplicateDialog"),
   duplicateMessage: document.querySelector("#duplicateMessage"),
@@ -423,7 +429,36 @@ function renderSlide() {
   bindSlotDropTargets();
 }
 
-function render() {
+function syncLoadingOverlay() {
+  if (!els.loadingOverlay || !els.loadingLabel || !els.loadingMeta) return;
+
+  els.loadingOverlay.setAttribute("aria-hidden", state.isLoading ? "false" : "true");
+  els.loadingLabel.textContent = state.loadingMessage || "사진을 준비하는 중입니다";
+  els.loadingMeta.textContent =
+    state.loadingProgress > 0 ? `${Math.round(state.loadingProgress * 100)}%` : "잠시만 기다려주세요";
+}
+
+function showLoading(message, progress = 0) {
+  state.isLoading = true;
+  state.loadingMessage = message;
+  state.loadingProgress = progress;
+  syncLoadingOverlay();
+}
+
+function updateLoading(message, progress = state.loadingProgress) {
+  state.loadingMessage = message;
+  state.loadingProgress = progress;
+  syncLoadingOverlay();
+}
+
+function hideLoading() {
+  state.isLoading = false;
+  state.loadingMessage = "";
+  state.loadingProgress = 0;
+  syncLoadingOverlay();
+}
+
+function render({ refreshGuidePanel = true, refreshThumbnails = true, refreshPhotoList = true, persist = true } = {}) {
   sortImages();
   ensureSlideSlots();
   state.pageIndex = clamp(state.pageIndex, 0, Math.max(getTotalPages() - 1, 0));
@@ -444,10 +479,11 @@ function render() {
     ? "배경 채우기 켜짐 Enter"
     : "배경 채우기 꺼짐 Enter";
   syncSelectedSlotControls();
-  renderGuideControls();
-  renderThumbnails();
-  renderPhotoList();
-  queuePersistSettings();
+  if (refreshGuidePanel) renderGuideControls();
+  if (refreshThumbnails) renderThumbnails();
+  if (refreshPhotoList) renderPhotoList();
+  if (persist) queuePersistSettings();
+  syncLoadingOverlay();
 }
 
 function escapeHtml(value) {
@@ -461,22 +497,22 @@ function escapeHtml(value) {
 
 function goToPage(nextPage) {
   state.pageIndex = clamp(nextPage, 0, Math.max(getTotalPages() - 1, 0));
-  render();
+  render({ refreshPhotoList: false });
 }
 
 function updateFitMode(mode) {
   state.fitMode = mode;
-  render();
+  render({ refreshGuidePanel: false, refreshThumbnails: false, refreshPhotoList: false });
 }
 
 function updateZoom(delta) {
   state.zoom = clamp(Number((state.zoom + delta).toFixed(2)), 0.5, 2.5);
-  render();
+  render({ refreshGuidePanel: false, refreshThumbnails: false, refreshPhotoList: false });
 }
 
 function resetZoom() {
   state.zoom = 1;
-  render();
+  render({ refreshGuidePanel: false, refreshThumbnails: false, refreshPhotoList: false });
 }
 
 function isZoomInKey(event) {
@@ -599,28 +635,42 @@ async function loadImageFiles(fileList) {
     return;
   }
 
-  const files = uploadFiles.map(async (file) => ({
-    id: crypto.randomUUID?.() ?? `${file.name}-${file.lastModified}-${Math.random()}`,
-    name: file.name,
-    size: file.size,
-    modifiedAt: file.lastModified,
-    url: await fileToDataUrl(file),
-  }));
+  showLoading("사진을 불러오는 중입니다", 0);
 
-  const addedImages = await Promise.all(files);
-  const wasEmpty = state.images.length === 0;
-  state.images = [...state.images, ...addedImages];
-  state.slideSlots = [...state.slideSlots, ...addedImages.map((image) => image.id)];
-  state.selectedSlotIndex = null;
+  try {
+    const addedImages = [];
 
-  els.imageFileName.textContent =
-    duplicateChoice === "skip" && duplicates.length > 0
-      ? `${addedImages.length}장 추가됨, 중복 ${duplicates.length}장 건너뜀`
-      : `${addedImages.length}장 추가됨`;
+    for (const [index, file] of uploadFiles.entries()) {
+      updateLoading(`사진 불러오는 중: ${file.name}`, index / uploadFiles.length);
+      const url = await fileToDataUrl(file);
+      addedImages.push({
+        id: crypto.randomUUID?.() ?? `${file.name}-${file.lastModified}-${Math.random()}`,
+        name: file.name,
+        size: file.size,
+        modifiedAt: file.lastModified,
+        url,
+      });
+      await new Promise((resolve) => requestAnimationFrame(() => resolve()));
+    }
 
-  state.pageIndex = wasEmpty ? 1 : state.pageIndex;
-  render();
-  queuePersistAssets();
+    updateLoading("슬라이드를 준비하는 중입니다", 1);
+
+    const wasEmpty = state.images.length === 0;
+    state.images = [...state.images, ...addedImages];
+    state.slideSlots = [...state.slideSlots, ...addedImages.map((image) => image.id)];
+    state.selectedSlotIndex = null;
+
+    els.imageFileName.textContent =
+      duplicateChoice === "skip" && duplicates.length > 0
+        ? `${addedImages.length}장 추가됨, 중복 ${duplicates.length}장 건너뜀`
+        : `${addedImages.length}장 추가됨`;
+
+    state.pageIndex = wasEmpty ? 1 : state.pageIndex;
+    render();
+    queuePersistAssets();
+  } finally {
+    hideLoading();
+  }
 }
 
 function hasDraggedFiles(event) {
@@ -639,7 +689,7 @@ function hideDropOverlay() {
 
 function toggleBackground() {
   state.backgroundEnabled = !state.backgroundEnabled;
-  render();
+  render({ refreshGuidePanel: false, refreshThumbnails: false, refreshPhotoList: false });
 }
 
 function togglePresentationMode() {
@@ -761,14 +811,14 @@ function syncSelectedSlotControls() {
 
 function selectSlot(slotIndex) {
   state.selectedSlotIndex = Number(slotIndex);
-  render();
+  render({ refreshGuidePanel: false, refreshThumbnails: false, refreshPhotoList: false, persist: false });
 }
 
 function updateSelectedSlotTransform(key, value) {
   const slotIndex = Number(state.selectedSlotIndex);
   if (!Number.isFinite(slotIndex) || slotIndex < 0 || !state.slideSlots[slotIndex]) return;
   getSlotTransform(slotIndex)[key] = Number(value);
-  render();
+  render({ refreshGuidePanel: false, refreshThumbnails: false, refreshPhotoList: false });
 }
 
 function bindSlotTransform(input, output, key, suffix = "%") {
