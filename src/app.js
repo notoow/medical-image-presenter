@@ -57,6 +57,7 @@ let assetsPersistTimer = null;
 let isRestoring = true;
 let thumbnailRenderKey = "";
 let photoListRenderKey = "";
+let photoListRenderToken = 0;
 let previewRefreshTimer = null;
 let previewWarmHandle = null;
 let previewWarmQueue = [];
@@ -1337,6 +1338,7 @@ function renderPhotoList() {
 
   if (state.images.length === 0) {
     photoListRenderKey = "empty";
+    photoListRenderToken += 1;
     els.photoListPanel.innerHTML = `<p class="photo-list-empty">사진을 업로드하면 전체 목록이 표시됩니다.</p>`;
     return;
   }
@@ -1358,66 +1360,90 @@ function renderPhotoList() {
   if (photoListRenderKey === nextKey) return;
 
   photoListRenderKey = nextKey;
-  els.photoListPanel.innerHTML = state.images
-    .map(
-      (image, index) => {
-        const usedCount = usedCounts.get(image.id) ?? 0;
-        return `
-          <article
-            class="photo-list-card ${usedCount > 0 ? "is-in-slide" : "is-unused"}"
-            draggable="true"
-            data-image-id="${image.id}"
-            data-index="${index}"
-            title="${escapeHtml(image.name)}"
-          >
-            <img src="${getRenderableImageUrl(image)}" alt="" loading="lazy" decoding="async" />
-            <div>
-              <strong>${index + 1}</strong>
-              <span>${escapeHtml(image.name)}</span>
-              <em>${usedCount > 0 ? `슬라이드 포함 ${usedCount}` : "미배치"}</em>
-            </div>
-            <b>${usedCount > 0 ? "배치됨" : "미배치"}</b>
-          </article>
-        `;
-      },
-    )
-    .join("");
+  photoListRenderToken += 1;
+  const renderToken = photoListRenderToken;
+  els.photoListPanel.innerHTML = "";
 
-  els.photoListPanel.querySelectorAll(".photo-list-card").forEach((card) => {
-    card.addEventListener("dragstart", (event) => {
-      event.dataTransfer.setData("application/x-medical-presenter", card.dataset.imageId);
-      event.dataTransfer.setData("text/plain", card.dataset.index);
+  const cardHtml = (image, index) => {
+    const usedCount = usedCounts.get(image.id) ?? 0;
+    return `
+      <article
+        class="photo-list-card ${usedCount > 0 ? "is-in-slide" : "is-unused"}"
+        draggable="true"
+        data-image-id="${image.id}"
+        data-index="${index}"
+        title="${escapeHtml(image.name)}"
+      >
+        <img src="${getRenderableImageUrl(image)}" alt="" loading="lazy" decoding="async" />
+        <div>
+          <strong>${index + 1}</strong>
+          <span>${escapeHtml(image.name)}</span>
+          <em>${usedCount > 0 ? `슬라이드 포함 ${usedCount}` : "미배치"}</em>
+        </div>
+        <b>${usedCount > 0 ? "배치됨" : "미배치"}</b>
+      </article>
+    `;
+  };
+
+  const bindCards = (cards) => {
+    cards.forEach((card) => {
+      card.addEventListener("dragstart", (event) => {
+        event.dataTransfer.setData("application/x-medical-presenter", card.dataset.imageId);
+        event.dataTransfer.setData("text/plain", card.dataset.index);
+      });
+
+      card.addEventListener("dragover", (event) => {
+        event.preventDefault();
+        card.classList.add("is-reorder-target");
+      });
+
+      card.addEventListener("dragleave", () => {
+        card.classList.remove("is-reorder-target");
+      });
+
+      card.addEventListener("drop", (event) => {
+        event.preventDefault();
+        card.classList.remove("is-reorder-target");
+        const from = Number(event.dataTransfer.getData("text/plain"));
+        const to = Number(card.dataset.index);
+        if (!Number.isFinite(from) || !Number.isFinite(to) || from === to) return;
+
+        const [moved] = state.images.splice(from, 1);
+        state.images.splice(to, 0, moved);
+
+        if (isSequentialSlotComposition()) {
+          state.slideSlots = state.images.map((image) => image.id);
+        }
+
+        state.sortMode = "manual";
+        els.sortMode.value = "manual";
+        render();
+        queuePersistAssets();
+      });
     });
+  };
 
-    card.addEventListener("dragover", (event) => {
-      event.preventDefault();
-      card.classList.add("is-reorder-target");
-    });
+  const batchSize = state.images.length > 48 ? 24 : state.images.length;
+  let startIndex = 0;
+  const appendBatch = () => {
+    if (renderToken !== photoListRenderToken) return;
 
-    card.addEventListener("dragleave", () => {
-      card.classList.remove("is-reorder-target");
-    });
+    const endIndex = Math.min(startIndex + batchSize, state.images.length);
+    const batchHtml = state.images
+      .slice(startIndex, endIndex)
+      .map((image, offset) => cardHtml(image, startIndex + offset))
+      .join("");
 
-    card.addEventListener("drop", (event) => {
-      event.preventDefault();
-      card.classList.remove("is-reorder-target");
-      const from = Number(event.dataTransfer.getData("text/plain"));
-      const to = Number(card.dataset.index);
-      if (!Number.isFinite(from) || !Number.isFinite(to) || from === to) return;
+    els.photoListPanel.insertAdjacentHTML("beforeend", batchHtml);
+    bindCards(Array.from(els.photoListPanel.querySelectorAll(".photo-list-card")).slice(startIndex, endIndex));
+    startIndex = endIndex;
 
-      const [moved] = state.images.splice(from, 1);
-      state.images.splice(to, 0, moved);
+    if (startIndex < state.images.length) {
+      window.requestAnimationFrame(appendBatch);
+    }
+  };
 
-      if (isSequentialSlotComposition()) {
-        state.slideSlots = state.images.map((image) => image.id);
-      }
-
-      state.sortMode = "manual";
-      els.sortMode.value = "manual";
-      render();
-      queuePersistAssets();
-    });
-  });
+  appendBatch();
 }
 
 function isSequentialSlotComposition() {
