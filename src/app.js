@@ -1843,6 +1843,12 @@ function createStandaloneHtml(data) {
     .help-grid p { display:flex; align-items:center; gap:.35rem; margin:0; border:1px solid var(--line); border-radius:1rem; padding:.72rem; background:rgba(255,255,255,.07); }
     .help-grid span { margin-left:auto; color:var(--muted); text-align:right; }
     kbd { display:inline-grid; place-items:center; min-width:1.9rem; min-height:1.7rem; border:1px solid var(--line); border-radius:.45rem; padding:.12rem .38rem; background:rgba(255,255,255,.1); font-family:Pretendard,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; font-size:.78rem; }
+    .sidebar-footer-link { position:sticky; bottom:0; display:flex; align-items:center; gap:.82rem; width:100%; margin-top:1rem; border:1px solid rgba(255,253,247,.12); border-radius:1.15rem; padding:.8rem .9rem; text-align:left; background:linear-gradient(180deg,rgba(30,28,25,.94),rgba(18,17,15,.96)); box-shadow:0 18px 36px rgba(0,0,0,.22), inset 0 1px 0 rgba(255,255,255,.06); }
+    .sidebar-footer-mark { display:grid; flex:none; place-items:center; width:2.7rem; height:2.7rem; border-radius:.9rem; color:var(--white); background:linear-gradient(145deg,#2b2926,#090909); box-shadow:inset 0 1px 0 rgba(255,255,255,.12); }
+    .sidebar-footer-mark svg { width:1.25rem; height:1.25rem; fill:currentColor; }
+    .sidebar-footer-copy { display:grid; gap:.14rem; }
+    .sidebar-footer-copy strong { color:var(--ink); font-size:.92rem; letter-spacing:-.02em; }
+    .sidebar-footer-copy small { color:var(--muted); font-size:.76rem; }
     body.presenting .panel, body.presenting .toolbar { display:none; }
     body.presenting .app { display:grid; grid-template-columns:1fr; padding:0; }
     body.presenting .stage { width:100vw; height:100vh; border-radius:0; aspect-ratio:auto; }
@@ -1877,6 +1883,17 @@ function createStandaloneHtml(data) {
       <label>색조 <input id="hue" type="range" min="-45" max="45" /></label>
       <p>F5: 발표 시작 / Esc: 종료 / Shift+?: 도움말</p>
       <p>화살표 N P Space: 페이지 이동 / = - 휠 키패드 +/-: 확대 축소 / 0: 초기화 / C: 커버</p>
+      <button id="openPages" class="sidebar-footer-link" type="button" aria-label="GitHub Pages 열기">
+        <span class="sidebar-footer-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" role="img">
+            <path d="M12 2C6.48 2 2 6.58 2 12.22c0 4.5 2.87 8.31 6.84 9.66.5.1.68-.22.68-.5 0-.24-.01-1.04-.02-1.89-2.78.62-3.37-1.22-3.37-1.22-.45-1.18-1.11-1.49-1.11-1.49-.91-.64.07-.63.07-.63 1 .07 1.53 1.06 1.53 1.06.9 1.56 2.35 1.11 2.92.85.09-.67.35-1.11.64-1.36-2.22-.26-4.56-1.14-4.56-5.09 0-1.12.39-2.03 1.03-2.75-.1-.26-.45-1.31.1-2.72 0 0 .84-.28 2.75 1.05A9.3 9.3 0 0 1 12 6.89c.85 0 1.71.12 2.51.36 1.91-1.33 2.75-1.05 2.75-1.05.55 1.41.2 2.46.1 2.72.64.72 1.03 1.63 1.03 2.75 0 3.96-2.34 4.82-4.57 5.08.36.32.69.94.69 1.9 0 1.38-.01 2.49-.01 2.83 0 .28.18.61.69.5A10.25 10.25 0 0 0 22 12.22C22 6.58 17.52 2 12 2Z" />
+          </svg>
+        </span>
+        <span class="sidebar-footer-copy">
+          <strong>GitHub Pages</strong>
+          <small>배포 페이지 열기</small>
+        </span>
+      </button>
     </aside>
     <section class="stage-wrap">
       <div class="toolbar"><button id="prev">이전</button><span id="status" class="status">Cover</span><button id="next">다음</button></div>
@@ -1931,7 +1948,7 @@ function createStandaloneHtml(data) {
     function backdropClose(e){ if(e.target!==$("shortcutDialog")) return; const r=$("shortcutDialog").getBoundingClientRect(); if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom) hideHelp(); }
     function onWheelZoom(e){ if(!(e.target instanceof Element) || !e.target.closest("#stage")) return; e.preventDefault(); if(e.deltaY<0) updateZoom(.1); else if(e.deltaY>0) updateZoom(-.1); }
     $("prev").onclick=()=>go(state.pageIndex-1); $("next").onclick=()=>go(state.pageIndex+1); $("fit").onclick=()=>{state.fitMode="fit";render()}; $("fill").onclick=()=>{state.fitMode="fill";render()}; $("bg").onclick=()=>{state.backgroundEnabled=!state.backgroundEnabled;render()}; $("present").onclick=present;
-    $("help").onclick=showHelp; $("closeHelp").onclick=hideHelp; $("downloadImages").onclick=downloadImages;
+    $("help").onclick=showHelp; $("closeHelp").onclick=hideHelp; $("downloadImages").onclick=downloadImages; $("openPages").onclick=()=>window.open("https://notoow.github.io/medical-image-presenter/","_blank","noopener,noreferrer");
     $("shortcutDialog").onclick=backdropClose;
     document.addEventListener("wheel", onWheelZoom, { passive:false });
     for (const id of ["title","subtitle","hospital","presenter"]) $(id).oninput=()=>{ const map={title:"title",subtitle:"subtitle",hospital:"hospitalName",presenter:"presenterName"}; state.cover[map[id]]=$(id).value; render(); };
