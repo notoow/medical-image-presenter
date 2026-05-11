@@ -1,6 +1,6 @@
-const DEFAULT_LOGO_URL = "./logos/haist-urology-logo.jpg";
+﻿const DEFAULT_LOGO_URL = "./logos/haist-urology-logo.jpg";
 const STORAGE_KEY = "medical-image-presenter:v2";
-const DEFAULT_LOGO_NAME = "하이스트비뇨의학과로고.jpg";
+const DEFAULT_LOGO_NAME = "?섏씠?ㅽ듃鍮꾨눊?섑븰怨쇰줈怨?jpg";
 
 const state = {
   images: [],
@@ -314,11 +314,11 @@ function renderImageCard(image, slotIndex) {
       <figure
         class="image-card empty-slot ${selectedClass}"
         data-slot-index="${slotIndex}"
-        title="사진 또는 빈칸을 여기로 드래그하세요"
+        title="?ъ쭊 ?먮뒗 鍮덉뭏???ш린濡??쒕옒洹명븯?몄슂"
       >
         <div class="empty-slot-inner">
-          <strong>빈칸</strong>
-          <span>우측 사진을 끌어다 놓기</span>
+          <strong>鍮덉뭏</strong>
+          <span>?곗륫 ?ъ쭊???뚯뼱???볤린</span>
         </div>
       </figure>
     `;
@@ -332,10 +332,10 @@ function renderImageCard(image, slotIndex) {
         class="remove-slot-button"
         type="button"
         data-remove-slot="${slotIndex}"
-        title="이 칸에서 사진 제거"
-        aria-label="이 칸에서 사진 제거"
+        title="??移몄뿉???ъ쭊 ?쒓굅"
+        aria-label="??移몄뿉???ъ쭊 ?쒓굅"
       >
-        ×
+        횞
       </button>
       <img
         class="blur-bg"
@@ -373,14 +373,14 @@ function renderGuides() {
               data-guide-index="${index}"
               data-label="${guide.percent.toFixed(1)}%"
               style="${guide.axis === "x" ? `left:${guide.percent}%` : `top:${guide.percent}%`}"
-              title="드래그하거나 우클릭해서 위치 입력"
+              title="?쒕옒洹명븯嫄곕굹 ?고겢由?빐???꾩튂 ?낅젰"
             ></div>
           `,
         )
         .join("")}
     </div>
-    <div class="guide-ruler guide-ruler-top" data-ruler-axis="x" title="클릭/드래그해서 세로 안내선 추가"></div>
-    <div class="guide-ruler guide-ruler-left" data-ruler-axis="y" title="클릭/드래그해서 가로 안내선 추가"></div>
+    <div class="guide-ruler guide-ruler-top" data-ruler-axis="x" title="?대┃/?쒕옒洹명빐???몃줈 ?덈궡??異붽?"></div>
+    <div class="guide-ruler guide-ruler-left" data-ruler-axis="y" title="?대┃/?쒕옒洹명빐??媛濡??덈궡??異붽?"></div>
   `;
 }
 
@@ -396,8 +396,8 @@ function renderSlide() {
     els.stage.innerHTML = `
       <div class="empty-state">
         <div>
-          <h2>사진을 선택하면 여기에 슬라이드가 만들어집니다.</h2>
-          <p>기본은 2장씩 Before / After 비교 레이아웃입니다.</p>
+          <h2>?ъ쭊???좏깮?섎㈃ ?ш린???щ씪?대뱶媛 留뚮뱾?댁쭛?덈떎.</h2>
+          <p>湲곕낯? 2?μ뵫 Before / After 鍮꾧탳 ?덉씠?꾩썐?낅땲??</p>
         </div>
       </div>
     `;
@@ -437,8 +437,8 @@ function render() {
 
   els.zoomOutput.textContent = `${Math.round(state.zoom * 100)}%`;
   els.backgroundButton.textContent = state.backgroundEnabled
-    ? "배경 채우기 켜짐 Enter"
-    : "배경 채우기 꺼짐 Enter";
+    ? "諛곌꼍 梨꾩슦湲?耳쒖쭚 Enter"
+    : "諛곌꼍 梨꾩슦湲?爰쇱쭚 Enter";
   syncSelectedSlotControls();
   renderGuideControls();
   renderThumbnails();
@@ -520,7 +520,7 @@ function askDuplicateUpload(duplicates) {
   return new Promise((resolve) => {
     const previewItems = duplicates.slice(0, 6);
     const extraCount = Math.max(duplicates.length - previewItems.length, 0);
-    els.duplicateMessage.textContent = `이름과 크기가 같은 사진이 ${duplicates.length}개 있습니다. 중복으로 올리시겠습니까?`;
+    els.duplicateMessage.textContent = `?대쫫怨??ш린媛 媛숈? ?ъ쭊??${duplicates.length}媛??덉뒿?덈떎. 以묐났?쇰줈 ?щ━?쒓쿋?듬땲源?`;
     els.duplicateList.innerHTML = `
       ${previewItems
         .map(
@@ -532,7 +532,7 @@ function askDuplicateUpload(duplicates) {
           `,
         )
         .join("")}
-      ${extraCount > 0 ? `<p class="duplicate-more">외 ${extraCount}개 더 있음</p>` : ""}
+      ${extraCount > 0 ? `<p class="duplicate-more">??${extraCount}媛????덉쓬</p>` : ""}
     `;
 
     const cleanup = (choice) => {
@@ -569,7 +569,7 @@ async function loadImageFiles(fileList) {
       : imageFiles;
 
   if (uploadFiles.length === 0) {
-    els.imageFileName.textContent = "중복 사진을 건너뜀";
+    els.imageFileName.textContent = "以묐났 ?ъ쭊??嫄대꼫?";
     return;
   }
 
@@ -787,7 +787,7 @@ function renderGuideControls() {
 
   if (state.guides.length === 0) {
     els.guideListPanel.innerHTML = `
-      <p class="guide-empty">아직 안내선이 없습니다. + 버튼으로 추가하세요.</p>
+      <p class="guide-empty">?꾩쭅 ?덈궡?좎씠 ?놁뒿?덈떎. + 踰꾪듉?쇰줈 異붽??섏꽭??</p>
     `;
     return;
   }
@@ -798,9 +798,9 @@ function renderGuideControls() {
       return `
         <div class="guide-control" data-guide-control="${index}">
           <div class="guide-control-head">
-            <strong>${label} 안내선 ${index + 1}</strong>
+            <strong>${label} ?덈궡??${index + 1}</strong>
             <output>${guide.percent.toFixed(1)}%</output>
-            <button type="button" data-guide-delete="${index}" aria-label="${label} 안내선 삭제">×</button>
+            <button type="button" data-guide-delete="${index}" aria-label="${label} ?덈궡????젣">횞</button>
           </div>
           <input
             type="range"
@@ -963,7 +963,7 @@ function bindGuideInteractions() {
       event.preventDefault();
       const index = Number(guideEl.dataset.guideIndex);
       const current = state.guides[index]?.percent ?? 50;
-      const next = window.prompt("안내선 위치를 퍼센트로 입력하세요.", current.toFixed(1));
+      const next = window.prompt("?덈궡???꾩튂瑜??쇱꽱?몃줈 ?낅젰?섏꽭??", current.toFixed(1));
       if (next === null) return;
       const value = Number(next);
       if (!Number.isFinite(value)) return;
@@ -1016,7 +1016,7 @@ function renderThumbnails() {
   if (state.images.length === 0) {
     els.thumbnailRail.innerHTML = `
       <div class="thumbnail-empty">
-        사진을 선택하면 여기에 슬라이드 미리보기와 사진 순서가 표시됩니다.
+        ?ъ쭊???좏깮?섎㈃ ?ш린???щ씪?대뱶 誘몃━蹂닿린? ?ъ쭊 ?쒖꽌媛 ?쒖떆?⑸땲??
       </div>
     `;
     return;
@@ -1036,8 +1036,8 @@ function renderThumbnails() {
   els.thumbnailRail.innerHTML = `
     <div class="thumbnail-section">
       <div class="thumbnail-section-head">
-        <strong>슬라이드 미리보기</strong>
-        <span>${state.gridCols} x ${state.gridRows} · 페이지당 ${pageSize}장</span>
+        <strong>?щ씪?대뱶 誘몃━蹂닿린</strong>
+        <span>${state.gridCols} x ${state.gridRows} 쨌 ?섏씠吏??${pageSize}??/span>
       </div>
       <div class="slide-preview-row">
         <button
@@ -1056,7 +1056,7 @@ function renderThumbnails() {
                 class="slide-thumb ${state.pageIndex === page.pageIndex ? "is-active" : ""}"
                 type="button"
                 data-page="${page.pageIndex}"
-                title="${page.pageIndex}페이지"
+                title="${page.pageIndex}?섏씠吏"
               >
                 <div
                   class="slide-thumb-grid ${slideLayoutClass}"
@@ -1081,8 +1081,8 @@ function renderThumbnails() {
 
       <div class="thumbnail-section">
       <div class="thumbnail-section-head">
-        <strong>현재 슬라이드 슬롯</strong>
-        <span>비어 있는 칸도 슬라이드에 유지됩니다</span>
+        <strong>?꾩옱 ?щ씪?대뱶 ?щ’</strong>
+        <span>鍮꾩뼱 ?덈뒗 移몃룄 ?щ씪?대뱶???좎??⑸땲??/span>
       </div>
       <div class="photo-order-row slot-summary-row">
         ${state.slideSlots
@@ -1094,9 +1094,9 @@ function renderThumbnails() {
           class="photo-order-card ${image ? "" : "is-empty"}"
           type="button"
           data-slot-page="${1 + Math.floor(index / pageSize)}"
-          title="${image ? escapeHtml(image.name) : "빈칸"}"
+          title="${image ? escapeHtml(image.name) : "鍮덉뭏"}"
         >
-          ${image ? `<img src="${image.url}" alt="" />` : `<div class="photo-empty-thumb">빈칸</div>`}
+          ${image ? `<img src="${image.url}" alt="" />` : `<div class="photo-empty-thumb">鍮덉뭏</div>`}
           <span>${index + 1}</span>
         </button>
       `;
@@ -1124,7 +1124,7 @@ function renderPhotoList() {
   if (!els.photoListPanel) return;
 
   if (state.images.length === 0) {
-    els.photoListPanel.innerHTML = `<p class="photo-list-empty">사진을 업로드하면 전체 목록이 표시됩니다.</p>`;
+    els.photoListPanel.innerHTML = `<p class="photo-list-empty">?ъ쭊???낅줈?쒗븯硫??꾩껜 紐⑸줉???쒖떆?⑸땲??</p>`;
     return;
   }
 
@@ -1203,7 +1203,7 @@ function isSequentialSlotComposition() {
 
 async function downloadAdjustedImages() {
   if (state.images.length === 0) {
-    alert("먼저 사진을 선택해주세요.");
+    alert("癒쇱? ?ъ쭊???좏깮?댁＜?몄슂.");
     return;
   }
 
@@ -1337,7 +1337,7 @@ bindVisibilityToggle(els.showCoverLogo, "logo");
 bindFilter(els.brightness, els.brightnessValue);
 bindFilter(els.contrast, els.contrastValue);
 bindFilter(els.saturate, els.saturateValue);
-bindFilter(els.hue, els.hueValue, "°");
+bindFilter(els.hue, els.hueValue, "째");
 bindBackgroundFilter(els.bgBrightness, els.bgBrightnessValue, "brightness");
 bindBackgroundFilter(els.bgSaturate, els.bgSaturateValue, "saturate");
 bindBackgroundFilter(els.bgBlur, els.bgBlurValue, "blur", "px");
@@ -1387,7 +1387,7 @@ els.resetFiltersButton.addEventListener("click", () => {
   els.brightnessValue.textContent = "100%";
   els.contrastValue.textContent = "100%";
   els.saturateValue.textContent = "100%";
-  els.hueValue.textContent = "0°";
+  els.hueValue.textContent = "0째";
   render();
 });
 
@@ -1650,7 +1650,7 @@ function applyPersistedState() {
     els.brightnessValue.textContent = `${state.filters.brightness}%`;
     els.contrastValue.textContent = `${state.filters.contrast}%`;
     els.saturateValue.textContent = `${state.filters.saturate}%`;
-    els.hueValue.textContent = `${state.filters.hue}째`;
+    els.hueValue.textContent = `${state.filters.hue}deg`;
 
     for (const [key, input] of [
       ["brightness", els.bgBrightness],
@@ -1676,7 +1676,7 @@ function applyPersistedState() {
 
 function exportStandaloneHtml() {
   if (state.images.length === 0) {
-    alert("먼저 사진을 선택한 뒤 HTML을 내려받을 수 있습니다.");
+    alert("癒쇱? ?ъ쭊???좏깮????HTML???대젮諛쏆쓣 ???덉뒿?덈떎.");
     return;
   }
 
@@ -1703,22 +1703,35 @@ function createStandaloneHtml(data) {
   <title>${escapeHtml(data.cover.title || "Medical Image Presentation")}</title>
   <style>
     @import url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css");
-    :root { color-scheme: dark; --ink:#fffdf7; --muted:rgba(255,253,247,.68); --panel:rgba(20,19,17,.76); --line:rgba(255,253,247,.16); --accent:#d9a06f; }
+    :root { color-scheme: dark; --ink:#fffdf7; --muted:rgba(255,253,247,.68); --panel:rgba(20,19,17,.84); --panel-soft:rgba(255,255,255,.05); --line:rgba(255,253,247,.16); --accent:#d9a06f; --accent-strong:#8f5c38; --white:#fffdf7; }
     * { box-sizing: border-box; }
     body { margin:0; min-height:100vh; color:var(--ink); font-family:Pretendard,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; background:radial-gradient(circle at 15% 10%,rgba(217,160,111,.2),transparent 28rem),linear-gradient(135deg,#151512,#050505); }
     button,input,textarea,select { font:inherit; }
-    button,select,input[type="range"] { border:1px solid var(--line); border-radius:999px; padding:.55rem .8rem; color:var(--ink); background:rgba(255,255,255,.08); }
-    button { cursor:pointer; }
+    button { border:1px solid var(--line); border-radius:999px; padding:.62rem .88rem; color:var(--ink); background:rgba(255,255,255,.08); cursor:pointer; transition:transform 160ms ease,border-color 160ms ease,background 160ms ease; }
+    button:hover { transform:translateY(-1px); border-color:rgba(217,160,111,.42); background:rgba(255,255,255,.12); }
+    input,textarea,select { width:100%; border:1px solid rgba(255,253,247,.14); border-radius:1rem; padding:.68rem .8rem; color:var(--ink); background:rgba(255,255,255,.11); box-shadow:inset 0 1px 0 rgba(255,255,255,.06); }
+    input[type="range"] { padding:0; background:transparent; box-shadow:none; border:0; }
     .app { display:grid; grid-template-columns:20rem 1fr; gap:1rem; min-height:100vh; padding:1rem; }
-    .panel { display:grid; align-content:start; gap:.85rem; max-height:calc(100vh - 2rem); overflow:auto; border:1px solid var(--line); border-radius:1.3rem; padding:1rem; background:var(--panel); backdrop-filter:blur(16px); }
-    .panel h1 { margin:0; font-size:1.65rem; line-height:1; letter-spacing:-.04em; }
-    .panel label { display:grid; gap:.35rem; color:var(--muted); font-size:.88rem; }
-    .panel input[type="text"], .panel textarea, .panel select { width:100%; border-radius:.8rem; }
+    .panel { display:grid; align-content:start; gap:1rem; max-height:calc(100vh - 2rem); overflow:auto; border:1px solid var(--line); border-radius:1.45rem; padding:1.05rem; background:linear-gradient(180deg,rgba(26,24,22,.92),rgba(14,13,12,.84)); backdrop-filter:blur(16px); box-shadow:0 20px 70px rgba(0,0,0,.28); }
+    .brand { display:grid; gap:.45rem; padding-bottom:.15rem; }
+    .eyebrow { margin:0; color:rgba(217,160,111,.82); font-size:.74rem; font-weight:700; letter-spacing:.12em; text-transform:uppercase; }
+    .panel h1 { margin:0; font-size:1.82rem; line-height:.96; letter-spacing:-.05em; }
+    .muted-copy { margin:0; color:var(--muted); font-size:.84rem; line-height:1.45; }
+    .section { display:grid; gap:.72rem; padding:.8rem; border:1px solid rgba(255,253,247,.08); border-radius:1.15rem; background:var(--panel-soft); }
+    .section-title { margin:0; color:rgba(255,253,247,.88); font-size:.82rem; font-weight:800; letter-spacing:.08em; text-transform:uppercase; }
+    .field { display:grid; gap:.36rem; color:var(--muted); font-size:.84rem; }
     .panel textarea { min-height:5.2rem; resize:vertical; line-height:1.45; }
-    .toggle-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:.45rem; }
-    .toggle-pill { display:flex; align-items:center; gap:.45rem; color:var(--muted); font-size:.85rem; }
+    .toggle-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:.5rem; }
+    .toggle-pill { position:relative; display:flex; align-items:center; justify-content:space-between; min-height:2.7rem; border:1px solid rgba(255,253,247,.08); border-radius:999px; padding:.32rem .82rem; color:var(--muted); background:rgba(255,255,255,.05); cursor:pointer; }
+    .toggle-pill input { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); clip-path:inset(50%); }
+    .toggle-pill::after { content:""; width:2.2rem; height:1.28rem; margin-left:auto; border-radius:999px; background:rgba(255,255,255,.12); box-shadow:inset 0 0 0 1px rgba(255,255,255,.12); transition:background 160ms ease; }
+    .toggle-pill::before { content:""; position:absolute; right:1.42rem; width:.88rem; height:.88rem; border-radius:50%; background:var(--white); box-shadow:0 2px 8px rgba(0,0,0,.28); transition:right 160ms ease,background 160ms ease; }
+    .toggle-pill:has(input:checked) { color:var(--ink); font-weight:700; }
+    .toggle-pill:has(input:checked)::after { background:linear-gradient(135deg,var(--accent),var(--accent-strong)); }
+    .toggle-pill:has(input:checked)::before { right:.58rem; }
     .row { display:flex; gap:.5rem; align-items:center; }
     .row > * { flex:1; }
+    .stack { display:grid; gap:.55rem; }
     .stage-wrap { display:grid; grid-template-rows:auto 1fr; gap:1rem; min-width:0; }
     .toolbar { display:flex; gap:.5rem; justify-content:flex-end; align-items:center; }
     .status { min-width:8rem; text-align:center; color:var(--muted); }
@@ -1749,56 +1762,56 @@ function createStandaloneHtml(data) {
     body.presenting .panel, body.presenting .toolbar { display:none; }
     body.presenting .app { display:grid; grid-template-columns:1fr; padding:0; }
     body.presenting .stage { width:100vw; height:100vh; border-radius:0; aspect-ratio:auto; }
-    @media (max-width:900px){ .app{grid-template-columns:1fr}.panel{max-height:none}.stage{width:100%}.help-grid{grid-template-columns:1fr} }
+    @media (max-width:900px){ .app{grid-template-columns:1fr}.panel{max-height:none}.stage{width:100%}.help-grid{grid-template-columns:1fr}.toggle-grid{grid-template-columns:1fr} }
   </style>
 </head>
 <body>
   <main class="app">
     <aside class="panel">
       <h1>Case Photo Presenter</h1>
-      <label>제목 <textarea id="title" rows="2"></textarea></label>
-      <label>부제 <input id="subtitle" type="text" /></label>
-      <label>병원명 <input id="hospital" type="text" /></label>
-      <label>발표자 <input id="presenter" type="text" /></label>
+      <label>?쒕ぉ <textarea id="title" rows="2"></textarea></label>
+      <label>遺??<input id="subtitle" type="text" /></label>
+      <label>蹂묒썝紐?<input id="hospital" type="text" /></label>
+      <label>諛쒗몴??<input id="presenter" type="text" /></label>
       <div class="toggle-grid">
-        <label class="toggle-pill"><input id="showTitle" type="checkbox"> 제목</label>
-        <label class="toggle-pill"><input id="showSubtitle" type="checkbox"> 부제</label>
-        <label class="toggle-pill"><input id="showHospital" type="checkbox"> 병원명</label>
-        <label class="toggle-pill"><input id="showPresenter" type="checkbox"> 발표자</label>
-        <label class="toggle-pill"><input id="showDate" type="checkbox"> 날짜</label>
-        <label class="toggle-pill"><input id="showLogo" type="checkbox"> 로고</label>
+        <label class="toggle-pill"><input id="showTitle" type="checkbox"> ?쒕ぉ</label>
+        <label class="toggle-pill"><input id="showSubtitle" type="checkbox"> 遺??/label>
+        <label class="toggle-pill"><input id="showHospital" type="checkbox"> 蹂묒썝紐?/label>
+        <label class="toggle-pill"><input id="showPresenter" type="checkbox"> 諛쒗몴??/label>
+        <label class="toggle-pill"><input id="showDate" type="checkbox"> ?좎쭨</label>
+        <label class="toggle-pill"><input id="showLogo" type="checkbox"> 濡쒓퀬</label>
       </div>
-      <label>페이지 구성 <select id="layout"><option value="single">낱장</option><option value="pair">2장씩</option><option value="triple">3장씩</option></select></label>
-      <div class="row"><button id="fit">맞추기 F</button><button id="fill">채우기 ⇧F</button></div>
-      <button id="bg">배경 채우기 Enter</button>
-      <button id="present">발표모드 F5</button>
-      <button id="help">단축키 보기 Shift+?</button>
-      <label>밝기 <input id="brightness" type="range" min="50" max="150" /></label>
-      <label>대비 <input id="contrast" type="range" min="50" max="160" /></label>
-      <label>채도 <input id="saturate" type="range" min="0" max="180" /></label>
-      <label>색조 <input id="hue" type="range" min="-45" max="45" /></label>
-      <p>F5: 발표 시작 / Esc: 종료 / Shift+?: 도움말</p>
-      <p>← → N P Space: 페이지 이동 / + - 0: 확대 초기화 / C: 커버</p>
+      <label>?섏씠吏 援ъ꽦 <select id="layout"><option value="single">?깆옣</option><option value="pair">2?μ뵫</option><option value="triple">3?μ뵫</option></select></label>
+      <div class="row"><button id="fit">留욎텛湲?F</button><button id="fill">梨꾩슦湲??쬑</button></div>
+      <button id="bg">諛곌꼍 梨꾩슦湲?Enter</button>
+      <button id="present">諛쒗몴紐⑤뱶 F5</button>
+      <button id="help">?⑥텞??蹂닿린 Shift+?</button>
+      <label>諛앷린 <input id="brightness" type="range" min="50" max="150" /></label>
+      <label>?鍮?<input id="contrast" type="range" min="50" max="160" /></label>
+      <label>梨꾨룄 <input id="saturate" type="range" min="0" max="180" /></label>
+      <label>?됱“ <input id="hue" type="range" min="-45" max="45" /></label>
+      <p>F5: 諛쒗몴 ?쒖옉 / Esc: 醫낅즺 / Shift+?: ?꾩?留?/p>
+      <p>????N P Space: ?섏씠吏 ?대룞 / + - 0: ?뺣? 珥덇린??/ C: 而ㅻ쾭</p>
     </aside>
     <section class="stage-wrap">
-      <div class="toolbar"><button id="prev">이전</button><span id="status" class="status">Cover</span><button id="next">다음</button></div>
+      <div class="toolbar"><button id="prev">?댁쟾</button><span id="status" class="status">Cover</span><button id="next">?ㅼ쓬</button></div>
       <article id="stage" class="stage cover"></article>
     </section>
   </main>
   <dialog id="shortcutDialog">
     <div class="help-card">
-      <div class="help-head"><h2>PPT 친화 단축키</h2><button id="closeHelp">닫기 Esc</button></div>
+      <div class="help-head"><h2>PPT 移쒗솕 ?⑥텞??/h2><button id="closeHelp">?リ린 Esc</button></div>
       <div class="help-grid">
-        <p><kbd>F5</kbd><span>처음부터 발표</span></p>
-        <p><kbd>Shift</kbd> + <kbd>F5</kbd><span>현재 페이지부터 발표</span></p>
-        <p><kbd>Esc</kbd><span>발표/도움말 종료</span></p>
-        <p><kbd>→</kbd> <kbd>↓</kbd> <kbd>N</kbd><span>다음 페이지</span></p>
-        <p><kbd>←</kbd> <kbd>↑</kbd> <kbd>P</kbd><span>이전 페이지</span></p>
-        <p><kbd>Home</kbd> / <kbd>End</kbd><span>커버 / 마지막</span></p>
-        <p><kbd>F</kbd> / <kbd>Shift</kbd> + <kbd>F</kbd><span>맞추기 / 채우기</span></p>
-        <p><kbd>Enter</kbd><span>블러 배경 토글</span></p>
-        <p><kbd>+</kbd> <kbd>-</kbd> <kbd>0</kbd><span>확대 / 축소 / 초기화</span></p>
-        <p><kbd>Shift</kbd> + <kbd>?</kbd><span>도움말</span></p>
+        <p><kbd>F5</kbd><span>泥섏쓬遺??諛쒗몴</span></p>
+        <p><kbd>Shift</kbd> + <kbd>F5</kbd><span>?꾩옱 ?섏씠吏遺??諛쒗몴</span></p>
+        <p><kbd>Esc</kbd><span>諛쒗몴/?꾩?留?醫낅즺</span></p>
+        <p><kbd>??/kbd> <kbd>??/kbd> <kbd>N</kbd><span>?ㅼ쓬 ?섏씠吏</span></p>
+        <p><kbd>??/kbd> <kbd>??/kbd> <kbd>P</kbd><span>?댁쟾 ?섏씠吏</span></p>
+        <p><kbd>Home</kbd> / <kbd>End</kbd><span>而ㅻ쾭 / 留덉?留?/span></p>
+        <p><kbd>F</kbd> / <kbd>Shift</kbd> + <kbd>F</kbd><span>留욎텛湲?/ 梨꾩슦湲?/span></p>
+        <p><kbd>Enter</kbd><span>釉붾윭 諛곌꼍 ?좉?</span></p>
+        <p><kbd>+</kbd> <kbd>-</kbd> <kbd>0</kbd><span>?뺣? / 異뺤냼 / 珥덇린??/span></p>
+        <p><kbd>Shift</kbd> + <kbd>?</kbd><span>?꾩?留?/span></p>
       </div>
     </div>
   </dialog>
@@ -1811,8 +1824,8 @@ function createStandaloneHtml(data) {
     const esc = (v) => String(v).replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#039;");
     const filter = () => \`brightness(\${state.filters.brightness}%) contrast(\${state.filters.contrast}%) saturate(\${state.filters.saturate}%) hue-rotate(\${state.filters.hue}deg)\`;
     function syncInputs(){ $("title").value=state.cover.title; $("subtitle").value=state.cover.subtitle; $("hospital").value=state.cover.hospitalName; $("presenter").value=state.cover.presenterName; $("layout").value=state.layoutMode; $("showTitle").checked=state.coverVisibility.title; $("showSubtitle").checked=state.coverVisibility.subtitle; $("showHospital").checked=state.coverVisibility.hospitalName; $("showPresenter").checked=state.coverVisibility.presenterName; $("showDate").checked=state.coverVisibility.date; $("showLogo").checked=state.coverVisibility.logo; for (const key of ["brightness","contrast","saturate","hue"]) $(key).value=state.filters[key]; }
-    function render(){ state.pageIndex=Math.min(Math.max(state.pageIndex,0),totalPages()-1); if(state.pageIndex===0) renderCover(); else renderSlide(); $("status").textContent=state.pageIndex===0?\`Cover / \${totalPages()}\`:\`\${state.pageIndex+1} / \${totalPages()}\`; $("bg").textContent=state.backgroundEnabled?"배경 채우기 켜짐 Enter":"배경 채우기 꺼짐 Enter"; }
-    function renderCover(){ const meta=[state.coverVisibility.hospitalName?state.cover.hospitalName:"",state.coverVisibility.presenterName?state.cover.presenterName:"",state.coverVisibility.date?state.cover.date:""].filter(Boolean); $("stage").className="stage cover"; $("stage").innerHTML=\`<div class="cover-card">\${state.coverVisibility.logo&&state.cover.logoUrl?\`<img class="cover-logo" src="\${state.cover.logoUrl}" alt="logo">\`:""}\${state.coverVisibility.title?\`<h2 class="cover-title">\${esc(state.cover.title)}</h2>\`:""}\${state.coverVisibility.subtitle?\`<p class="cover-subtitle">\${esc(state.cover.subtitle)}</p>\`:""}\${meta.length?\`<p class="meta">\${meta.map(esc).join(" · ")}</p>\`:""}</div>\`; }
+    function render(){ state.pageIndex=Math.min(Math.max(state.pageIndex,0),totalPages()-1); if(state.pageIndex===0) renderCover(); else renderSlide(); $("status").textContent=state.pageIndex===0?\`Cover / \${totalPages()}\`:\`\${state.pageIndex+1} / \${totalPages()}\`; $("bg").textContent=state.backgroundEnabled?"諛곌꼍 梨꾩슦湲?耳쒖쭚 Enter":"諛곌꼍 梨꾩슦湲?爰쇱쭚 Enter"; }
+    function renderCover(){ const meta=[state.coverVisibility.hospitalName?state.cover.hospitalName:"",state.coverVisibility.presenterName?state.cover.presenterName:"",state.coverVisibility.date?state.cover.date:""].filter(Boolean); $("stage").className="stage cover"; $("stage").innerHTML=\`<div class="cover-card">\${state.coverVisibility.logo&&state.cover.logoUrl?\`<img class="cover-logo" src="\${state.cover.logoUrl}" alt="logo">\`:""}\${state.coverVisibility.title?\`<h2 class="cover-title">\${esc(state.cover.title)}</h2>\`:""}\${state.coverVisibility.subtitle?\`<p class="cover-subtitle">\${esc(state.cover.subtitle)}</p>\`:""}\${meta.length?\`<p class="meta">\${meta.map(esc).join(" 쨌 ")}</p>\`:""}</div>\`; }
     function getImage(id){ return state.images.find((image)=>image.id===id); }
     function slotTransform(i){ return {scale:100,x:0,y:0,rotate:0,cropLeft:0,cropRight:0,cropTop:0,cropBottom:0,...(state.slotTransforms?.[i]||{})}; }
     function crop(i){ const t=slotTransform(i), c=state.crop||{left:0,right:0,top:0,bottom:0}; return \`inset(\${(c.top||0)+t.cropTop}% \${(c.right||0)+t.cropRight}% \${(c.bottom||0)+t.cropBottom}% \${(c.left||0)+t.cropLeft}%)\`; }
@@ -1858,3 +1871,4 @@ async function initializeDefaultLogo() {
 }
 
 initializeDefaultLogo();
+
