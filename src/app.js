@@ -274,19 +274,27 @@ function getSlotTransformStyle(slotIndex) {
 }
 
 function ensureSlideSlots() {
-  const imageIds = state.images.map((image) => image.id);
-  const beforeLength = state.slideSlots.length;
-  const beforeSignature = state.slideSlots.join("|");
+  syncImageIndex();
+  let changed = false;
+  const nextSlots = [];
 
-  state.slideSlots = state.slideSlots.filter((slot) => slot === null || imageIds.includes(slot));
+  state.slideSlots.forEach((slot) => {
+    if (slot === null || imageByIdIndex.has(slot)) {
+      nextSlots.push(slot);
+      return;
+    }
+    changed = true;
+  });
 
   const pageSize = getPageSize();
-  const remainder = state.slideSlots.length % pageSize;
-  if (state.slideSlots.length > 0 && remainder !== 0) {
-    state.slideSlots.push(...Array(pageSize - remainder).fill(null));
+  const remainder = nextSlots.length % pageSize;
+  if (nextSlots.length > 0 && remainder !== 0) {
+    nextSlots.push(...Array(pageSize - remainder).fill(null));
+    changed = true;
   }
 
-  if (beforeLength !== state.slideSlots.length || beforeSignature !== state.slideSlots.join("|")) {
+  if (changed) {
+    state.slideSlots = nextSlots;
     markSlideSlotsDirty();
   }
 }
@@ -1583,7 +1591,8 @@ function renderPhotoList() {
 function isSequentialSlotComposition() {
   const compactSlots = state.slideSlots.filter(Boolean);
   if (compactSlots.length !== state.images.length) return false;
-  return compactSlots.every((id) => state.images.some((image) => image.id === id));
+  syncImageIndex();
+  return compactSlots.every((id) => imageByIdIndex.has(id));
 }
 
 async function downloadAdjustedImages() {
