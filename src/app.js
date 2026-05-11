@@ -65,6 +65,10 @@ let imageIndexDirty = true;
 let imageSortDirty = true;
 let lastAppliedSortMode = state.sortMode;
 let imageByIdIndex = new Map();
+let imagesVersion = 0;
+let slideSlotsVersion = 0;
+let layoutVersion = 0;
+let previewVersion = 0;
 const previewCache = new Map();
 const previewJobs = new Map();
 const imageNameCollator = new Intl.Collator("ko-KR", {
@@ -206,7 +210,20 @@ function getTotalPages() {
 
 function markImagesDirty({ orderChanged = true } = {}) {
   imageIndexDirty = true;
+  imagesVersion += 1;
   if (orderChanged) imageSortDirty = true;
+}
+
+function markSlideSlotsDirty() {
+  slideSlotsVersion += 1;
+}
+
+function markLayoutDirty() {
+  layoutVersion += 1;
+}
+
+function markPreviewDirty() {
+  previewVersion += 1;
 }
 
 function syncImageIndex() {
@@ -258,6 +275,8 @@ function getSlotTransformStyle(slotIndex) {
 
 function ensureSlideSlots() {
   const imageIds = state.images.map((image) => image.id);
+  const beforeLength = state.slideSlots.length;
+  const beforeSignature = state.slideSlots.join("|");
 
   state.slideSlots = state.slideSlots.filter((slot) => slot === null || imageIds.includes(slot));
 
@@ -265,6 +284,10 @@ function ensureSlideSlots() {
   const remainder = state.slideSlots.length % pageSize;
   if (state.slideSlots.length > 0 && remainder !== 0) {
     state.slideSlots.push(...Array(pageSize - remainder).fill(null));
+  }
+
+  if (beforeLength !== state.slideSlots.length || beforeSignature !== state.slideSlots.join("|")) {
+    markSlideSlotsDirty();
   }
 }
 
@@ -718,12 +741,14 @@ async function ensurePreviewForImage(image) {
     .then((previewUrl) => {
       previewCache.set(image.id, previewUrl);
       previewJobs.delete(image.id);
+      markPreviewDirty();
       schedulePreviewRefresh();
       return previewUrl;
     })
     .catch(() => {
       previewCache.set(image.id, image.url);
       previewJobs.delete(image.id);
+      markPreviewDirty();
       return image.url;
     });
 
@@ -874,6 +899,7 @@ async function loadImageFiles(fileList) {
     state.images = [...state.images, ...addedImages];
     markImagesDirty();
     state.slideSlots = [...state.slideSlots, ...addedImages.map((image) => image.id)];
+    markSlideSlotsDirty();
     state.selectedSlotIndex = null;
 
     els.imageFileName.textContent =
@@ -1070,6 +1096,7 @@ function setGrid(rows, cols, mode = "custom") {
   state.gridRows = clamp(rows, 1, 4);
   state.gridCols = clamp(cols, 1, 6);
   state.layoutMode = mode;
+  markLayoutDirty();
   els.gridRows.value = state.gridRows;
   els.gridCols.value = state.gridCols;
   els.layoutMode.value = mode;
@@ -1166,6 +1193,7 @@ function setSlot(slotIndex, imageId) {
   }
 
   state.slideSlots[slotIndex] = imageId;
+  markSlideSlotsDirty();
   if (imageId) state.selectedSlotIndex = slotIndex;
   if (!imageId && state.selectedSlotIndex === slotIndex) state.selectedSlotIndex = null;
   render();
@@ -1173,18 +1201,21 @@ function setSlot(slotIndex, imageId) {
 
 function addEmptySlot() {
   state.slideSlots.push(null);
+  markSlideSlotsDirty();
   goToPage(Math.max(1, Math.ceil(state.slideSlots.length / getPageSize())));
 }
 
 function clearSlideSlots() {
   if (state.images.length === 0) {
     state.slideSlots = [];
+    markSlideSlotsDirty();
     state.pageIndex = 0;
     render();
     return;
   }
 
   state.slideSlots = Array(getPageSize()).fill(null);
+  markSlideSlotsDirty();
   state.slotTransforms = {};
   state.selectedSlotIndex = null;
   state.pageIndex = 1;
@@ -1347,13 +1378,17 @@ function renderThumbnails() {
   });
 
   const slideLayoutClass = state.layoutMode === "custom" ? "layout-custom" : `layout-${state.layoutMode}`;
-  const nextKey = JSON.stringify({
-    imageIds: state.images.map((image) => image.id),
-    slideSlots: state.slideSlots,
-    layoutMode: state.layoutMode,
-    gridCols: state.gridCols,
-    gridRows: state.gridRows,
-  });
+  const nextKey = [
+    imagesVersion,
+    slideSlotsVersion,
+    layoutVersion,
+    previewVersion,
+    state.images.length,
+    state.slideSlots.length,
+    state.layoutMode,
+    state.gridCols,
+    state.gridRows,
+  ].join(":");
 
   if (thumbnailRenderKey !== nextKey) {
     thumbnailRenderKey = nextKey;
@@ -1464,14 +1499,13 @@ function renderPhotoList() {
     counts.set(imageId, (counts.get(imageId) ?? 0) + 1);
     return counts;
   }, new Map());
-  const nextKey = JSON.stringify({
-    images: state.images.map((image) => ({
-      id: image.id,
-      name: image.name,
-      url: getRenderableImageUrl(image),
-      usedCount: usedCounts.get(image.id) ?? 0,
-    })),
-  });
+  const nextKey = [
+    imagesVersion,
+    slideSlotsVersion,
+    previewVersion,
+    state.images.length,
+    state.slideSlots.length,
+  ].join(":");
 
   if (photoListRenderKey === nextKey) return;
 
@@ -1650,6 +1684,7 @@ els.sortMode.addEventListener("change", () => {
 
 els.layoutMode.addEventListener("change", () => {
   state.layoutMode = els.layoutMode.value;
+  markLayoutDirty();
   if (state.layoutMode !== "custom") {
     const preset = {
       single: [1, 1],
@@ -2026,11 +2061,13 @@ function applyPersistedState() {
     }
 
     state.slideSlots = Array.isArray(data.slideSlots) ? data.slideSlots : state.slideSlots;
+    markSlideSlotsDirty();
     state.slotTransforms = data.slotTransforms ?? state.slotTransforms;
     state.selectedSlotIndex = data.selectedSlotIndex ?? state.selectedSlotIndex;
     state.layoutMode = data.layoutMode ?? state.layoutMode;
     state.gridRows = data.gridRows ?? state.gridRows;
     state.gridCols = data.gridCols ?? state.gridCols;
+    markLayoutDirty();
     state.sortMode = data.sortMode ?? state.sortMode;
     state.fitMode = data.fitMode ?? state.fitMode;
     state.backgroundEnabled = data.backgroundEnabled ?? state.backgroundEnabled;
