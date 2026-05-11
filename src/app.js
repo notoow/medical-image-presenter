@@ -93,6 +93,7 @@ const els = {
   closeShortcutHelpButton: document.querySelector("#closeShortcutHelpButton"),
   shortcutDialog: document.querySelector("#shortcutDialog"),
   exportButton: document.querySelector("#exportButton"),
+  openPagesButton: document.querySelector("#openPagesButton"),
   downloadImagesButton: document.querySelector("#downloadImagesButton"),
   zoomOutButton: document.querySelector("#zoomOutButton"),
   zoomInButton: document.querySelector("#zoomInButton"),
@@ -1315,6 +1316,9 @@ els.shortcutHelpButton.addEventListener("click", showShortcutHelp);
 els.closeShortcutHelpButton.addEventListener("click", hideShortcutHelp);
 els.shortcutDialog.addEventListener("click", closeDialogFromBackdrop);
 els.exportButton.addEventListener("click", exportStandaloneHtml);
+els.openPagesButton.addEventListener("click", () => {
+  window.open("https://notoow.github.io/medical-image-presenter/", "_blank", "noopener,noreferrer");
+});
 els.downloadImagesButton.addEventListener("click", downloadAdjustedImages);
 els.emptySlotToken.addEventListener("dragstart", (event) => {
   event.dataTransfer.setData("application/x-medical-presenter", "empty");
