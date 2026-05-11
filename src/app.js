@@ -76,6 +76,7 @@ let selectedSlotUiKey = "";
 let visibleSlideCardCache = new Map();
 let visibleGuideCache = new Map();
 let renderableImageNodeCache = new Map();
+let renderableImageRootCache = new Map();
 let guideControlOutputCache = new Map();
 let pageSizeCacheVersion = -1;
 let cachedPageSize = 2;
@@ -607,9 +608,9 @@ function renderSlide() {
       label: card.querySelector(".image-label"),
     });
     const imageId = blurImage?.getAttribute("data-renderable-image-id");
-    if (imageId && blurImage) registerRenderableImageNode(imageId, blurImage);
+    if (imageId && blurImage) registerRenderableImageNode(imageId, blurImage, els.stage);
     const mainImageId = mainImage?.getAttribute("data-renderable-image-id");
-    if (mainImageId && mainImage) registerRenderableImageNode(mainImageId, mainImage);
+    if (mainImageId && mainImage) registerRenderableImageNode(mainImageId, mainImage, els.stage);
   });
 
   const guideLayer = slideGrid?.nextElementSibling;
@@ -916,22 +917,32 @@ function getRenderableImageUrl(image) {
 
 function unregisterRenderableImageNodesInRoot(root) {
   if (!root) return;
-  renderableImageNodeCache.forEach((nodes, imageId) => {
-    const nextNodes = nodes.filter((node) => node.isConnected && !root.contains(node));
+  const entries = renderableImageRootCache.get(root);
+  if (!entries || entries.length === 0) {
+    renderableImageRootCache.delete(root);
+    return;
+  }
+
+  entries.forEach(({ imageId, node }) => {
+    const nodes = renderableImageNodeCache.get(imageId);
+    if (!nodes || nodes.length === 0) return;
+    const nextNodes = nodes.filter((candidate) => candidate.isConnected && candidate !== node);
     if (nextNodes.length === 0) {
       renderableImageNodeCache.delete(imageId);
       return;
     }
     renderableImageNodeCache.set(imageId, nextNodes);
   });
+
+  renderableImageRootCache.delete(root);
 }
 
-function registerRenderableImageNodesInRoot(root) {
+function registerRenderableImageNodesInRoot(root, ownerRoot = root) {
   if (!root?.querySelectorAll) return;
   root.querySelectorAll("[data-renderable-image-id]").forEach((node) => {
     const imageId = node.getAttribute("data-renderable-image-id");
     if (!imageId) return;
-    registerRenderableImageNode(imageId, node);
+    registerRenderableImageNode(imageId, node, ownerRoot);
   });
 }
 
@@ -941,11 +952,15 @@ function createFragmentFromHtml(html) {
   return template.content;
 }
 
-function registerRenderableImageNode(imageId, node) {
+function registerRenderableImageNode(imageId, node, ownerRoot = null) {
   if (!imageId || !node) return;
   const nodes = renderableImageNodeCache.get(imageId) ?? [];
   nodes.push(node);
   renderableImageNodeCache.set(imageId, nodes);
+  if (!ownerRoot) return;
+  const rootEntries = renderableImageRootCache.get(ownerRoot) ?? [];
+  rootEntries.push({ imageId, node });
+  renderableImageRootCache.set(ownerRoot, rootEntries);
 }
 
 function refreshRenderableImageNodeCacheForRoot(root) {
@@ -1572,7 +1587,7 @@ function renderThumbnails() {
       </div>
     `;
     const fragment = createFragmentFromHtml(thumbnailHtml);
-    registerRenderableImageNodesInRoot(fragment);
+    registerRenderableImageNodesInRoot(fragment, els.thumbnailRail);
     els.thumbnailRail.replaceChildren(fragment);
     els.thumbnailRail.querySelectorAll(".slide-thumb[data-page]").forEach((button) => {
       const page = Number(button.getAttribute("data-page"));
@@ -1654,7 +1669,7 @@ function renderPhotoList() {
       .join("");
 
     const fragment = createFragmentFromHtml(batchHtml);
-    registerRenderableImageNodesInRoot(fragment);
+    registerRenderableImageNodesInRoot(fragment, els.photoListPanel);
     els.photoListPanel.append(fragment);
     startIndex = endIndex;
 
