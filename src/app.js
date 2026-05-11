@@ -1,5 +1,7 @@
 ﻿const DEFAULT_LOGO_URL = "./logos/haist-urology-logo.jpg";
-const STORAGE_KEY = "medical-image-presenter:v2";
+const LEGACY_STORAGE_KEY = "medical-image-presenter:v2";
+const SETTINGS_STORAGE_KEY = "medical-image-presenter:settings:v3";
+const ASSETS_STORAGE_KEY = "medical-image-presenter:assets:v3";
 const DEFAULT_LOGO_NAME = "하이스트비뇨의학과로고.jpg";
 
 const state = {
@@ -47,7 +49,8 @@ const state = {
   },
 };
 
-let persistTimer = null;
+let settingsPersistTimer = null;
+let assetsPersistTimer = null;
 let isRestoring = true;
 
 const els = {
@@ -444,7 +447,7 @@ function render() {
   renderGuideControls();
   renderThumbnails();
   renderPhotoList();
-  queuePersist();
+  queuePersistSettings();
 }
 
 function escapeHtml(value) {
@@ -595,6 +598,7 @@ async function loadImageFiles(fileList) {
 
   state.pageIndex = wasEmpty ? 1 : state.pageIndex;
   render();
+  queuePersistAssets();
 }
 
 function hasDraggedFiles(event) {
@@ -830,7 +834,7 @@ function renderGuideControls() {
         guideEl.dataset.label = `${state.guides[index].percent.toFixed(1)}%`;
       }
 
-      queuePersist();
+      queuePersistSettings();
     });
 
     slider.addEventListener("change", render);
@@ -1192,6 +1196,7 @@ function renderPhotoList() {
       state.sortMode = "manual";
       els.sortMode.value = "manual";
       render();
+      queuePersistAssets();
     });
   });
 }
@@ -1267,6 +1272,7 @@ els.logoInput.addEventListener("change", async () => {
   state.logoUrl = await fileToDataUrl(file);
   els.logoFileName.textContent = file.name;
   render();
+  queuePersistAssets();
 });
 
 els.imageInput.addEventListener("change", async () => {
@@ -1546,6 +1552,47 @@ function getPresentationData() {
   };
 }
 
+function getImageOrder() {
+  return state.images.map((image) => image.id);
+}
+
+function getSettingsData() {
+  return {
+    cover: {
+      title: els.coverTitle.value,
+      subtitle: els.coverSubtitle.value,
+      hospitalName: els.hospitalName.value,
+      presenterName: els.presenterName.value,
+      date: new Date().toLocaleDateString("ko-KR"),
+    },
+    coverVisibility: state.coverVisibility,
+    slideSlots: state.slideSlots,
+    slotTransforms: state.slotTransforms,
+    layoutMode: state.layoutMode,
+    gridRows: state.gridRows,
+    gridCols: state.gridCols,
+    sortMode: state.sortMode,
+    fitMode: state.fitMode,
+    backgroundEnabled: state.backgroundEnabled,
+    backgroundFilters: state.backgroundFilters,
+    crop: state.crop,
+    zoom: state.zoom,
+    guidesEnabled: state.guidesEnabled,
+    guides: state.guides,
+    filters: state.filters,
+    pageIndex: state.pageIndex,
+    selectedSlotIndex: state.selectedSlotIndex,
+    imageOrder: getImageOrder(),
+  };
+}
+
+function getAssetsData() {
+  return {
+    images: state.images,
+    logoUrl: state.logoUrl,
+  };
+}
+
 function downloadTextFile(fileName, text) {
   const blob = new Blob([text], { type: "text/html;charset=utf-8" });
   const url = URL.createObjectURL(blob);
@@ -1558,52 +1605,59 @@ function downloadTextFile(fileName, text) {
   URL.revokeObjectURL(url);
 }
 
-function getPersistData() {
-  return {
-    ...getPresentationData(),
-    pageIndex: state.pageIndex,
-    selectedSlotIndex: state.selectedSlotIndex,
-  };
-}
-
-function queuePersist() {
+function queuePersistSettings() {
   if (isRestoring) return;
-  window.clearTimeout(persistTimer);
-  persistTimer = window.setTimeout(() => {
+  window.clearTimeout(settingsPersistTimer);
+  settingsPersistTimer = window.setTimeout(() => {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(getPersistData()));
+      localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(getSettingsData()));
     } catch {
-      try {
-        const settingsOnly = {
-          ...getPersistData(),
-          images: [],
-          slideSlots: [],
-          logoUrl: "",
-          cover: { ...getPersistData().cover, logoUrl: "" },
-        };
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(settingsOnly));
-      } catch {
-        // Ignore storage quota failures; exporting HTML still preserves the full deck.
-      }
+      // Ignore storage failures here; the editor still works and HTML export preserves the full deck.
     }
   }, 250);
 }
 
+function queuePersistAssets() {
+  if (isRestoring) return;
+  window.clearTimeout(assetsPersistTimer);
+  assetsPersistTimer = window.setTimeout(() => {
+    try {
+      localStorage.setItem(ASSETS_STORAGE_KEY, JSON.stringify(getAssetsData()));
+    } catch {
+      // Asset persistence can exceed storage quota; keep settings persistence working regardless.
+    }
+  }, 500);
+}
+
+function applyImageOrder(order) {
+  if (!Array.isArray(order) || order.length === 0 || state.images.length === 0) return;
+
+  const byId = new Map(state.images.map((image) => [image.id, image]));
+  const ordered = order.map((id) => byId.get(id)).filter(Boolean);
+  const remaining = state.images.filter((image) => !order.includes(image.id));
+  state.images = [...ordered, ...remaining];
+}
+
 function applyPersistedState() {
-  const saved = localStorage.getItem(STORAGE_KEY);
-  if (!saved) return false;
+  const savedSettings = localStorage.getItem(SETTINGS_STORAGE_KEY);
+  const savedAssets = localStorage.getItem(ASSETS_STORAGE_KEY);
+  const legacySaved = !savedSettings && !savedAssets ? localStorage.getItem(LEGACY_STORAGE_KEY) : null;
+  if (!savedSettings && !savedAssets && !legacySaved) return false;
 
   try {
-    const data = JSON.parse(saved);
+    const data = legacySaved ? JSON.parse(legacySaved) : savedSettings ? JSON.parse(savedSettings) : {};
+    const assets = legacySaved ? data : savedAssets ? JSON.parse(savedAssets) : {};
+
+    state.images = Array.isArray(assets.images) ? assets.images : state.images;
+    state.logoUrl = assets.logoUrl || state.logoUrl;
+
     if (data.cover) {
       els.coverTitle.value = data.cover.title ?? els.coverTitle.value;
       els.coverSubtitle.value = data.cover.subtitle ?? els.coverSubtitle.value;
       els.hospitalName.value = data.cover.hospitalName ?? els.hospitalName.value;
       els.presenterName.value = data.cover.presenterName ?? els.presenterName.value;
-      state.logoUrl = data.cover.logoUrl || data.logoUrl || state.logoUrl;
     }
 
-    state.images = Array.isArray(data.images) ? data.images : state.images;
     state.slideSlots = Array.isArray(data.slideSlots) ? data.slideSlots : state.slideSlots;
     state.slotTransforms = data.slotTransforms ?? state.slotTransforms;
     state.selectedSlotIndex = data.selectedSlotIndex ?? state.selectedSlotIndex;
@@ -1621,6 +1675,7 @@ function applyPersistedState() {
     state.coverVisibility = { ...state.coverVisibility, ...(data.coverVisibility ?? {}) };
     state.filters = { ...state.filters, ...(data.filters ?? {}) };
     state.pageIndex = data.pageIndex ?? state.pageIndex;
+    applyImageOrder(data.imageOrder);
 
     els.sortMode.value = state.sortMode;
     els.layoutMode.value = state.layoutMode;
