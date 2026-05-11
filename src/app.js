@@ -60,6 +60,7 @@ let isRestoring = true;
 let thumbnailRenderKey = "";
 let photoListRenderKey = "";
 let photoListRenderToken = 0;
+let guidePanelRenderKey = "";
 let activeThumbnailButton = null;
 let activeReorderTarget = null;
 let activeStageSlotDropTarget = null;
@@ -81,6 +82,7 @@ let usedCountsCache = new Map();
 let imagesVersion = 0;
 let slideSlotsVersion = 0;
 let layoutVersion = 0;
+let guidesVersion = 0;
 let lastPersistedSettingsJson = "";
 let lastPersistedAssetsJson = "";
 const previewCache = new Map();
@@ -234,6 +236,10 @@ function markSlideSlotsDirty() {
 
 function markLayoutDirty() {
   layoutVersion += 1;
+}
+
+function markGuidesDirty() {
+  guidesVersion += 1;
 }
 
 function syncImageIndex() {
@@ -1232,11 +1238,16 @@ function addGuide(axis, percent = 50) {
     axis,
     percent: clamp(percent, 0, 100),
   });
+  markGuidesDirty();
   render();
 }
 
 function renderGuideControls() {
   if (!els.guideListPanel) return;
+
+  const nextKey = `${guidesVersion}:${state.guides.length}`;
+  if (guidePanelRenderKey === nextKey) return;
+  guidePanelRenderKey = nextKey;
 
   if (state.guides.length === 0) {
     els.guideListPanel.innerHTML = `
@@ -1327,6 +1338,7 @@ function syncGuideVisual(index) {
 function updateGuide(index, percent) {
   if (!state.guides[index]) return;
   state.guides[index].percent = clamp(percent, 0, 100);
+  markGuidesDirty();
   render();
 }
 
@@ -1613,6 +1625,7 @@ els.guideListPanel?.addEventListener("input", (event) => {
   if (!state.guides[index] || !Number.isFinite(value)) return;
 
   state.guides[index].percent = clamp(value, 0, 100);
+  markGuidesDirty();
   slider.closest(".guide-control")?.querySelector("output")?.replaceChildren(`${value.toFixed(1)}%`);
 
   const guideEl = els.stage.querySelector(`[data-guide-index="${index}"]`);
@@ -1627,7 +1640,7 @@ els.guideListPanel?.addEventListener("input", (event) => {
 els.guideListPanel?.addEventListener("change", (event) => {
   const slider = event.target instanceof HTMLInputElement ? event.target.closest("[data-guide-slider]") : null;
   if (!(slider instanceof HTMLInputElement)) return;
-  render();
+  queuePersistSettings();
 });
 
 els.guideListPanel?.addEventListener("click", (event) => {
@@ -1635,6 +1648,7 @@ els.guideListPanel?.addEventListener("click", (event) => {
   if (!(button instanceof HTMLButtonElement)) return;
   const index = Number(button.dataset.guideDelete);
   state.guides.splice(index, 1);
+  markGuidesDirty();
   render();
 });
 
@@ -1664,6 +1678,7 @@ els.stage?.addEventListener("pointerdown", (event) => {
     axis,
     percent: getGuidePercentFromPointer(axis, event),
   });
+  markGuidesDirty();
   const index = state.guides.length - 1;
   activeGuideDrag = {
     index,
@@ -1692,6 +1707,7 @@ window.addEventListener("pointermove", (event) => {
   const guide = state.guides[activeGuideDrag.index];
   if (!guide) return;
   guide.percent = getGuidePercentFromPointer(activeGuideDrag.axis, event);
+  markGuidesDirty();
   syncGuideVisual(activeGuideDrag.index);
 });
 
@@ -1934,6 +1950,7 @@ els.addVerticalGuideButton.addEventListener("click", () => addGuide("x", 50));
 els.addHorizontalGuideButton.addEventListener("click", () => addGuide("y", 50));
 els.clearGuidesButton.addEventListener("click", () => {
   state.guides = [];
+  markGuidesDirty();
   render();
 });
 
@@ -2269,6 +2286,7 @@ function applyPersistedState() {
     state.zoom = data.zoom ?? state.zoom;
     state.guidesEnabled = data.guidesEnabled ?? state.guidesEnabled;
     state.guides = Array.isArray(data.guides) ? data.guides : state.guides;
+    markGuidesDirty();
     state.coverVisibility = { ...state.coverVisibility, ...(data.coverVisibility ?? {}) };
     state.filters = { ...state.filters, ...(data.filters ?? {}) };
     state.pageIndex = data.pageIndex ?? state.pageIndex;
