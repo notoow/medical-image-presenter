@@ -438,6 +438,72 @@ function renderSlide() {
   bindSlotDropTargets();
 }
 
+function syncDeckStatus() {
+  els.pageStatus.textContent =
+    state.pageIndex === 0
+      ? `Cover / ${getTotalPages()}`
+      : `${state.pageIndex + 1} / ${getTotalPages()}`;
+
+  els.zoomOutput.textContent = `${Math.round(state.zoom * 100)}%`;
+  els.backgroundButton.textContent = state.backgroundEnabled
+    ? "배경 채우기 켜짐 Enter"
+    : "배경 채우기 꺼짐 Enter";
+}
+
+function getVisibleSlideSlotIndices() {
+  if (state.pageIndex <= 0) return [];
+  const pageSize = getPageSize();
+  const start = (state.pageIndex - 1) * pageSize;
+  return Array.from({ length: pageSize }, (_, offset) => start + offset);
+}
+
+function refreshVisibleSlideCards(slotIndices = getVisibleSlideSlotIndices()) {
+  if (state.pageIndex <= 0 || !els.stage.querySelector(".slide-grid")) return false;
+
+  const filter = getFilterStyle();
+  const backgroundFilter = getBackgroundFilterStyle();
+
+  slotIndices.forEach((slotIndex) => {
+    const card = els.stage.querySelector(`[data-slot-index="${slotIndex}"]`);
+    if (!card) return;
+
+    card.classList.toggle("is-selected", state.selectedSlotIndex === slotIndex);
+
+    const imageId = state.slideSlots[slotIndex];
+    if (!imageId) return;
+
+    const image = getImageById(imageId);
+    if (!image) return;
+
+    const displayUrl = getRenderableImageUrl(image);
+    card.classList.toggle("background-enabled", state.backgroundEnabled);
+    card.classList.toggle("fit-fill", state.fitMode === "fill");
+
+    const blurImage = card.querySelector(".blur-bg");
+    if (blurImage) {
+      if (blurImage.getAttribute("src") !== displayUrl) blurImage.setAttribute("src", displayUrl);
+      blurImage.style.width = `${state.backgroundFilters.scale}%`;
+      blurImage.style.height = `${state.backgroundFilters.scale}%`;
+      blurImage.style.objectPosition = `center ${state.backgroundFilters.y}%`;
+      blurImage.style.filter = backgroundFilter;
+    }
+
+    const mainImage = card.querySelector(".main-image");
+    if (mainImage) {
+      if (mainImage.getAttribute("src") !== displayUrl) mainImage.setAttribute("src", displayUrl);
+      if (mainImage.getAttribute("alt") !== image.name) mainImage.setAttribute("alt", image.name);
+      mainImage.style.clipPath = getSlotCropStyle(slotIndex);
+      mainImage.style.filter = filter;
+      mainImage.style.transform = getSlotTransformStyle(slotIndex);
+    }
+
+    const label = card.querySelector(".image-label");
+    if (label) label.textContent = image.name;
+  });
+
+  return true;
+}
+
 function syncLoadingOverlay() {
   if (!els.loadingOverlay || !els.loadingLabel || !els.loadingMeta) return;
 
@@ -478,15 +544,7 @@ function render({ refreshGuidePanel = true, refreshThumbnails = true, refreshPho
     renderSlide();
   }
 
-  els.pageStatus.textContent =
-    state.pageIndex === 0
-      ? `Cover / ${getTotalPages()}`
-      : `${state.pageIndex + 1} / ${getTotalPages()}`;
-
-  els.zoomOutput.textContent = `${Math.round(state.zoom * 100)}%`;
-  els.backgroundButton.textContent = state.backgroundEnabled
-    ? "배경 채우기 켜짐 Enter"
-    : "배경 채우기 꺼짐 Enter";
+  syncDeckStatus();
   syncSelectedSlotControls();
   if (refreshGuidePanel) renderGuideControls();
   if (refreshThumbnails) renderThumbnails();
@@ -511,17 +569,28 @@ function goToPage(nextPage) {
 
 function updateFitMode(mode) {
   state.fitMode = mode;
-  render({ refreshGuidePanel: false, refreshThumbnails: false, refreshPhotoList: false });
+  if (!refreshVisibleSlideCards()) {
+    render({ refreshGuidePanel: false, refreshThumbnails: false, refreshPhotoList: false, persist: false });
+  }
+  queuePersistSettings();
 }
 
 function updateZoom(delta) {
   state.zoom = clamp(Number((state.zoom + delta).toFixed(2)), 0.5, 2.5);
-  render({ refreshGuidePanel: false, refreshThumbnails: false, refreshPhotoList: false });
+  syncDeckStatus();
+  if (!refreshVisibleSlideCards()) {
+    render({ refreshGuidePanel: false, refreshThumbnails: false, refreshPhotoList: false, persist: false });
+  }
+  queuePersistSettings();
 }
 
 function resetZoom() {
   state.zoom = 1;
-  render({ refreshGuidePanel: false, refreshThumbnails: false, refreshPhotoList: false });
+  syncDeckStatus();
+  if (!refreshVisibleSlideCards()) {
+    render({ refreshGuidePanel: false, refreshThumbnails: false, refreshPhotoList: false, persist: false });
+  }
+  queuePersistSettings();
 }
 
 function isZoomInKey(event) {
@@ -574,7 +643,9 @@ async function createPreviewDataUrl(sourceUrl, maxDimension = 1600) {
 function schedulePreviewRefresh() {
   window.clearTimeout(previewRefreshTimer);
   previewRefreshTimer = window.setTimeout(() => {
-    render({ refreshGuidePanel: false, persist: false });
+    refreshVisibleSlideCards();
+    renderThumbnails();
+    renderPhotoList();
   }, 80);
 }
 
@@ -810,7 +881,11 @@ function hideDropOverlay() {
 
 function toggleBackground() {
   state.backgroundEnabled = !state.backgroundEnabled;
-  render({ refreshGuidePanel: false, refreshThumbnails: false, refreshPhotoList: false });
+  syncDeckStatus();
+  if (!refreshVisibleSlideCards()) {
+    render({ refreshGuidePanel: false, refreshThumbnails: false, refreshPhotoList: false, persist: false });
+  }
+  queuePersistSettings();
 }
 
 function togglePresentationMode() {
@@ -861,7 +936,10 @@ function bindFilter(input, output, suffix = "%") {
   input.addEventListener("input", () => {
     state.filters[input.id] = Number(input.value);
     output.textContent = `${input.value}${suffix}`;
-    render();
+    if (!refreshVisibleSlideCards()) {
+      render({ refreshGuidePanel: false, refreshThumbnails: false, refreshPhotoList: false, persist: false });
+    }
+    queuePersistSettings();
   });
 }
 
@@ -869,7 +947,10 @@ function bindBackgroundFilter(input, output, key, suffix = "%") {
   input.addEventListener("input", () => {
     state.backgroundFilters[key] = Number(input.value);
     output.textContent = `${input.value}${suffix}`;
-    render();
+    if (!refreshVisibleSlideCards()) {
+      render({ refreshGuidePanel: false, refreshThumbnails: false, refreshPhotoList: false, persist: false });
+    }
+    queuePersistSettings();
   });
 }
 
@@ -877,7 +958,10 @@ function bindCrop(input, output, key) {
   input.addEventListener("input", () => {
     state.crop[key] = Number(input.value);
     output.textContent = `${input.value}%`;
-    render();
+    if (!refreshVisibleSlideCards()) {
+      render({ refreshGuidePanel: false, refreshThumbnails: false, refreshPhotoList: false, persist: false });
+    }
+    queuePersistSettings();
   });
 }
 
@@ -932,14 +1016,21 @@ function syncSelectedSlotControls() {
 
 function selectSlot(slotIndex) {
   state.selectedSlotIndex = Number(slotIndex);
-  render({ refreshGuidePanel: false, refreshThumbnails: false, refreshPhotoList: false, persist: false });
+  syncSelectedSlotControls();
+  if (!refreshVisibleSlideCards()) {
+    render({ refreshGuidePanel: false, refreshThumbnails: false, refreshPhotoList: false, persist: false });
+  }
 }
 
 function updateSelectedSlotTransform(key, value) {
   const slotIndex = Number(state.selectedSlotIndex);
   if (!Number.isFinite(slotIndex) || slotIndex < 0 || !state.slideSlots[slotIndex]) return;
   getSlotTransform(slotIndex)[key] = Number(value);
-  render({ refreshGuidePanel: false, refreshThumbnails: false, refreshPhotoList: false });
+  syncSelectedSlotControls();
+  if (!refreshVisibleSlideCards([slotIndex])) {
+    render({ refreshGuidePanel: false, refreshThumbnails: false, refreshPhotoList: false, persist: false });
+  }
+  queuePersistSettings();
 }
 
 function bindSlotTransform(input, output, key, suffix = "%") {
