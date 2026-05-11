@@ -81,6 +81,8 @@ let pageSizeCacheVersion = -1;
 let cachedPageSize = 2;
 let totalPagesCacheKey = "";
 let cachedTotalPages = 1;
+let currentPageSlotMetaCacheKey = "";
+let currentPageSlotMetaCache = null;
 let imageIndexDirty = true;
 let imageSortDirty = true;
 let lastAppliedSortMode = state.sortMode;
@@ -247,6 +249,33 @@ function getTotalPages() {
   cachedTotalPages = 1 + Math.ceil(state.slideSlots.length / getPageSize());
   totalPagesCacheKey = nextKey;
   return cachedTotalPages;
+}
+
+function getCurrentPageSlotMeta() {
+  if (state.pageIndex <= 0) {
+    return {
+      pageSize: getPageSize(),
+      start: 0,
+      slotIndices: [],
+      slots: [],
+    };
+  }
+
+  const pageSize = getPageSize();
+  const start = (state.pageIndex - 1) * pageSize;
+  const nextKey = `${slideSlotsVersion}:${layoutVersion}:${state.pageIndex}:${state.slideSlots.length}:${pageSize}`;
+  if (currentPageSlotMetaCacheKey === nextKey && currentPageSlotMetaCache) {
+    return currentPageSlotMetaCache;
+  }
+
+  currentPageSlotMetaCache = {
+    pageSize,
+    start,
+    slotIndices: Array.from({ length: pageSize }, (_, offset) => start + offset),
+    slots: state.slideSlots.slice(start, start + pageSize),
+  };
+  currentPageSlotMetaCacheKey = nextKey;
+  return currentPageSlotMetaCache;
 }
 
 function markImagesDirty({ orderChanged = true } = {}) {
@@ -517,10 +546,7 @@ function renderGuides() {
 }
 
 function renderSlide() {
-  const pageSize = getPageSize();
-  const imagePageIndex = state.pageIndex - 1;
-  const start = imagePageIndex * pageSize;
-  const pageSlots = state.slideSlots.slice(start, start + pageSize);
+  const { start, slots: pageSlots } = getCurrentPageSlotMeta();
 
   els.stage.className = `stage layout-${state.layoutMode}`;
 
@@ -593,10 +619,7 @@ function syncDeckStatus() {
 }
 
 function getVisibleSlideSlotIndices() {
-  if (state.pageIndex <= 0) return [];
-  const pageSize = getPageSize();
-  const start = (state.pageIndex - 1) * pageSize;
-  return Array.from({ length: pageSize }, (_, offset) => start + offset);
+  return getCurrentPageSlotMeta().slotIndices;
 }
 
 function refreshVisibleSlideCards(slotIndices = getVisibleSlideSlotIndices()) {
@@ -941,9 +964,8 @@ function warmPreviewCache(images) {
   if (!Array.isArray(images) || images.length === 0) return;
 
   const seen = new Set();
-  const currentPageStart = Math.max(0, (state.pageIndex - 1) * getPageSize());
-  const currentPagePriority = state.slideSlots
-    .slice(currentPageStart, currentPageStart + getPageSize())
+  const currentPagePriority = getCurrentPageSlotMeta()
+    .slots
     .map((imageId) => getImageById(imageId))
     .filter(Boolean);
   const prioritized = [...currentPagePriority, ...images].filter((image) => {
