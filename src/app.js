@@ -55,6 +55,8 @@ const state = {
 let settingsPersistTimer = null;
 let assetsPersistTimer = null;
 let isRestoring = true;
+let thumbnailRenderKey = "";
+let photoListRenderKey = "";
 
 const els = {
   stage: document.querySelector("#stage"),
@@ -1091,6 +1093,7 @@ function renderThumbnails() {
   if (!els.thumbnailRail) return;
 
   if (state.images.length === 0) {
+    thumbnailRenderKey = "empty";
     els.thumbnailRail.innerHTML = `
       <div class="thumbnail-empty">
         사진을 선택하면 여기에 슬라이드 미리보기와 사진 순서가 표시됩니다.
@@ -1109,91 +1112,105 @@ function renderThumbnails() {
   });
 
   const slideLayoutClass = state.layoutMode === "custom" ? "layout-custom" : `layout-${state.layoutMode}`;
-
-  els.thumbnailRail.innerHTML = `
-    <div class="thumbnail-section">
-      <div class="thumbnail-section-head">
-        <strong>슬라이드 미리보기</strong>
-        <span>${state.gridCols} x ${state.gridRows} 구성, 페이지당 ${pageSize}장</span>
-      </div>
-      <div class="slide-preview-row">
-        <button
-          class="slide-thumb ${state.pageIndex === 0 ? "is-active" : ""}"
-          type="button"
-          data-page="0"
-        >
-          <div class="slide-thumb-cover">
-            <span>Cover</span>
-          </div>
-        </button>
-        ${slidePages
-          .map(
-            (page) => `
-              <button
-                class="slide-thumb ${state.pageIndex === page.pageIndex ? "is-active" : ""}"
-                type="button"
-                data-page="${page.pageIndex}"
-                title="${page.pageIndex}페이지"
-              >
-                <div
-                  class="slide-thumb-grid ${slideLayoutClass}"
-                  style="--grid-cols:${state.gridCols}; --grid-rows:${state.gridRows};"
-                >
-                  ${page.slots
-                    .map((imageId) => {
-                      const image = getImageById(imageId);
-                      return image
-                        ? `<img src="${image.url}" alt="" />`
-                        : `<div class="slide-thumb-empty"></div>`;
-                    })
-                    .join("")}
-                </div>
-                <span class="slide-thumb-label">${page.pageIndex}</span>
-              </button>
-            `,
-          )
-          .join("")}
-      </div>
-    </div>
-
-      <div class="thumbnail-section">
-      <div class="thumbnail-section-head">
-        <strong>현재 슬라이드 순서</strong>
-        <span>비어 있는 칸도 슬라이드 순서에 포함됩니다.</span>
-      </div>
-      <div class="photo-order-row slot-summary-row">
-        ${state.slideSlots
-          .map(
-            (imageId, index) => {
-              const image = getImageById(imageId);
-              return `
-        <button
-          class="photo-order-card ${image ? "" : "is-empty"}"
-          type="button"
-          data-slot-page="${1 + Math.floor(index / pageSize)}"
-          title="${image ? escapeHtml(image.name) : "빈칸"}"
-        >
-          ${image ? `<img src="${image.url}" alt="" />` : `<div class="photo-empty-thumb">빈칸</div>`}
-          <span>${index + 1}</span>
-        </button>
-      `;
-            },
-          )
-          .join("")}
-      </div>
-    </div>
-  `;
-
-  els.thumbnailRail.querySelectorAll(".slide-thumb").forEach((button) => {
-    button.addEventListener("click", () => {
-      goToPage(Number(button.dataset.page));
-    });
+  const nextKey = JSON.stringify({
+    imageIds: state.images.map((image) => image.id),
+    slideSlots: state.slideSlots,
+    layoutMode: state.layoutMode,
+    gridCols: state.gridCols,
+    gridRows: state.gridRows,
   });
 
-  els.thumbnailRail.querySelectorAll(".photo-order-card").forEach((button) => {
-    button.addEventListener("click", () => {
-      goToPage(Number(button.dataset.slotPage));
+  if (thumbnailRenderKey !== nextKey) {
+    thumbnailRenderKey = nextKey;
+    els.thumbnailRail.innerHTML = `
+      <div class="thumbnail-section">
+        <div class="thumbnail-section-head">
+          <strong>슬라이드 미리보기</strong>
+          <span>${state.gridCols} x ${state.gridRows} 구성, 페이지당 ${pageSize}장</span>
+        </div>
+        <div class="slide-preview-row">
+          <button
+            class="slide-thumb"
+            type="button"
+            data-page="0"
+          >
+            <div class="slide-thumb-cover">
+              <span>Cover</span>
+            </div>
+          </button>
+          ${slidePages
+            .map(
+              (page) => `
+                <button
+                  class="slide-thumb"
+                  type="button"
+                  data-page="${page.pageIndex}"
+                  title="${page.pageIndex}페이지"
+                >
+                  <div
+                    class="slide-thumb-grid ${slideLayoutClass}"
+                    style="--grid-cols:${state.gridCols}; --grid-rows:${state.gridRows};"
+                  >
+                    ${page.slots
+                      .map((imageId) => {
+                        const image = getImageById(imageId);
+                        return image
+                          ? `<img src="${image.url}" alt="" loading="lazy" decoding="async" />`
+                          : `<div class="slide-thumb-empty"></div>`;
+                      })
+                      .join("")}
+                  </div>
+                  <span class="slide-thumb-label">${page.pageIndex}</span>
+                </button>
+              `,
+            )
+            .join("")}
+        </div>
+      </div>
+
+        <div class="thumbnail-section">
+        <div class="thumbnail-section-head">
+          <strong>현재 슬라이드 순서</strong>
+          <span>비어 있는 칸도 슬라이드 순서에 포함됩니다.</span>
+        </div>
+        <div class="photo-order-row slot-summary-row">
+          ${state.slideSlots
+            .map(
+              (imageId, index) => {
+                const image = getImageById(imageId);
+                return `
+          <button
+            class="photo-order-card ${image ? "" : "is-empty"}"
+            type="button"
+            data-slot-page="${1 + Math.floor(index / pageSize)}"
+            title="${image ? escapeHtml(image.name) : "빈칸"}"
+          >
+            ${image ? `<img src="${image.url}" alt="" loading="lazy" decoding="async" />` : `<div class="photo-empty-thumb">빈칸</div>`}
+            <span>${index + 1}</span>
+          </button>
+        `;
+              },
+            )
+            .join("")}
+        </div>
+      </div>
+    `;
+
+    els.thumbnailRail.querySelectorAll(".slide-thumb").forEach((button) => {
+      button.addEventListener("click", () => {
+        goToPage(Number(button.dataset.page));
+      });
     });
+
+    els.thumbnailRail.querySelectorAll(".photo-order-card").forEach((button) => {
+      button.addEventListener("click", () => {
+        goToPage(Number(button.dataset.slotPage));
+      });
+    });
+  }
+
+  els.thumbnailRail.querySelectorAll(".slide-thumb").forEach((button) => {
+    button.classList.toggle("is-active", Number(button.dataset.page) === state.pageIndex);
   });
 }
 
@@ -1201,6 +1218,7 @@ function renderPhotoList() {
   if (!els.photoListPanel) return;
 
   if (state.images.length === 0) {
+    photoListRenderKey = "empty";
     els.photoListPanel.innerHTML = `<p class="photo-list-empty">사진을 업로드하면 전체 목록이 표시됩니다.</p>`;
     return;
   }
@@ -1210,28 +1228,39 @@ function renderPhotoList() {
     counts.set(imageId, (counts.get(imageId) ?? 0) + 1);
     return counts;
   }, new Map());
+  const nextKey = JSON.stringify({
+    images: state.images.map((image) => ({
+      id: image.id,
+      name: image.name,
+      url: image.url,
+      usedCount: usedCounts.get(image.id) ?? 0,
+    })),
+  });
 
+  if (photoListRenderKey === nextKey) return;
+
+  photoListRenderKey = nextKey;
   els.photoListPanel.innerHTML = state.images
     .map(
       (image, index) => {
         const usedCount = usedCounts.get(image.id) ?? 0;
         return `
-        <article
-          class="photo-list-card ${usedCount > 0 ? "is-in-slide" : "is-unused"}"
-          draggable="true"
-          data-image-id="${image.id}"
-          data-index="${index}"
-          title="${escapeHtml(image.name)}"
-        >
-          <img src="${image.url}" alt="" />
-          <div>
-            <strong>${index + 1}</strong>
-            <span>${escapeHtml(image.name)}</span>
-            <em>${usedCount > 0 ? `슬라이드 포함 ${usedCount}` : "미배치"}</em>
-          </div>
-          <b>${usedCount > 0 ? "배치됨" : "미배치"}</b>
-        </article>
-      `;
+          <article
+            class="photo-list-card ${usedCount > 0 ? "is-in-slide" : "is-unused"}"
+            draggable="true"
+            data-image-id="${image.id}"
+            data-index="${index}"
+            title="${escapeHtml(image.name)}"
+          >
+            <img src="${image.url}" alt="" loading="lazy" decoding="async" />
+            <div>
+              <strong>${index + 1}</strong>
+              <span>${escapeHtml(image.name)}</span>
+              <em>${usedCount > 0 ? `슬라이드 포함 ${usedCount}` : "미배치"}</em>
+            </div>
+            <b>${usedCount > 0 ? "배치됨" : "미배치"}</b>
+          </article>
+        `;
       },
     )
     .join("");
