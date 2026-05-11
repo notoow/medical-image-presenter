@@ -505,6 +505,7 @@ function renderSlide() {
   els.stage.className = `stage layout-${state.layoutMode}`;
 
   if (pageSlots.length === 0) {
+    visibleSlideCardCache = new Map();
     visibleGuideCache = new Map();
     unregisterRenderableImageNodesInRoot(els.stage);
     els.stage.innerHTML = `
@@ -522,6 +523,7 @@ function renderSlide() {
   visibleSlideCardCache = new Map();
   visibleGuideCache = new Map();
   activeStageSlotDropTarget = null;
+  unregisterRenderableImageNodesInRoot(els.stage);
   els.stage.innerHTML = `
     <div
       class="slide-grid ${layoutClass}"
@@ -532,23 +534,30 @@ function renderSlide() {
     ${renderGuides()}
   `;
 
-  els.stage.querySelectorAll("[data-slot-index]").forEach((card) => {
+  const slideGrid = els.stage.firstElementChild;
+  slideGrid?.querySelectorAll("[data-slot-index]").forEach((card) => {
     const slotIndex = Number(card.getAttribute("data-slot-index"));
     if (!Number.isFinite(slotIndex)) return;
+    const blurImage = card.querySelector(".blur-bg");
+    const mainImage = card.querySelector(".main-image");
     visibleSlideCardCache.set(slotIndex, {
       card,
-      blurImage: card.querySelector(".blur-bg"),
-      mainImage: card.querySelector(".main-image"),
+      blurImage,
+      mainImage,
       label: card.querySelector(".image-label"),
     });
+    const imageId = blurImage?.getAttribute("data-renderable-image-id");
+    if (imageId && blurImage) registerRenderableImageNode(imageId, blurImage);
+    const mainImageId = mainImage?.getAttribute("data-renderable-image-id");
+    if (mainImageId && mainImage) registerRenderableImageNode(mainImageId, mainImage);
   });
 
-  els.stage.querySelectorAll("[data-guide-index]").forEach((guideEl) => {
+  const guideLayer = slideGrid?.nextElementSibling;
+  guideLayer?.querySelectorAll("[data-guide-index]").forEach((guideEl) => {
     const index = Number(guideEl.getAttribute("data-guide-index"));
     if (!Number.isFinite(index)) return;
     visibleGuideCache.set(index, guideEl);
   });
-  refreshRenderableImageNodeCacheForRoot(els.stage);
 }
 
 function syncDeckStatus() {
@@ -864,9 +873,7 @@ function registerRenderableImageNodesInRoot(root) {
   root.querySelectorAll("[data-renderable-image-id]").forEach((node) => {
     const imageId = node.getAttribute("data-renderable-image-id");
     if (!imageId) return;
-    const nodes = renderableImageNodeCache.get(imageId) ?? [];
-    nodes.push(node);
-    renderableImageNodeCache.set(imageId, nodes);
+    registerRenderableImageNode(imageId, node);
   });
 }
 
@@ -874,6 +881,13 @@ function createFragmentFromHtml(html) {
   const template = document.createElement("template");
   template.innerHTML = html.trim();
   return template.content;
+}
+
+function registerRenderableImageNode(imageId, node) {
+  if (!imageId || !node) return;
+  const nodes = renderableImageNodeCache.get(imageId) ?? [];
+  nodes.push(node);
+  renderableImageNodeCache.set(imageId, nodes);
 }
 
 function refreshRenderableImageNodeCacheForRoot(root) {
