@@ -57,6 +57,9 @@ let assetsPersistTimer = null;
 let isRestoring = true;
 let thumbnailRenderKey = "";
 let photoListRenderKey = "";
+let previewRefreshTimer = null;
+const previewCache = new Map();
+const previewJobs = new Map();
 
 const els = {
   stage: document.querySelector("#stage"),
@@ -320,6 +323,7 @@ function renderImageCard(image, slotIndex) {
   const imageTransform = getSlotTransformStyle(slotIndex);
   const cropStyle = getSlotCropStyle(slotIndex);
   const selectedClass = state.selectedSlotIndex === slotIndex ? "is-selected" : "";
+  const displayUrl = getRenderableImageUrl(image);
 
   if (!image) {
     return `
@@ -351,7 +355,7 @@ function renderImageCard(image, slotIndex) {
       </button>
       <img
         class="blur-bg"
-        src="${image.url}"
+        src="${displayUrl}"
         alt=""
         aria-hidden="true"
         style="
@@ -363,7 +367,7 @@ function renderImageCard(image, slotIndex) {
       />
       <img
         class="main-image"
-        src="${image.url}"
+        src="${displayUrl}"
         alt="${escapeHtml(image.name)}"
         style="clip-path: ${cropStyle}; filter: ${filter}; transform: ${imageTransform};"
       />
@@ -548,6 +552,65 @@ function imageFromDataUrl(url) {
   });
 }
 
+async function createPreviewDataUrl(sourceUrl, maxDimension = 1600) {
+  const image = await imageFromDataUrl(sourceUrl);
+  const longestSide = Math.max(image.naturalWidth, image.naturalHeight);
+  if (longestSide <= maxDimension) {
+    return sourceUrl;
+  }
+
+  const scale = maxDimension / longestSide;
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+  canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+  const ctx = canvas.getContext("2d", { alpha: false });
+  ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+  return canvas.toDataURL("image/jpeg", 0.86);
+}
+
+function schedulePreviewRefresh() {
+  window.clearTimeout(previewRefreshTimer);
+  previewRefreshTimer = window.setTimeout(() => {
+    render({ refreshGuidePanel: false, persist: false });
+  }, 80);
+}
+
+async function ensurePreviewForImage(image) {
+  if (!image?.id) return image?.url ?? "";
+  if (previewCache.has(image.id)) return previewCache.get(image.id);
+  if (previewJobs.has(image.id)) return previewJobs.get(image.id);
+
+  const job = createPreviewDataUrl(image.url)
+    .then((previewUrl) => {
+      previewCache.set(image.id, previewUrl);
+      previewJobs.delete(image.id);
+      schedulePreviewRefresh();
+      return previewUrl;
+    })
+    .catch(() => {
+      previewCache.set(image.id, image.url);
+      previewJobs.delete(image.id);
+      return image.url;
+    });
+
+  previewJobs.set(image.id, job);
+  return job;
+}
+
+function getRenderableImageUrl(image) {
+  if (!image) return "";
+  const cached = previewCache.get(image.id);
+  if (cached) return cached;
+  void ensurePreviewForImage(image);
+  return image.url;
+}
+
+function warmPreviewCache(images) {
+  images.slice(0, 12).forEach((image) => {
+    void ensurePreviewForImage(image);
+  });
+}
+
 function fileToDataUrl(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -645,8 +708,12 @@ async function loadImageFiles(fileList) {
     for (const [index, file] of uploadFiles.entries()) {
       updateLoading(`사진 불러오는 중: ${file.name}`, index / uploadFiles.length);
       const url = await fileToDataUrl(file);
+      const id = crypto.randomUUID?.() ?? `${file.name}-${file.lastModified}-${Math.random()}`;
+      updateLoading(`미리보기 최적화 중: ${file.name}`, (index + 0.5) / uploadFiles.length);
+      const previewUrl = await createPreviewDataUrl(url);
+      previewCache.set(id, previewUrl);
       addedImages.push({
-        id: crypto.randomUUID?.() ?? `${file.name}-${file.lastModified}-${Math.random()}`,
+        id,
         name: file.name,
         size: file.size,
         modifiedAt: file.lastModified,
@@ -1155,7 +1222,7 @@ function renderThumbnails() {
                       .map((imageId) => {
                         const image = getImageById(imageId);
                         return image
-                          ? `<img src="${image.url}" alt="" loading="lazy" decoding="async" />`
+                          ? `<img src="${getRenderableImageUrl(image)}" alt="" loading="lazy" decoding="async" />`
                           : `<div class="slide-thumb-empty"></div>`;
                       })
                       .join("")}
@@ -1178,14 +1245,14 @@ function renderThumbnails() {
             .map(
               (imageId, index) => {
                 const image = getImageById(imageId);
-                return `
+              return `
           <button
             class="photo-order-card ${image ? "" : "is-empty"}"
             type="button"
             data-slot-page="${1 + Math.floor(index / pageSize)}"
             title="${image ? escapeHtml(image.name) : "빈칸"}"
           >
-            ${image ? `<img src="${image.url}" alt="" loading="lazy" decoding="async" />` : `<div class="photo-empty-thumb">빈칸</div>`}
+            ${image ? `<img src="${getRenderableImageUrl(image)}" alt="" loading="lazy" decoding="async" />` : `<div class="photo-empty-thumb">빈칸</div>`}
             <span>${index + 1}</span>
           </button>
         `;
@@ -1232,7 +1299,7 @@ function renderPhotoList() {
     images: state.images.map((image) => ({
       id: image.id,
       name: image.name,
-      url: image.url,
+      url: getRenderableImageUrl(image),
       usedCount: usedCounts.get(image.id) ?? 0,
     })),
   });
@@ -1252,7 +1319,7 @@ function renderPhotoList() {
             data-index="${index}"
             title="${escapeHtml(image.name)}"
           >
-            <img src="${image.url}" alt="" loading="lazy" decoding="async" />
+            <img src="${getRenderableImageUrl(image)}" alt="" loading="lazy" decoding="async" />
             <div>
               <strong>${index + 1}</strong>
               <span>${escapeHtml(image.name)}</span>
@@ -1830,6 +1897,7 @@ function applyPersistedState() {
     els.bgYValue.textContent = `${state.backgroundFilters.y}%`;
     if (state.logoUrl) els.logoFileName.textContent = "저장된 로고 불러옴";
     if (state.images.length > 0) els.imageFileName.textContent = `${state.images.length}장 복원됨`;
+    warmPreviewCache(state.images);
     return true;
   } catch {
     return false;
@@ -2051,6 +2119,7 @@ async function initializeDefaultLogo() {
   if (state.logoUrl) {
     isRestoring = false;
     render();
+    warmPreviewCache(state.images);
     return;
   }
 
@@ -2063,6 +2132,7 @@ async function initializeDefaultLogo() {
 
   isRestoring = false;
   render();
+  warmPreviewCache(state.images);
 }
 
 initializeDefaultLogo();
