@@ -73,6 +73,7 @@ let lightweightRefreshFrame = null;
 let pendingLightweightSlotIndices = null;
 let selectedSlotUiKey = "";
 let visibleSlideCardCache = new Map();
+let visibleGuideCache = new Map();
 let imageIndexDirty = true;
 let imageSortDirty = true;
 let lastAppliedSortMode = state.sortMode;
@@ -373,6 +374,7 @@ function getCropStyle() {
 
 function renderCover() {
   visibleSlideCardCache = new Map();
+  visibleGuideCache = new Map();
   activeStageSlotDropTarget = null;
   const metaItems = [
     state.coverVisibility.hospitalName ? els.hospitalName.value : "",
@@ -499,6 +501,7 @@ function renderSlide() {
   els.stage.className = `stage layout-${state.layoutMode}`;
 
   if (pageSlots.length === 0) {
+    visibleGuideCache = new Map();
     els.stage.innerHTML = `
       <div class="empty-state">
         <div>
@@ -512,6 +515,7 @@ function renderSlide() {
 
   const layoutClass = state.layoutMode === "custom" ? "layout-custom" : `layout-${state.layoutMode}`;
   visibleSlideCardCache = new Map();
+  visibleGuideCache = new Map();
   activeStageSlotDropTarget = null;
   els.stage.innerHTML = `
     <div
@@ -532,6 +536,12 @@ function renderSlide() {
       mainImage: card.querySelector(".main-image"),
       label: card.querySelector(".image-label"),
     });
+  });
+
+  els.stage.querySelectorAll("[data-guide-index]").forEach((guideEl) => {
+    const index = Number(guideEl.getAttribute("data-guide-index"));
+    if (!Number.isFinite(index)) return;
+    visibleGuideCache.set(index, guideEl);
   });
 }
 
@@ -1329,7 +1339,7 @@ function getGuidePercentFromPointer(axis, pointerEvent) {
 function syncGuideVisual(index) {
   const guide = state.guides[index];
   if (!guide) return;
-  const guideEl = els.stage.querySelector(`[data-guide-index="${index}"]`);
+  const guideEl = visibleGuideCache.get(index);
   if (!guideEl) return;
   guideEl.style[guide.axis === "x" ? "left" : "top"] = `${guide.percent}%`;
   guideEl.dataset.label = `${guide.percent.toFixed(1)}%`;
@@ -1627,12 +1637,7 @@ els.guideListPanel?.addEventListener("input", (event) => {
   state.guides[index].percent = clamp(value, 0, 100);
   markGuidesDirty();
   slider.closest(".guide-control")?.querySelector("output")?.replaceChildren(`${value.toFixed(1)}%`);
-
-  const guideEl = els.stage.querySelector(`[data-guide-index="${index}"]`);
-  if (guideEl) {
-    guideEl.style[state.guides[index].axis === "x" ? "left" : "top"] = `${state.guides[index].percent}%`;
-    guideEl.dataset.label = `${state.guides[index].percent.toFixed(1)}%`;
-  }
+  syncGuideVisual(index);
 
   queuePersistSettings();
 });
