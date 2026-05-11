@@ -66,6 +66,8 @@ let previewRefreshTimer = null;
 let previewWarmHandle = null;
 let previewWarmQueue = [];
 let pendingPreviewRefreshIds = new Set();
+let lightweightRefreshFrame = null;
+let pendingLightweightSlotIndices = null;
 let imageIndexDirty = true;
 let imageSortDirty = true;
 let lastAppliedSortMode = state.sortMode;
@@ -577,6 +579,32 @@ function refreshVisibleSlideCards(slotIndices = getVisibleSlideSlotIndices()) {
   return true;
 }
 
+function scheduleLightweightRefresh(slotIndices = null) {
+  if (slotIndices) {
+    const next = new Set(slotIndices.filter((value) => Number.isFinite(value)));
+    if (pendingLightweightSlotIndices) {
+      pendingLightweightSlotIndices = new Set([...pendingLightweightSlotIndices, ...next]);
+    } else {
+      pendingLightweightSlotIndices = next;
+    }
+  } else {
+    pendingLightweightSlotIndices = null;
+  }
+
+  if (lightweightRefreshFrame !== null) return;
+
+  lightweightRefreshFrame = window.requestAnimationFrame(() => {
+    lightweightRefreshFrame = null;
+    syncDeckStatus();
+    syncSelectedSlotControls();
+    const targetSlots = pendingLightweightSlotIndices ? Array.from(pendingLightweightSlotIndices) : undefined;
+    pendingLightweightSlotIndices = null;
+    if (!refreshVisibleSlideCards(targetSlots)) {
+      render({ refreshGuidePanel: false, refreshThumbnails: false, refreshPhotoList: false, persist: false });
+    }
+  });
+}
+
 function syncLoadingOverlay() {
   if (!els.loadingOverlay || !els.loadingLabel || !els.loadingMeta) return;
 
@@ -642,27 +670,19 @@ function goToPage(nextPage) {
 
 function updateFitMode(mode) {
   state.fitMode = mode;
-  if (!refreshVisibleSlideCards()) {
-    render({ refreshGuidePanel: false, refreshThumbnails: false, refreshPhotoList: false, persist: false });
-  }
+  scheduleLightweightRefresh();
   queuePersistSettings();
 }
 
 function updateZoom(delta) {
   state.zoom = clamp(Number((state.zoom + delta).toFixed(2)), 0.5, 2.5);
-  syncDeckStatus();
-  if (!refreshVisibleSlideCards()) {
-    render({ refreshGuidePanel: false, refreshThumbnails: false, refreshPhotoList: false, persist: false });
-  }
+  scheduleLightweightRefresh();
   queuePersistSettings();
 }
 
 function resetZoom() {
   state.zoom = 1;
-  syncDeckStatus();
-  if (!refreshVisibleSlideCards()) {
-    render({ refreshGuidePanel: false, refreshThumbnails: false, refreshPhotoList: false, persist: false });
-  }
+  scheduleLightweightRefresh();
   queuePersistSettings();
 }
 
@@ -717,7 +737,7 @@ function schedulePreviewRefresh(imageId = null) {
   if (imageId) pendingPreviewRefreshIds.add(imageId);
   window.clearTimeout(previewRefreshTimer);
   previewRefreshTimer = window.setTimeout(() => {
-    refreshVisibleSlideCards();
+    scheduleLightweightRefresh();
     const targetIds = pendingPreviewRefreshIds.size > 0 ? Array.from(pendingPreviewRefreshIds) : null;
     pendingPreviewRefreshIds.clear();
     syncRenderableImageSources(targetIds);
@@ -1048,9 +1068,7 @@ function bindFilter(input, output, suffix = "%") {
   input.addEventListener("input", () => {
     state.filters[input.id] = Number(input.value);
     output.textContent = `${input.value}${suffix}`;
-    if (!refreshVisibleSlideCards()) {
-      render({ refreshGuidePanel: false, refreshThumbnails: false, refreshPhotoList: false, persist: false });
-    }
+    scheduleLightweightRefresh();
     queuePersistSettings();
   });
 }
@@ -1059,9 +1077,7 @@ function bindBackgroundFilter(input, output, key, suffix = "%") {
   input.addEventListener("input", () => {
     state.backgroundFilters[key] = Number(input.value);
     output.textContent = `${input.value}${suffix}`;
-    if (!refreshVisibleSlideCards()) {
-      render({ refreshGuidePanel: false, refreshThumbnails: false, refreshPhotoList: false, persist: false });
-    }
+    scheduleLightweightRefresh();
     queuePersistSettings();
   });
 }
@@ -1070,9 +1086,7 @@ function bindCrop(input, output, key) {
   input.addEventListener("input", () => {
     state.crop[key] = Number(input.value);
     output.textContent = `${input.value}%`;
-    if (!refreshVisibleSlideCards()) {
-      render({ refreshGuidePanel: false, refreshThumbnails: false, refreshPhotoList: false, persist: false });
-    }
+    scheduleLightweightRefresh();
     queuePersistSettings();
   });
 }
@@ -1128,20 +1142,14 @@ function syncSelectedSlotControls() {
 
 function selectSlot(slotIndex) {
   state.selectedSlotIndex = Number(slotIndex);
-  syncSelectedSlotControls();
-  if (!refreshVisibleSlideCards()) {
-    render({ refreshGuidePanel: false, refreshThumbnails: false, refreshPhotoList: false, persist: false });
-  }
+  scheduleLightweightRefresh();
 }
 
 function updateSelectedSlotTransform(key, value) {
   const slotIndex = Number(state.selectedSlotIndex);
   if (!Number.isFinite(slotIndex) || slotIndex < 0 || !state.slideSlots[slotIndex]) return;
   getSlotTransform(slotIndex)[key] = Number(value);
-  syncSelectedSlotControls();
-  if (!refreshVisibleSlideCards([slotIndex])) {
-    render({ refreshGuidePanel: false, refreshThumbnails: false, refreshPhotoList: false, persist: false });
-  }
+  scheduleLightweightRefresh([slotIndex]);
   queuePersistSettings();
 }
 
