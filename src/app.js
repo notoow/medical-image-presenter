@@ -1416,7 +1416,8 @@ function renderThumbnails() {
   if (thumbnailRenderKey !== nextKey) {
     thumbnailRenderKey = nextKey;
     activeThumbnailButton = null;
-    els.thumbnailRail.innerHTML = `
+    unregisterRenderableImageNodesInRoot(els.thumbnailRail);
+    const thumbnailHtml = `
       <div class="thumbnail-section">
         <div class="thumbnail-section-head">
           <strong>슬라이드 미리보기</strong>
@@ -1489,7 +1490,9 @@ function renderThumbnails() {
         </div>
       </div>
     `;
-    refreshRenderableImageNodeCacheForRoot(els.thumbnailRail);
+    const fragment = createFragmentFromHtml(thumbnailHtml);
+    registerRenderableImageNodesInRoot(fragment);
+    els.thumbnailRail.replaceChildren(fragment);
   }
 
   if (activeThumbnailButton && !els.thumbnailRail.contains(activeThumbnailButton)) {
