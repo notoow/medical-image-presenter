@@ -376,7 +376,7 @@ function getCropStyle() {
 function renderCover() {
   visibleSlideCardCache = new Map();
   visibleGuideCache = new Map();
-  renderableImageNodeCache = new Map();
+  unregisterRenderableImageNodesInRoot(els.stage);
   activeStageSlotDropTarget = null;
   const metaItems = [
     state.coverVisibility.hospitalName ? els.hospitalName.value : "",
@@ -504,7 +504,7 @@ function renderSlide() {
 
   if (pageSlots.length === 0) {
     visibleGuideCache = new Map();
-    renderableImageNodeCache = new Map();
+    unregisterRenderableImageNodesInRoot(els.stage);
     els.stage.innerHTML = `
       <div class="empty-state">
         <div>
@@ -546,7 +546,7 @@ function renderSlide() {
     if (!Number.isFinite(index)) return;
     visibleGuideCache.set(index, guideEl);
   });
-  rebuildRenderableImageNodeCache(els.stage);
+  refreshRenderableImageNodeCacheForRoot(els.stage);
 }
 
 function syncDeckStatus() {
@@ -845,15 +845,32 @@ function getRenderableImageUrl(image) {
   return image.url;
 }
 
-function rebuildRenderableImageNodeCache(root = document) {
-  renderableImageNodeCache = new Map();
-  root.querySelectorAll?.("[data-renderable-image-id]").forEach((node) => {
+function unregisterRenderableImageNodesInRoot(root) {
+  if (!root) return;
+  renderableImageNodeCache.forEach((nodes, imageId) => {
+    const nextNodes = nodes.filter((node) => node.isConnected && !root.contains(node));
+    if (nextNodes.length === 0) {
+      renderableImageNodeCache.delete(imageId);
+      return;
+    }
+    renderableImageNodeCache.set(imageId, nextNodes);
+  });
+}
+
+function registerRenderableImageNodesInRoot(root) {
+  if (!root?.querySelectorAll) return;
+  root.querySelectorAll("[data-renderable-image-id]").forEach((node) => {
     const imageId = node.getAttribute("data-renderable-image-id");
     if (!imageId) return;
     const nodes = renderableImageNodeCache.get(imageId) ?? [];
     nodes.push(node);
     renderableImageNodeCache.set(imageId, nodes);
   });
+}
+
+function refreshRenderableImageNodeCacheForRoot(root) {
+  unregisterRenderableImageNodesInRoot(root);
+  registerRenderableImageNodesInRoot(root);
 }
 
 function syncRenderableImageSources(imageIds = null) {
@@ -863,7 +880,12 @@ function syncRenderableImageSources(imageIds = null) {
     const image = getImageById(imageId);
     if (!image) return;
     const nextUrl = getRenderableImageUrl(image);
-    const nodes = renderableImageNodeCache.get(imageId) ?? [];
+    const nodes = (renderableImageNodeCache.get(imageId) ?? []).filter((node) => node.isConnected);
+    if (nodes.length === 0) {
+      renderableImageNodeCache.delete(imageId);
+      return;
+    }
+    renderableImageNodeCache.set(imageId, nodes);
     nodes.forEach((node) => {
       if (node.getAttribute("src") !== nextUrl) {
         node.setAttribute("src", nextUrl);
@@ -1355,6 +1377,7 @@ function renderThumbnails() {
   if (state.images.length === 0) {
     thumbnailRenderKey = "empty";
     activeThumbnailButton = null;
+    unregisterRenderableImageNodesInRoot(els.thumbnailRail);
     els.thumbnailRail.innerHTML = `
       <div class="thumbnail-empty">
         사진을 선택하면 여기에 슬라이드 미리보기와 사진 순서가 표시됩니다.
@@ -1460,7 +1483,7 @@ function renderThumbnails() {
         </div>
       </div>
     `;
-    rebuildRenderableImageNodeCache(document);
+    refreshRenderableImageNodeCacheForRoot(els.thumbnailRail);
   }
 
   if (activeThumbnailButton && !els.thumbnailRail.contains(activeThumbnailButton)) {
@@ -1483,7 +1506,7 @@ function renderPhotoList() {
     photoListRenderKey = "empty";
     photoListRenderToken += 1;
     els.photoListPanel.innerHTML = `<p class="photo-list-empty">사진을 업로드하면 전체 목록이 표시됩니다.</p>`;
-    rebuildRenderableImageNodeCache(document);
+    unregisterRenderableImageNodesInRoot(els.photoListPanel);
     return;
   }
 
@@ -1535,7 +1558,7 @@ function renderPhotoList() {
       .join("");
 
     els.photoListPanel.insertAdjacentHTML("beforeend", batchHtml);
-    rebuildRenderableImageNodeCache(document);
+    refreshRenderableImageNodeCacheForRoot(els.photoListPanel);
     startIndex = endIndex;
 
     if (startIndex < state.images.length) {
