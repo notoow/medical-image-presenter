@@ -63,6 +63,7 @@ let photoListRenderToken = 0;
 let previewRefreshTimer = null;
 let previewWarmHandle = null;
 let previewWarmQueue = [];
+let pendingPreviewRefreshIds = new Set();
 let imageIndexDirty = true;
 let imageSortDirty = true;
 let lastAppliedSortMode = state.sortMode;
@@ -688,11 +689,14 @@ async function createPreviewDataUrl(sourceUrl, maxDimension = 1600) {
   return canvas.toDataURL("image/jpeg", 0.86);
 }
 
-function schedulePreviewRefresh() {
+function schedulePreviewRefresh(imageId = null) {
+  if (imageId) pendingPreviewRefreshIds.add(imageId);
   window.clearTimeout(previewRefreshTimer);
   previewRefreshTimer = window.setTimeout(() => {
     refreshVisibleSlideCards();
-    syncRenderableImageSources();
+    const targetIds = pendingPreviewRefreshIds.size > 0 ? Array.from(pendingPreviewRefreshIds) : null;
+    pendingPreviewRefreshIds.clear();
+    syncRenderableImageSources(targetIds);
   }, 80);
 }
 
@@ -741,12 +745,13 @@ async function ensurePreviewForImage(image) {
     .then((previewUrl) => {
       previewCache.set(image.id, previewUrl);
       previewJobs.delete(image.id);
-      schedulePreviewRefresh();
+      schedulePreviewRefresh(image.id);
       return previewUrl;
     })
     .catch(() => {
       previewCache.set(image.id, image.url);
       previewJobs.delete(image.id);
+      schedulePreviewRefresh(image.id);
       return image.url;
     });
 
@@ -762,17 +767,37 @@ function getRenderableImageUrl(image) {
   return image.url;
 }
 
+function escapeAttributeValue(value) {
+  return String(value).replaceAll("\\", "\\\\").replaceAll('"', '\\"');
+}
+
 function syncRenderableImageSources(imageIds = null) {
-  const targetIds = imageIds ? new Set(imageIds.filter(Boolean)) : null;
-  document.querySelectorAll("[data-renderable-image-id]").forEach((node) => {
-    const imageId = node.getAttribute("data-renderable-image-id");
-    if (!imageId || (targetIds && !targetIds.has(imageId))) return;
+  const targetIds = imageIds ? Array.from(new Set(imageIds.filter(Boolean))) : null;
+
+  if (!targetIds) {
+    document.querySelectorAll("[data-renderable-image-id]").forEach((node) => {
+      const imageId = node.getAttribute("data-renderable-image-id");
+      if (!imageId) return;
+      const image = getImageById(imageId);
+      if (!image) return;
+      const nextUrl = getRenderableImageUrl(image);
+      if (node.getAttribute("src") !== nextUrl) {
+        node.setAttribute("src", nextUrl);
+      }
+    });
+    return;
+  }
+
+  targetIds.forEach((imageId) => {
     const image = getImageById(imageId);
     if (!image) return;
     const nextUrl = getRenderableImageUrl(image);
-    if (node.getAttribute("src") !== nextUrl) {
-      node.setAttribute("src", nextUrl);
-    }
+    const selector = `[data-renderable-image-id="${escapeAttributeValue(imageId)}"]`;
+    document.querySelectorAll(selector).forEach((node) => {
+      if (node.getAttribute("src") !== nextUrl) {
+        node.setAttribute("src", nextUrl);
+      }
+    });
   });
 }
 
