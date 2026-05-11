@@ -1267,34 +1267,6 @@ function renderGuideControls() {
       `;
     })
     .join("");
-
-  els.guideListPanel.querySelectorAll("[data-guide-slider]").forEach((slider) => {
-    slider.addEventListener("input", () => {
-      const index = Number(slider.dataset.guideSlider);
-      const value = Number(slider.value);
-      if (!state.guides[index] || !Number.isFinite(value)) return;
-      state.guides[index].percent = clamp(value, 0, 100);
-      slider.closest(".guide-control")?.querySelector("output")?.replaceChildren(`${value.toFixed(1)}%`);
-
-      const guideEl = els.stage.querySelector(`[data-guide-index="${index}"]`);
-      if (guideEl) {
-        guideEl.style[state.guides[index].axis === "x" ? "left" : "top"] = `${state.guides[index].percent}%`;
-        guideEl.dataset.label = `${state.guides[index].percent.toFixed(1)}%`;
-      }
-
-      queuePersistSettings();
-    });
-
-    slider.addEventListener("change", render);
-  });
-
-  els.guideListPanel.querySelectorAll("[data-guide-delete]").forEach((button) => {
-    button.addEventListener("click", () => {
-      const index = Number(button.dataset.guideDelete);
-      state.guides.splice(index, 1);
-      render();
-    });
-  });
 }
 
 function setSlot(slotIndex, imageId) {
@@ -1692,6 +1664,40 @@ els.logoInput.addEventListener("change", async () => {
 els.imageInput.addEventListener("change", async () => {
   await loadImageFiles(els.imageInput.files);
   els.imageInput.value = "";
+});
+
+els.guideListPanel?.addEventListener("input", (event) => {
+  const slider = event.target instanceof HTMLInputElement ? event.target.closest("[data-guide-slider]") : null;
+  if (!(slider instanceof HTMLInputElement)) return;
+
+  const index = Number(slider.dataset.guideSlider);
+  const value = Number(slider.value);
+  if (!state.guides[index] || !Number.isFinite(value)) return;
+
+  state.guides[index].percent = clamp(value, 0, 100);
+  slider.closest(".guide-control")?.querySelector("output")?.replaceChildren(`${value.toFixed(1)}%`);
+
+  const guideEl = els.stage.querySelector(`[data-guide-index="${index}"]`);
+  if (guideEl) {
+    guideEl.style[state.guides[index].axis === "x" ? "left" : "top"] = `${state.guides[index].percent}%`;
+    guideEl.dataset.label = `${state.guides[index].percent.toFixed(1)}%`;
+  }
+
+  queuePersistSettings();
+});
+
+els.guideListPanel?.addEventListener("change", (event) => {
+  const slider = event.target instanceof HTMLInputElement ? event.target.closest("[data-guide-slider]") : null;
+  if (!(slider instanceof HTMLInputElement)) return;
+  render();
+});
+
+els.guideListPanel?.addEventListener("click", (event) => {
+  const button = event.target instanceof Element ? event.target.closest("[data-guide-delete]") : null;
+  if (!(button instanceof HTMLButtonElement)) return;
+  const index = Number(button.dataset.guideDelete);
+  state.guides.splice(index, 1);
+  render();
 });
 
 els.stage?.addEventListener("click", (event) => {
