@@ -62,6 +62,7 @@ let photoListRenderKey = "";
 let photoListRenderToken = 0;
 let activeThumbnailButton = null;
 let activeReorderTarget = null;
+let activeStageSlotDropTarget = null;
 let previewRefreshTimer = null;
 let previewWarmHandle = null;
 let previewWarmQueue = [];
@@ -365,6 +366,7 @@ function getCropStyle() {
 
 function renderCover() {
   visibleSlideCardCache = new Map();
+  activeStageSlotDropTarget = null;
   const metaItems = [
     state.coverVisibility.hospitalName ? els.hospitalName.value : "",
     state.coverVisibility.presenterName ? els.presenterName.value : "",
@@ -503,6 +505,7 @@ function renderSlide() {
 
   const layoutClass = state.layoutMode === "custom" ? "layout-custom" : `layout-${state.layoutMode}`;
   visibleSlideCardCache = new Map();
+  activeStageSlotDropTarget = null;
   els.stage.innerHTML = `
     <div
       class="slide-grid ${layoutClass}"
@@ -514,7 +517,6 @@ function renderSlide() {
   `;
 
   bindGuideInteractions();
-  bindSlotDropTargets();
   els.stage.querySelectorAll("[data-slot-index]").forEach((card) => {
     const slotIndex = Number(card.getAttribute("data-slot-index"));
     if (!Number.isFinite(slotIndex)) return;
@@ -1332,53 +1334,6 @@ function clearSlideSlots() {
   render();
 }
 
-function bindSlotDropTargets() {
-  els.stage.querySelectorAll("[data-remove-slot]").forEach((button) => {
-    button.addEventListener("click", (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      setSlot(Number(button.dataset.removeSlot), null);
-    });
-  });
-
-  els.stage.querySelectorAll("[data-slot-index]").forEach((slot) => {
-    slot.addEventListener("click", () => {
-      const slotIndex = Number(slot.dataset.slotIndex);
-      if (state.slideSlots[slotIndex]) selectSlot(slotIndex);
-    });
-
-    slot.addEventListener("keydown", (event) => {
-      if (event.key !== "Enter" && event.key !== " ") return;
-      event.preventDefault();
-      const slotIndex = Number(slot.dataset.slotIndex);
-      if (state.slideSlots[slotIndex]) selectSlot(slotIndex);
-    });
-
-    slot.addEventListener("dragover", (event) => {
-      event.preventDefault();
-      slot.classList.add("is-drop-target");
-    });
-
-    slot.addEventListener("dragleave", () => {
-      slot.classList.remove("is-drop-target");
-    });
-
-    slot.addEventListener("drop", (event) => {
-      event.preventDefault();
-      slot.classList.remove("is-drop-target");
-      const slotIndex = Number(slot.dataset.slotIndex);
-      const payload = event.dataTransfer.getData("application/x-medical-presenter");
-
-      if (payload === "empty") {
-        setSlot(slotIndex, null);
-        return;
-      }
-
-      if (payload) setSlot(slotIndex, payload);
-    });
-  });
-}
-
 function updateGuide(index, percent) {
   if (!state.guides[index]) return;
   state.guides[index].percent = clamp(percent, 0, 100);
@@ -1737,6 +1692,67 @@ els.logoInput.addEventListener("change", async () => {
 els.imageInput.addEventListener("change", async () => {
   await loadImageFiles(els.imageInput.files);
   els.imageInput.value = "";
+});
+
+els.stage?.addEventListener("click", (event) => {
+  const target = event.target instanceof Element ? event.target : null;
+  const removeButton = target?.closest("[data-remove-slot]");
+  if (removeButton instanceof HTMLButtonElement) {
+    event.preventDefault();
+    event.stopPropagation();
+    setSlot(Number(removeButton.dataset.removeSlot), null);
+    return;
+  }
+
+  const slot = target?.closest("[data-slot-index]");
+  if (!(slot instanceof HTMLElement)) return;
+  const slotIndex = Number(slot.dataset.slotIndex);
+  if (state.slideSlots[slotIndex]) selectSlot(slotIndex);
+});
+
+els.stage?.addEventListener("keydown", (event) => {
+  if (event.key !== "Enter" && event.key !== " ") return;
+  const target = event.target instanceof Element ? event.target.closest("[data-slot-index]") : null;
+  if (!(target instanceof HTMLElement)) return;
+  const slotIndex = Number(target.dataset.slotIndex);
+  if (!state.slideSlots[slotIndex]) return;
+  event.preventDefault();
+  selectSlot(slotIndex);
+});
+
+els.stage?.addEventListener("dragover", (event) => {
+  const target = event.target instanceof Element ? event.target.closest("[data-slot-index]") : null;
+  if (!(target instanceof HTMLElement)) return;
+  event.preventDefault();
+  if (activeStageSlotDropTarget === target) return;
+  activeStageSlotDropTarget?.classList.remove("is-drop-target");
+  activeStageSlotDropTarget = target;
+  activeStageSlotDropTarget.classList.add("is-drop-target");
+});
+
+els.stage?.addEventListener("dragleave", (event) => {
+  const target = event.target instanceof Element ? event.target.closest("[data-slot-index]") : null;
+  if (!(target instanceof HTMLElement)) return;
+  const nextTarget = event.relatedTarget instanceof Element ? event.relatedTarget.closest("[data-slot-index]") : null;
+  if (nextTarget === target) return;
+  target.classList.remove("is-drop-target");
+  if (activeStageSlotDropTarget === target) activeStageSlotDropTarget = null;
+});
+
+els.stage?.addEventListener("drop", (event) => {
+  const target = event.target instanceof Element ? event.target.closest("[data-slot-index]") : null;
+  if (!(target instanceof HTMLElement)) return;
+  event.preventDefault();
+  target.classList.remove("is-drop-target");
+  if (activeStageSlotDropTarget === target) activeStageSlotDropTarget = null;
+
+  const slotIndex = Number(target.dataset.slotIndex);
+  const payload = event.dataTransfer?.getData("application/x-medical-presenter");
+  if (payload === "empty") {
+    setSlot(slotIndex, null);
+    return;
+  }
+  if (payload) setSlot(slotIndex, payload);
 });
 
 els.thumbnailRail?.addEventListener("click", (event) => {
