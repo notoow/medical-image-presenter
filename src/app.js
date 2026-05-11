@@ -868,6 +868,12 @@ function registerRenderableImageNodesInRoot(root) {
   });
 }
 
+function createFragmentFromHtml(html) {
+  const template = document.createElement("template");
+  template.innerHTML = html.trim();
+  return template.content;
+}
+
 function refreshRenderableImageNodeCacheForRoot(root) {
   unregisterRenderableImageNodesInRoot(root);
   registerRenderableImageNodesInRoot(root);
@@ -1523,6 +1529,7 @@ function renderPhotoList() {
   photoListRenderKey = nextKey;
   photoListRenderToken += 1;
   const renderToken = photoListRenderToken;
+  unregisterRenderableImageNodesInRoot(els.photoListPanel);
   els.photoListPanel.innerHTML = "";
 
   const cardHtml = (image, index) => {
@@ -1557,8 +1564,9 @@ function renderPhotoList() {
       .map((image, offset) => cardHtml(image, startIndex + offset))
       .join("");
 
-    els.photoListPanel.insertAdjacentHTML("beforeend", batchHtml);
-    refreshRenderableImageNodeCacheForRoot(els.photoListPanel);
+    const fragment = createFragmentFromHtml(batchHtml);
+    registerRenderableImageNodesInRoot(fragment);
+    els.photoListPanel.append(fragment);
     startIndex = endIndex;
 
     if (startIndex < state.images.length) {
