@@ -212,6 +212,17 @@ const pageSizeByLayout = {
   custom: null,
 };
 
+const DEFAULT_SLOT_TRANSFORM = Object.freeze({
+  scale: 100,
+  x: 0,
+  y: 0,
+  rotate: 0,
+  cropLeft: 0,
+  cropRight: 0,
+  cropTop: 0,
+  cropBottom: 0,
+});
+
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
 }
@@ -270,37 +281,35 @@ function getUsedCounts() {
 }
 
 function getDefaultSlotTransform() {
-  return {
-    scale: 100,
-    x: 0,
-    y: 0,
-    rotate: 0,
-    cropLeft: 0,
-    cropRight: 0,
-    cropTop: 0,
-    cropBottom: 0,
-  };
+  return { ...DEFAULT_SLOT_TRANSFORM };
 }
 
 function getSlotTransform(slotIndex) {
   if (!Number.isFinite(slotIndex) || slotIndex < 0) return getDefaultSlotTransform();
 
-  state.slotTransforms[slotIndex] = {
-    ...getDefaultSlotTransform(),
-    ...(state.slotTransforms[slotIndex] ?? {}),
-  };
-  return state.slotTransforms[slotIndex];
+  const existing = state.slotTransforms[slotIndex];
+  if (!existing) {
+    const next = getDefaultSlotTransform();
+    state.slotTransforms[slotIndex] = next;
+    return next;
+  }
+
+  for (const [key, value] of Object.entries(DEFAULT_SLOT_TRANSFORM)) {
+    if (!Object.hasOwn(existing, key)) {
+      existing[key] = value;
+    }
+  }
+
+  return existing;
 }
 
-function getSlotCropStyle(slotIndex) {
-  const transform = getSlotTransform(slotIndex);
+function getSlotCropStyle(slotIndex, transform = getSlotTransform(slotIndex)) {
   return `inset(${state.crop.top + transform.cropTop}% ${state.crop.right + transform.cropRight}% ${
     state.crop.bottom + transform.cropBottom
   }% ${state.crop.left + transform.cropLeft}%)`;
 }
 
-function getSlotTransformStyle(slotIndex) {
-  const transform = getSlotTransform(slotIndex);
+function getSlotTransformStyle(slotIndex, transform = getSlotTransform(slotIndex)) {
   const scale = state.zoom * (transform.scale / 100);
   return `translate(${transform.x}%, ${transform.y}%) scale(${scale}) rotate(${transform.rotate}deg)`;
 }
@@ -414,8 +423,9 @@ function renderCover() {
 function renderImageCard(image, slotIndex) {
   const filter = getFilterStyle();
   const backgroundFilter = getBackgroundFilterStyle();
-  const imageTransform = getSlotTransformStyle(slotIndex);
-  const cropStyle = getSlotCropStyle(slotIndex);
+  const transform = getSlotTransform(slotIndex);
+  const imageTransform = getSlotTransformStyle(slotIndex, transform);
+  const cropStyle = getSlotCropStyle(slotIndex, transform);
   const selectedClass = state.selectedSlotIndex === slotIndex ? "is-selected" : "";
   const displayUrl = getRenderableImageUrl(image);
 
@@ -598,6 +608,7 @@ function refreshVisibleSlideCards(slotIndices = getVisibleSlideSlotIndices()) {
     const image = getImageById(imageId);
     if (!image) return;
 
+    const transform = getSlotTransform(slotIndex);
     const displayUrl = getRenderableImageUrl(image);
     card.classList.toggle("background-enabled", state.backgroundEnabled);
     card.classList.toggle("fit-fill", state.fitMode === "fill");
@@ -613,9 +624,9 @@ function refreshVisibleSlideCards(slotIndices = getVisibleSlideSlotIndices()) {
     if (mainImage) {
       if (mainImage.getAttribute("src") !== displayUrl) mainImage.setAttribute("src", displayUrl);
       if (mainImage.getAttribute("alt") !== image.name) mainImage.setAttribute("alt", image.name);
-      mainImage.style.clipPath = getSlotCropStyle(slotIndex);
+      mainImage.style.clipPath = getSlotCropStyle(slotIndex, transform);
       mainImage.style.filter = filter;
-      mainImage.style.transform = getSlotTransformStyle(slotIndex);
+      mainImage.style.transform = getSlotTransformStyle(slotIndex, transform);
     }
 
     if (label) label.textContent = image.name;
