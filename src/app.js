@@ -77,6 +77,10 @@ let visibleSlideCardCache = new Map();
 let visibleGuideCache = new Map();
 let renderableImageNodeCache = new Map();
 let guideControlOutputCache = new Map();
+let pageSizeCacheVersion = -1;
+let cachedPageSize = 2;
+let totalPagesCacheKey = "";
+let cachedTotalPages = 1;
 let imageIndexDirty = true;
 let imageSortDirty = true;
 let lastAppliedSortMode = state.sortMode;
@@ -228,15 +232,21 @@ function clamp(value, min, max) {
 }
 
 function getPageSize() {
-  if (state.layoutMode === "custom") {
-    return state.gridRows * state.gridCols;
-  }
+  if (pageSizeCacheVersion === layoutVersion) return cachedPageSize;
 
-  return pageSizeByLayout[state.layoutMode] ?? 2;
+  cachedPageSize =
+    state.layoutMode === "custom" ? state.gridRows * state.gridCols : (pageSizeByLayout[state.layoutMode] ?? 2);
+  pageSizeCacheVersion = layoutVersion;
+  return cachedPageSize;
 }
 
 function getTotalPages() {
-  return 1 + Math.ceil(state.slideSlots.length / getPageSize());
+  const nextKey = `${slideSlotsVersion}:${layoutVersion}:${state.slideSlots.length}`;
+  if (totalPagesCacheKey === nextKey) return cachedTotalPages;
+
+  cachedTotalPages = 1 + Math.ceil(state.slideSlots.length / getPageSize());
+  totalPagesCacheKey = nextKey;
+  return cachedTotalPages;
 }
 
 function markImagesDirty({ orderChanged = true } = {}) {
