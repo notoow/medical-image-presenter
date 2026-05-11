@@ -70,7 +70,6 @@ let imageByIdIndex = new Map();
 let imagesVersion = 0;
 let slideSlotsVersion = 0;
 let layoutVersion = 0;
-let previewVersion = 0;
 let lastPersistedSettingsJson = "";
 let lastPersistedAssetsJson = "";
 const previewCache = new Map();
@@ -224,10 +223,6 @@ function markSlideSlotsDirty() {
 
 function markLayoutDirty() {
   layoutVersion += 1;
-}
-
-function markPreviewDirty() {
-  previewVersion += 1;
 }
 
 function syncImageIndex() {
@@ -410,6 +405,7 @@ function renderImageCard(image, slotIndex) {
       <img
         class="blur-bg"
         src="${displayUrl}"
+        data-renderable-image-id="${image.id}"
         alt=""
         aria-hidden="true"
         style="
@@ -422,6 +418,7 @@ function renderImageCard(image, slotIndex) {
       <img
         class="main-image"
         src="${displayUrl}"
+        data-renderable-image-id="${image.id}"
         alt="${escapeHtml(image.name)}"
         style="clip-path: ${cropStyle}; filter: ${filter}; transform: ${imageTransform};"
       />
@@ -695,8 +692,7 @@ function schedulePreviewRefresh() {
   window.clearTimeout(previewRefreshTimer);
   previewRefreshTimer = window.setTimeout(() => {
     refreshVisibleSlideCards();
-    renderThumbnails();
-    renderPhotoList();
+    syncRenderableImageSources();
   }, 80);
 }
 
@@ -745,14 +741,12 @@ async function ensurePreviewForImage(image) {
     .then((previewUrl) => {
       previewCache.set(image.id, previewUrl);
       previewJobs.delete(image.id);
-      markPreviewDirty();
       schedulePreviewRefresh();
       return previewUrl;
     })
     .catch(() => {
       previewCache.set(image.id, image.url);
       previewJobs.delete(image.id);
-      markPreviewDirty();
       return image.url;
     });
 
@@ -766,6 +760,20 @@ function getRenderableImageUrl(image) {
   if (cached) return cached;
   void ensurePreviewForImage(image);
   return image.url;
+}
+
+function syncRenderableImageSources(imageIds = null) {
+  const targetIds = imageIds ? new Set(imageIds.filter(Boolean)) : null;
+  document.querySelectorAll("[data-renderable-image-id]").forEach((node) => {
+    const imageId = node.getAttribute("data-renderable-image-id");
+    if (!imageId || (targetIds && !targetIds.has(imageId))) return;
+    const image = getImageById(imageId);
+    if (!image) return;
+    const nextUrl = getRenderableImageUrl(image);
+    if (node.getAttribute("src") !== nextUrl) {
+      node.setAttribute("src", nextUrl);
+    }
+  });
 }
 
 function warmPreviewCache(images) {
@@ -1386,7 +1394,6 @@ function renderThumbnails() {
     imagesVersion,
     slideSlotsVersion,
     layoutVersion,
-    previewVersion,
     state.images.length,
     state.slideSlots.length,
     state.layoutMode,
@@ -1429,7 +1436,7 @@ function renderThumbnails() {
                       .map((imageId) => {
                         const image = getImageById(imageId);
                         return image
-                          ? `<img src="${getRenderableImageUrl(image)}" alt="" loading="lazy" decoding="async" />`
+                          ? `<img src="${getRenderableImageUrl(image)}" data-renderable-image-id="${image.id}" alt="" loading="lazy" decoding="async" />`
                           : `<div class="slide-thumb-empty"></div>`;
                       })
                       .join("")}
@@ -1459,7 +1466,7 @@ function renderThumbnails() {
             data-slot-page="${1 + Math.floor(index / pageSize)}"
             title="${image ? escapeHtml(image.name) : "빈칸"}"
           >
-            ${image ? `<img src="${getRenderableImageUrl(image)}" alt="" loading="lazy" decoding="async" />` : `<div class="photo-empty-thumb">빈칸</div>`}
+            ${image ? `<img src="${getRenderableImageUrl(image)}" data-renderable-image-id="${image.id}" alt="" loading="lazy" decoding="async" />` : `<div class="photo-empty-thumb">빈칸</div>`}
             <span>${index + 1}</span>
           </button>
         `;
@@ -1506,7 +1513,6 @@ function renderPhotoList() {
   const nextKey = [
     imagesVersion,
     slideSlotsVersion,
-    previewVersion,
     state.images.length,
     state.slideSlots.length,
   ].join(":");
@@ -1528,7 +1534,7 @@ function renderPhotoList() {
         data-index="${index}"
         title="${escapeHtml(image.name)}"
       >
-        <img src="${getRenderableImageUrl(image)}" alt="" loading="lazy" decoding="async" />
+        <img src="${getRenderableImageUrl(image)}" data-renderable-image-id="${image.id}" alt="" loading="lazy" decoding="async" />
         <div>
           <strong>${index + 1}</strong>
           <span>${escapeHtml(image.name)}</span>
