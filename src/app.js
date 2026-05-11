@@ -61,8 +61,16 @@ let photoListRenderToken = 0;
 let previewRefreshTimer = null;
 let previewWarmHandle = null;
 let previewWarmQueue = [];
+let imageIndexDirty = true;
+let imageSortDirty = true;
+let lastAppliedSortMode = state.sortMode;
+let imageByIdIndex = new Map();
 const previewCache = new Map();
 const previewJobs = new Map();
+const imageNameCollator = new Intl.Collator("ko-KR", {
+  numeric: true,
+  sensitivity: "base",
+});
 
 const els = {
   stage: document.querySelector("#stage"),
@@ -196,8 +204,20 @@ function getTotalPages() {
   return 1 + Math.ceil(state.slideSlots.length / getPageSize());
 }
 
+function markImagesDirty({ orderChanged = true } = {}) {
+  imageIndexDirty = true;
+  if (orderChanged) imageSortDirty = true;
+}
+
+function syncImageIndex() {
+  if (!imageIndexDirty) return;
+  imageByIdIndex = new Map(state.images.map((image) => [image.id, image]));
+  imageIndexDirty = false;
+}
+
 function getImageById(id) {
-  return state.images.find((image) => image.id === id);
+  syncImageIndex();
+  return imageByIdIndex.get(id);
 }
 
 function getDefaultSlotTransform() {
@@ -249,24 +269,28 @@ function ensureSlideSlots() {
 }
 
 function sortImages() {
-  if (state.sortMode === "manual") return;
+  if (state.sortMode === "manual") {
+    imageSortDirty = false;
+    lastAppliedSortMode = state.sortMode;
+    return;
+  }
 
-  const collator = new Intl.Collator("ko-KR", {
-    numeric: true,
-    sensitivity: "base",
-  });
+  if (!imageSortDirty && lastAppliedSortMode === state.sortMode) return;
 
   state.images.sort((a, b) => {
     if (state.sortMode === "date-asc") {
-      return a.modifiedAt - b.modifiedAt || collator.compare(a.name, b.name);
+      return a.modifiedAt - b.modifiedAt || imageNameCollator.compare(a.name, b.name);
     }
 
     if (state.sortMode === "date-desc") {
-      return b.modifiedAt - a.modifiedAt || collator.compare(a.name, b.name);
+      return b.modifiedAt - a.modifiedAt || imageNameCollator.compare(a.name, b.name);
     }
 
-    return collator.compare(a.name, b.name);
+    return imageNameCollator.compare(a.name, b.name);
   });
+  imageSortDirty = false;
+  imageIndexDirty = true;
+  lastAppliedSortMode = state.sortMode;
 }
 
 function getFilterStyle() {
@@ -848,6 +872,7 @@ async function loadImageFiles(fileList) {
 
     const wasEmpty = state.images.length === 0;
     state.images = [...state.images, ...addedImages];
+    markImagesDirty();
     state.slideSlots = [...state.slideSlots, ...addedImages.map((image) => image.id)];
     state.selectedSlotIndex = null;
 
@@ -1499,12 +1524,13 @@ function renderPhotoList() {
         const to = Number(card.dataset.index);
         if (!Number.isFinite(from) || !Number.isFinite(to) || from === to) return;
 
-        const [moved] = state.images.splice(from, 1);
-        state.images.splice(to, 0, moved);
+      const [moved] = state.images.splice(from, 1);
+      state.images.splice(to, 0, moved);
+      markImagesDirty();
 
-        if (isSequentialSlotComposition()) {
-          state.slideSlots = state.images.map((image) => image.id);
-        }
+      if (isSequentialSlotComposition()) {
+        state.slideSlots = state.images.map((image) => image.id);
+      }
 
         state.sortMode = "manual";
         els.sortMode.value = "manual";
@@ -1618,6 +1644,7 @@ els.imageInput.addEventListener("change", async () => {
 
 els.sortMode.addEventListener("change", () => {
   state.sortMode = els.sortMode.value;
+  imageSortDirty = true;
   render();
 });
 
@@ -1974,6 +2001,7 @@ function applyImageOrder(order) {
   const ordered = order.map((id) => byId.get(id)).filter(Boolean);
   const remaining = state.images.filter((image) => !order.includes(image.id));
   state.images = [...ordered, ...remaining];
+  markImagesDirty();
 }
 
 function applyPersistedState() {
@@ -1987,6 +2015,7 @@ function applyPersistedState() {
     const assets = legacySaved ? data : savedAssets ? JSON.parse(savedAssets) : {};
 
     state.images = Array.isArray(assets.images) ? assets.images : state.images;
+    markImagesDirty();
     state.logoUrl = assets.logoUrl || state.logoUrl;
 
     if (data.cover) {
