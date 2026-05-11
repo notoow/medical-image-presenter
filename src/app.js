@@ -1362,8 +1362,7 @@ function clearSlideSlots() {
   render();
 }
 
-function getGuidePercentFromPointer(axis, pointerEvent) {
-  const rect = els.stage.getBoundingClientRect();
+function getGuidePercentFromPointer(axis, pointerEvent, rect = els.stage.getBoundingClientRect()) {
   const percent =
     axis === "x"
       ? ((pointerEvent.clientX - rect.left) / rect.width) * 100
@@ -1716,10 +1715,12 @@ els.stage?.addEventListener("pointerdown", (event) => {
     const index = Number(guideEl.dataset.guideIndex);
     const guide = state.guides[index];
     if (!guide) return;
+    const stageRect = els.stage.getBoundingClientRect();
     activeGuideDrag = {
       index,
       axis: guide.axis,
       pointerId: event.pointerId,
+      stageRect,
     };
     return;
   }
@@ -1730,9 +1731,10 @@ els.stage?.addEventListener("pointerdown", (event) => {
   event.preventDefault();
   const axis = ruler.dataset.rulerAxis;
   if (axis !== "x" && axis !== "y") return;
+  const stageRect = els.stage.getBoundingClientRect();
   state.guides.push({
     axis,
-    percent: getGuidePercentFromPointer(axis, event),
+    percent: getGuidePercentFromPointer(axis, event, stageRect),
   });
   markGuidesDirty();
   const index = state.guides.length - 1;
@@ -1740,6 +1742,7 @@ els.stage?.addEventListener("pointerdown", (event) => {
     index,
     axis,
     pointerId: event.pointerId,
+    stageRect,
   };
   render();
   syncGuideVisual(index);
@@ -1762,7 +1765,7 @@ window.addEventListener("pointermove", (event) => {
   if (!activeGuideDrag || event.pointerId !== activeGuideDrag.pointerId) return;
   const guide = state.guides[activeGuideDrag.index];
   if (!guide) return;
-  guide.percent = getGuidePercentFromPointer(activeGuideDrag.axis, event);
+  guide.percent = getGuidePercentFromPointer(activeGuideDrag.axis, event, activeGuideDrag.stageRect);
   markGuidesDirty();
   syncGuideVisual(activeGuideDrag.index);
 });
