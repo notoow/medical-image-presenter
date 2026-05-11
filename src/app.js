@@ -1345,7 +1345,7 @@ els.closeShortcutHelpButton.addEventListener("click", hideShortcutHelp);
 els.shortcutDialog.addEventListener("click", closeDialogFromBackdrop);
 els.exportButton.addEventListener("click", exportStandaloneHtml);
 els.openPagesButton.addEventListener("click", () => {
-  window.open("https://notoow.github.io/medical-image-presenter/", "_blank", "noopener,noreferrer");
+  window.open("https://github.com/notoow/medical-image-presenter", "_blank", "noopener,noreferrer");
 });
 els.downloadImagesButton.addEventListener("click", downloadAdjustedImages);
 els.emptySlotToken.addEventListener("dragstart", (event) => {
@@ -1784,6 +1784,11 @@ function createStandaloneHtml(data) {
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>${escapeHtml(data.cover.title || "Medical Image Presentation")}</title>
+  <meta
+    name="description"
+    content="Medical Image Presenter exported deck입니다. 병원 비포애프터 사진을 정렬, 보정, 분할, 발표 모드로 확인할 수 있는 단일 HTML 프레젠테이션입니다."
+  />
+  <meta name="robots" content="noindex,nofollow" />
   <style>
     @import url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css");
     :root { color-scheme: dark; --ink:#fffdf7; --muted:rgba(255,253,247,.68); --panel:rgba(20,19,17,.84); --panel-soft:rgba(255,255,255,.05); --line:rgba(255,253,247,.16); --accent:#d9a06f; --accent-strong:#8f5c38; --white:#fffdf7; }
@@ -1890,8 +1895,8 @@ function createStandaloneHtml(data) {
           </svg>
         </span>
         <span class="sidebar-footer-copy">
-          <strong>GitHub Pages</strong>
-          <small>배포 페이지 열기</small>
+          <strong>GitHub Repository</strong>
+          <small>소스 코드 · 이슈 · 업데이트</small>
         </span>
       </button>
     </aside>
@@ -1948,7 +1953,7 @@ function createStandaloneHtml(data) {
     function backdropClose(e){ if(e.target!==$("shortcutDialog")) return; const r=$("shortcutDialog").getBoundingClientRect(); if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom) hideHelp(); }
     function onWheelZoom(e){ if(!(e.target instanceof Element) || !e.target.closest("#stage")) return; e.preventDefault(); if(e.deltaY<0) updateZoom(.1); else if(e.deltaY>0) updateZoom(-.1); }
     $("prev").onclick=()=>go(state.pageIndex-1); $("next").onclick=()=>go(state.pageIndex+1); $("fit").onclick=()=>{state.fitMode="fit";render()}; $("fill").onclick=()=>{state.fitMode="fill";render()}; $("bg").onclick=()=>{state.backgroundEnabled=!state.backgroundEnabled;render()}; $("present").onclick=present;
-    $("help").onclick=showHelp; $("closeHelp").onclick=hideHelp; $("downloadImages").onclick=downloadImages; $("openPages").onclick=()=>window.open("https://notoow.github.io/medical-image-presenter/","_blank","noopener,noreferrer");
+    $("help").onclick=showHelp; $("closeHelp").onclick=hideHelp; $("downloadImages").onclick=downloadImages; $("openPages").onclick=()=>window.open("https://github.com/notoow/medical-image-presenter","_blank","noopener,noreferrer");
     $("shortcutDialog").onclick=backdropClose;
     document.addEventListener("wheel", onWheelZoom, { passive:false });
     for (const id of ["title","subtitle","hospital","presenter"]) $(id).oninput=()=>{ const map={title:"title",subtitle:"subtitle",hospital:"hospitalName",presenter:"presenterName"}; state.cover[map[id]]=$(id).value; render(); };
