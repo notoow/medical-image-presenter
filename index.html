@@ -12,9 +12,7 @@
         <div class="brand-block">
           <p class="eyebrow">Local-first clinical deck</p>
           <h1>Case Photo Presenter</h1>
-          <p class="muted">
-            사진은 브라우저 안에서만 미리보기 처리됩니다. 원본 파일은 수정하지 않습니다.
-          </p>
+          <p class="muted">사진은 브라우저 안에서만 미리보기 처리됩니다. 원본 파일은 수정하지 않습니다.</p>
         </div>
 
         <section class="panel-section">
@@ -95,9 +93,9 @@
             페이지 구성
             <select id="layoutMode">
               <option value="single">낱장</option>
-              <option value="pair" selected>2장씩</option>
-              <option value="triple">3장씩</option>
-              <option value="quad">4장씩</option>
+              <option value="pair" selected>2분할</option>
+              <option value="triple">3분할</option>
+              <option value="quad">4분할</option>
               <option value="custom">사용자 지정</option>
             </select>
           </label>
@@ -127,26 +125,14 @@
           <h2>화면</h2>
           <div class="segmented">
             <button id="fitButton" type="button">맞추기 F</button>
-            <button id="fillButton" type="button">채우기 ⇧F</button>
+            <button id="fillButton" type="button">채우기 Shift+F</button>
           </div>
-          <button id="backgroundButton" class="wide-button" type="button">
-            배경 채우기 Enter
-          </button>
-          <button id="presentButton" class="wide-button" type="button">
-            발표모드 F5
-          </button>
-          <button id="shortcutHelpButton" class="wide-button" type="button">
-            단축키 보기 Shift+?
-          </button>
-          <button id="exportButton" class="wide-button" type="button">
-            HTML 내려받기
-          </button>
-          <button id="openPagesButton" class="wide-button" type="button">
-            배포 페이지 열기
-          </button>
-          <button id="downloadImagesButton" class="wide-button" type="button">
-            설정 사진 다운로드
-          </button>
+          <button id="backgroundButton" class="wide-button" type="button">배경 채우기 Enter</button>
+          <button id="presentButton" class="wide-button" type="button">발표모드 F5</button>
+          <button id="shortcutHelpButton" class="wide-button" type="button">단축키 보기 Shift+?</button>
+          <button id="exportButton" class="wide-button" type="button">HTML 내려받기</button>
+          <button id="openPagesButton" class="wide-button" type="button">배포 페이지 열기</button>
+          <button id="downloadImagesButton" class="wide-button" type="button">편집 사진 다운로드</button>
           <div class="zoom-row">
             <button id="zoomOutButton" type="button">-</button>
             <output id="zoomOutput">100%</output>
@@ -155,7 +141,7 @@
         </section>
 
         <section class="panel-section">
-          <h2>일괄 보정</h2>
+          <h2>색 보정</h2>
           <label>
             밝기 <output id="brightnessValue">100%</output>
             <input id="brightness" type="range" min="50" max="150" value="100" />
@@ -169,12 +155,10 @@
             <input id="saturate" type="range" min="0" max="180" value="100" />
           </label>
           <label>
-            색조 <output id="hueValue">0°</output>
+            색조 <output id="hueValue">0deg</output>
             <input id="hue" type="range" min="-45" max="45" value="0" />
           </label>
-          <button id="resetFiltersButton" class="wide-button subtle" type="button">
-            보정 초기화
-          </button>
+          <button id="resetFiltersButton" class="wide-button subtle" type="button">보정 초기화</button>
         </section>
 
         <section class="panel-section">
@@ -223,7 +207,7 @@
 
         <section class="panel-section selected-photo-panel">
           <h2>선택 사진 편집</h2>
-          <p id="selectedSlotLabel" class="selected-slot-label">슬라이드 사진을 클릭하세요</p>
+          <p id="selectedSlotLabel" class="selected-slot-label">슬라이드 사진을 클릭하세요.</p>
           <label>
             크기 <output id="slotScaleValue">100%</output>
             <input id="slotScale" type="range" min="40" max="240" value="100" disabled />
@@ -250,11 +234,11 @@
               <input id="slotCropRight" type="range" min="0" max="60" value="0" disabled />
             </label>
             <label>
-              위 crop <output id="slotCropTopValue">0%</output>
+              위쪽 crop <output id="slotCropTopValue">0%</output>
               <input id="slotCropTop" type="range" min="0" max="60" value="0" disabled />
             </label>
             <label>
-              아래 crop <output id="slotCropBottomValue">0%</output>
+              아래쪽 crop <output id="slotCropBottomValue">0%</output>
               <input id="slotCropBottom" type="range" min="0" max="60" value="0" disabled />
             </label>
           </div>
@@ -262,7 +246,7 @@
             선택 사진 초기화
           </button>
           <p class="hint-text">
-            슬라이드 사진을 클릭한 뒤 이 칸만 확대, 이동, 회전, crop 할 수 있습니다. HTML 다운로드에도 그대로 저장됩니다.
+            슬라이드 사진을 클릭하면 해당 칸만 확대, 이동, 회전, crop 할 수 있습니다. HTML 다운로드에도 그대로 저장됩니다.
           </p>
         </section>
 
@@ -277,17 +261,15 @@
             <button id="addHorizontalGuideButton" type="button">+ 가로 안내선</button>
           </div>
           <div id="guideListPanel" class="guide-list-panel" aria-label="안내선 위치 조절"></div>
-          <button id="clearGuidesButton" class="wide-button subtle" type="button">
-            안내선 모두 지우기
-          </button>
+          <button id="clearGuidesButton" class="wide-button subtle" type="button">안내선 모두 지우기</button>
           <p class="hint-text">
-            + 버튼으로 안내선을 추가하고, 슬라이더로 위치를 조절하세요. 상단/좌측 ruler에서 끌어오거나 안내선을 직접 드래그해도 됩니다.
+            + 버튼으로 안내선을 추가하고 슬라이더로 위치를 조절하세요. 상단과 좌측 ruler에서도 직접 끌어와서 놓을 수 있습니다.
           </p>
         </section>
 
         <section class="panel-section shortcuts">
           <h2>단축키</h2>
-          <p>← → Space: 페이지 이동</p>
+          <p>화살표 / Space: 페이지 이동</p>
           <p>Enter: 블러 배경 채우기</p>
           <p>F / Shift+F: 맞추기 / 채우기</p>
           <p>F5 / Esc: 발표 시작 / 종료</p>
@@ -315,15 +297,11 @@
           </div>
           <button id="addEmptySlotButton" type="button">빈칸 추가</button>
         </div>
-        <button id="clearSlideSlotsButton" class="wide-button subtle" type="button">
-          슬라이드 비우기
-        </button>
+        <button id="clearSlideSlotsButton" class="wide-button subtle" type="button">슬라이드 비우기</button>
         <p class="hint-text">
           사진을 중앙 슬라이드 칸으로 끌어다 놓아 배치하세요. 빈칸 카드를 끌어다 놓으면 해당 칸을 비울 수 있습니다.
         </p>
-        <button id="emptySlotToken" class="empty-token" type="button" draggable="true">
-          빈칸
-        </button>
+        <button id="emptySlotToken" class="empty-token" type="button" draggable="true">빈칸</button>
         <div id="photoListPanel" class="photo-list-panel"></div>
       </aside>
     </main>
@@ -337,7 +315,7 @@
           </svg>
         </div>
         <strong>사진을 여기에 놓으세요</strong>
-        <span>여러 장을 한 번에 업로드하고 슬라이드로 자동 배치합니다</span>
+        <span>여러 장을 한 번에 업로드하고 슬라이드로 바로 배치할 수 있습니다.</span>
       </div>
     </div>
 
@@ -345,9 +323,7 @@
       <div class="duplicate-card">
         <p class="eyebrow">Duplicate photos</p>
         <h2>동일한 사진이 있습니다</h2>
-        <p id="duplicateMessage" class="muted">
-          이름과 크기가 같은 사진이 포함되어 있습니다. 어떻게 처리할까요?
-        </p>
+        <p id="duplicateMessage" class="muted">이름과 크기가 같은 사진이 포함되어 있습니다. 어떻게 처리할까요?</p>
         <div id="duplicateList" class="duplicate-list"></div>
         <div class="duplicate-actions">
           <button id="skipDuplicateButton" type="button">중복 건너뛰기</button>
@@ -375,7 +351,7 @@
           <p><kbd>F</kbd> / <kbd>Shift</kbd> + <kbd>F</kbd><span>사진 맞추기 / 채우기</span></p>
           <p><kbd>Enter</kbd><span>블러 배경 채우기 켜기/끄기</span></p>
           <p><kbd>+</kbd> <kbd>-</kbd> <kbd>0</kbd><span>확대 / 축소 / 초기화</span></p>
-          <p><kbd>Shift</kbd> + <kbd>?</kbd><span>이 도움말 열기</span></p>
+          <p><kbd>Shift</kbd> + <kbd>?</kbd><span>도움말 열기</span></p>
         </div>
       </div>
     </dialog>
