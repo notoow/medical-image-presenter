@@ -1301,7 +1301,7 @@ function renderGuideControls() {
         <div class="guide-control" data-guide-control="${index}">
           <div class="guide-control-head">
             <strong>${label} 안내선 ${index + 1}</strong>
-            <output>${guide.percent.toFixed(1)}%</output>
+            <output data-guide-output="${index}">${guide.percent.toFixed(1)}%</output>
             <button type="button" data-guide-delete="${index}" aria-label="${label} 안내선 삭제">X</button>
           </div>
           <input
@@ -1317,11 +1317,10 @@ function renderGuideControls() {
     })
     .join("");
 
-  els.guideListPanel.querySelectorAll("[data-guide-control]").forEach((control) => {
-    const index = Number(control.getAttribute("data-guide-control"));
-    if (!Number.isFinite(index)) return;
-    const output = control.querySelector("output");
-    if (output) guideControlOutputCache.set(index, output);
+  els.guideListPanel.querySelectorAll("[data-guide-output]").forEach((output) => {
+    const index = Number(output.getAttribute("data-guide-output"));
+    if (!Number.isFinite(index) || !(output instanceof HTMLOutputElement)) return;
+    guideControlOutputCache.set(index, output);
   });
 }
 
