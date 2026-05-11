@@ -68,6 +68,7 @@ let previewWarmQueue = [];
 let pendingPreviewRefreshIds = new Set();
 let lightweightRefreshFrame = null;
 let pendingLightweightSlotIndices = null;
+let selectedSlotUiKey = "";
 let imageIndexDirty = true;
 let imageSortDirty = true;
 let lastAppliedSortMode = state.sortMode;
@@ -1113,15 +1114,40 @@ function syncSelectedSlotControls() {
     els.resetSlotTransformButton,
   ].filter(Boolean);
 
-  for (const control of controls) control.disabled = !hasSlot;
+  const disabledKey = hasSlot ? "enabled" : "disabled";
+  if (!selectedSlotUiKey.startsWith(`${disabledKey}|`)) {
+    for (const control of controls) control.disabled = !hasSlot;
+  }
 
   if (!hasSlot) {
-    els.selectedSlotLabel.textContent = "슬라이드 사진을 클릭하세요.";
+    const nextKey = "disabled|empty";
+    if (selectedSlotUiKey !== nextKey) {
+      els.selectedSlotLabel.textContent = "슬라이드 사진을 클릭하세요.";
+      selectedSlotUiKey = nextKey;
+    }
     return;
   }
 
   const transform = getSlotTransform(slotIndex);
-  els.selectedSlotLabel.textContent = `${slotIndex + 1}번 슬롯 선택됨`;
+  const nextKey = [
+    "enabled",
+    slotIndex,
+    transform.scale,
+    transform.x,
+    transform.y,
+    transform.rotate,
+    transform.cropLeft,
+    transform.cropRight,
+    transform.cropTop,
+    transform.cropBottom,
+  ].join("|");
+
+  if (selectedSlotUiKey === nextKey) return;
+
+  const nextLabel = `${slotIndex + 1}번 슬롯 선택됨`;
+  if (els.selectedSlotLabel.textContent !== nextLabel) {
+    els.selectedSlotLabel.textContent = nextLabel;
+  }
   const bindings = [
     [els.slotScale, els.slotScaleValue, transform.scale, "%"],
     [els.slotX, els.slotXValue, transform.x, "%"],
@@ -1135,9 +1161,13 @@ function syncSelectedSlotControls() {
 
   for (const [input, output, value, suffix] of bindings) {
     if (!input || !output) continue;
-    input.value = value;
-    output.textContent = `${value}${suffix}`;
+    const valueText = String(value);
+    if (input.value !== valueText) input.value = valueText;
+    const outputText = `${value}${suffix}`;
+    if (output.textContent !== outputText) output.textContent = outputText;
   }
+
+  selectedSlotUiKey = nextKey;
 }
 
 function selectSlot(slotIndex) {
