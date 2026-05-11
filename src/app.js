@@ -83,6 +83,10 @@ let totalPagesCacheKey = "";
 let cachedTotalPages = 1;
 let currentPageSlotMetaCacheKey = "";
 let currentPageSlotMetaCache = null;
+let filterStyleCacheKey = "";
+let cachedFilterStyle = "";
+let backgroundFilterStyleCacheKey = "";
+let cachedBackgroundFilterStyle = "";
 let imageIndexDirty = true;
 let imageSortDirty = true;
 let lastAppliedSortMode = state.sortMode;
@@ -406,17 +410,27 @@ function sortImages() {
 
 function getFilterStyle() {
   const { brightness, contrast, saturate, hue } = state.filters;
-  return [
+  const nextKey = `${brightness}:${contrast}:${saturate}:${hue}`;
+  if (filterStyleCacheKey === nextKey) return cachedFilterStyle;
+
+  cachedFilterStyle = [
     `brightness(${brightness}%)`,
     `contrast(${contrast}%)`,
     `saturate(${saturate}%)`,
     `hue-rotate(${hue}deg)`,
   ].join(" ");
+  filterStyleCacheKey = nextKey;
+  return cachedFilterStyle;
 }
 
 function getBackgroundFilterStyle() {
   const { brightness, saturate, blur } = state.backgroundFilters;
-  return `blur(${blur}px) brightness(${brightness / 100}) saturate(${saturate / 100})`;
+  const nextKey = `${brightness}:${saturate}:${blur}`;
+  if (backgroundFilterStyleCacheKey === nextKey) return cachedBackgroundFilterStyle;
+
+  cachedBackgroundFilterStyle = `blur(${blur}px) brightness(${brightness / 100}) saturate(${saturate / 100})`;
+  backgroundFilterStyleCacheKey = nextKey;
+  return cachedBackgroundFilterStyle;
 }
 
 function getCropStyle() {
