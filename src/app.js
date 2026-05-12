@@ -202,6 +202,8 @@ const els = {
   slotX: document.querySelector("#slotX"),
   slotY: document.querySelector("#slotY"),
   slotRotate: document.querySelector("#slotRotate"),
+  flipSlotXButton: document.querySelector("#flipSlotXButton"),
+  flipSlotYButton: document.querySelector("#flipSlotYButton"),
   slotCropLeft: document.querySelector("#slotCropLeft"),
   slotCropRight: document.querySelector("#slotCropRight"),
   slotCropTop: document.querySelector("#slotCropTop"),
@@ -259,6 +261,8 @@ const DEFAULT_SLOT_TRANSFORM = Object.freeze({
   x: 0,
   y: 0,
   rotate: 0,
+  flipX: false,
+  flipY: false,
   cropLeft: 0,
   cropRight: 0,
   cropTop: 0,
@@ -656,7 +660,9 @@ function getSlotCropStyle(slotIndex, transform = getSlotTransform(slotIndex)) {
 
 function getSlotTransformStyle(slotIndex, transform = getSlotTransform(slotIndex)) {
   const scale = state.zoom * (transform.scale / 100);
-  return `translate(${transform.x}%, ${transform.y}%) scale(${scale}) rotate(${transform.rotate}deg)`;
+  const scaleX = scale * (transform.flipX ? -1 : 1);
+  const scaleY = scale * (transform.flipY ? -1 : 1);
+  return `translate(${transform.x}%, ${transform.y}%) scale(${scaleX}, ${scaleY}) rotate(${transform.rotate}deg)`;
 }
 
 function ensureSlideSlots() {
@@ -1602,6 +1608,7 @@ function syncShortcutHelpContent() {
     <p><kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>←</kbd> <kbd>→</kbd> <kbd>↑</kbd> <kbd>↓</kbd><span>선택 사진 크게 이동</span></p>
     <p><kbd>Alt</kbd> + <kbd>[</kbd> <kbd>]</kbd><span>선택 사진 크기 줄이기 / 키우기</span></p>
     <p><kbd>Alt</kbd> + <kbd>,</kbd> <kbd>.</kbd><span>선택 사진 회전</span></p>
+    <p><kbd>Alt</kbd> + <kbd>H</kbd> <kbd>Alt</kbd> + <kbd>J</kbd><span>선택 사진 좌우 / 상하 반전</span></p>
     <p><kbd>Alt</kbd> + <kbd>C</kbd> <kbd>Alt</kbd> + <kbd>V</kbd><span>선택 사진 값 복사 / 붙여넣기</span></p>
     <p><kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>V</kbd><span>현재 페이지 사진에 같은 값 적용</span></p>
     <p><kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>A</kbd><span>전체 슬라이드 사진에 같은 값 적용</span></p>
@@ -1760,6 +1767,8 @@ function syncSelectedSlotControls() {
     els.slotX,
     els.slotY,
     els.slotRotate,
+    els.flipSlotXButton,
+    els.flipSlotYButton,
     els.slotCropLeft,
     els.slotCropRight,
     els.slotCropTop,
@@ -1805,6 +1814,8 @@ function syncSelectedSlotControls() {
     transform.x,
     transform.y,
     transform.rotate,
+    transform.flipX,
+    transform.flipY,
     transform.cropLeft,
     transform.cropRight,
     transform.cropTop,
@@ -1813,9 +1824,15 @@ function syncSelectedSlotControls() {
 
   if (selectedSlotUiKey === nextKey) return;
 
-  const nextLabel = `${slotIndex + 1}번 슬롯 선택됨. Tab/Shift+방향키로 칸 이동, Alt+방향키/대괄호/쉼표/마침표로 미세 편집, Alt+C/Alt+V로 값 복사 붙여넣기, Alt+Shift+V/A로 페이지/전체 일괄 적용, Backspace로 비우기, 클릭은 교체, 더블클릭은 다음 슬라이드까지 연속 이동합니다.`;
+  const nextLabel = `${slotIndex + 1}번 슬롯 선택됨. Tab/Shift+방향키로 칸 이동, Alt+방향키/대괄호/쉼표/마침표/H/J로 미세 편집, Alt+C/Alt+V로 값 복사 붙여넣기, Alt+Shift+V/A로 페이지/전체 일괄 적용, Backspace로 비우기, 클릭은 교체, 더블클릭은 다음 슬라이드까지 연속 이동합니다.`;
   if (els.selectedSlotLabel.textContent !== nextLabel) {
     els.selectedSlotLabel.textContent = nextLabel;
+  }
+  if (els.flipSlotXButton) {
+    els.flipSlotXButton.textContent = transform.flipX ? "좌우 반전 해제" : "좌우 반전";
+  }
+  if (els.flipSlotYButton) {
+    els.flipSlotYButton.textContent = transform.flipY ? "상하 반전 해제" : "상하 반전";
   }
   const bindings = [
     [els.slotScale, els.slotScaleValue, transform.scale, "%"],
@@ -1927,6 +1944,20 @@ function nudgeSelectedSlotRotate(amount = 1) {
 
   const transform = getSlotTransform(slotIndex);
   updateSelectedSlotTransform("rotate", clamp(transform.rotate + amount, -45, 45), { recordHistory: true });
+}
+
+function toggleSelectedSlotFlip(axis = "x") {
+  const slotIndex = Number(state.selectedSlotIndex);
+  if (!Number.isFinite(slotIndex) || slotIndex < 0 || !state.slideSlots[slotIndex]) return;
+
+  const transform = getSlotTransform(slotIndex);
+  if (axis === "x") {
+    updateSelectedSlotTransform("flipX", !transform.flipX, { recordHistory: true });
+    return;
+  }
+  if (axis === "y") {
+    updateSelectedSlotTransform("flipY", !transform.flipY, { recordHistory: true });
+  }
 }
 
 function copySelectedSlotTransform() {
@@ -3531,6 +3562,8 @@ els.resetSlotTransformButton?.addEventListener("click", () => {
   state.slotTransforms[slotIndex] = getDefaultSlotTransform();
   render();
 });
+els.flipSlotXButton?.addEventListener("click", () => toggleSelectedSlotFlip("x"));
+els.flipSlotYButton?.addEventListener("click", () => toggleSelectedSlotFlip("y"));
 els.copySlotTransformButton?.addEventListener("click", copySelectedSlotTransform);
 els.pasteSlotTransformButton?.addEventListener("click", pasteSelectedSlotTransform);
 els.applySlotTransformToPageButton?.addEventListener("click", applySelectedSlotTransformToCurrentPage);
@@ -3662,6 +3695,16 @@ document.addEventListener("keydown", (event) => {
   }
 
   if (state.pageIndex > 0 && event.altKey && !event.shiftKey && !event.ctrlKey && !event.metaKey) {
+    if (event.key.toLowerCase() === "h") {
+      event.preventDefault();
+      toggleSelectedSlotFlip("x");
+      return;
+    }
+    if (event.key.toLowerCase() === "j") {
+      event.preventDefault();
+      toggleSelectedSlotFlip("y");
+      return;
+    }
     if (event.key.toLowerCase() === "c") {
       event.preventDefault();
       copySelectedSlotTransform();
@@ -4313,9 +4356,9 @@ function createStandaloneHtml(data) {
     function render(){ state.pageIndex=Math.min(Math.max(state.pageIndex,0),totalPages()-1); if(state.pageIndex===0) renderCover(); else renderSlide(); $("status").textContent=state.pageIndex===0?\`Cover / \${totalPages()}\`:\`\${state.pageIndex+1} / \${totalPages()}\`; $("bg").textContent=state.backgroundEnabled?"배경 채우기 켜짐 Enter":"배경 채우기 꺼짐 Enter"; }
     function renderCover(){ const meta=[state.coverVisibility.hospitalName?state.cover.hospitalName:"",state.coverVisibility.presenterName?state.cover.presenterName:"",state.coverVisibility.date?state.cover.date:""].filter(Boolean); $("stage").className="stage cover"; $("stage").innerHTML=\`<div class="cover-card">\${state.coverVisibility.logo&&state.cover.logoUrl?\`<img class="cover-logo" src="\${state.cover.logoUrl}" alt="logo">\`:""}\${state.coverVisibility.title?\`<h2 class="cover-title">\${esc(state.cover.title)}</h2>\`:""}\${state.coverVisibility.subtitle?\`<p class="cover-subtitle">\${esc(state.cover.subtitle)}</p>\`:""}\${meta.length?\`<p class="meta">\${meta.map(esc).join(" · ")}</p>\`:""}</div>\`; }
     function getImage(id){ return state.images.find((image)=>image.id===id); }
-    function slotTransform(i){ return {scale:100,x:0,y:0,rotate:0,cropLeft:0,cropRight:0,cropTop:0,cropBottom:0,...(state.slotTransforms?.[i]||{})}; }
+    function slotTransform(i){ return {scale:100,x:0,y:0,rotate:0,flipX:false,flipY:false,cropLeft:0,cropRight:0,cropTop:0,cropBottom:0,...(state.slotTransforms?.[i]||{})}; }
     function crop(i){ const t=slotTransform(i), c=state.crop||{left:0,right:0,top:0,bottom:0}; return \`inset(\${(c.top||0)+t.cropTop}% \${(c.right||0)+t.cropRight}% \${(c.bottom||0)+t.cropBottom}% \${(c.left||0)+t.cropLeft}%)\`; }
-    function photoTransform(i){ const t=slotTransform(i); return \`translate(\${t.x}%, \${t.y}%) scale(\${(state.zoom||1)*(t.scale/100)}) rotate(\${t.rotate}deg)\`; }
+    function photoTransform(i){ const t=slotTransform(i); const base=(state.zoom||1)*(t.scale/100); const sx=base*(t.flipX?-1:1); const sy=base*(t.flipY?-1:1); return \`translate(\${t.x}%, \${t.y}%) scale(\${sx}, \${sy}) rotate(\${t.rotate}deg)\`; }
     function card(img, slotIndex){ if(!img) return \`<figure class="card empty"></figure>\`; return \`<figure class="card \${state.backgroundEnabled?"bg-on":""} \${state.fitMode==="fill"?"fill":""}"><img class="blur" src="\${img.url}" alt=""><img class="photo" src="\${img.url}" alt="\${esc(img.name)}" style="clip-path:\${crop(slotIndex)};filter:\${filter()};transform:\${photoTransform(slotIndex)}"><figcaption class="label">\${esc(img.name)}</figcaption></figure>\`; }
     function renderSlide(){ const meta=currentPageMeta(); const layout=meta.layout; const cls=layout.mode==="custom"?"custom":layout.mode; const caption=(meta.caption||"").trim(); const emptySlide = meta.slots.length > 0 && meta.slots.every((id)=>!id); $("stage").className="stage"; $("stage").innerHTML=\`<div class="grid \${cls}" style="--grid-cols:\${layout.cols||2};--grid-rows:\${layout.rows||1}">\${meta.slots.map((id,offset)=>card(getImage(id),meta.start+offset)).join("")}</div>\${!emptySlide && caption ? \`<div class="slide-caption">\${esc(caption)}</div>\` : ""}\${emptySlide && caption ? \`<div class="empty-slide-caption">\${esc(caption)}</div>\` : ""}\`; }
     async function downloadImages(){ if(!state.images.length){ alert("먼저 사진을 넣어주세요."); return; } const ordered = (state.slideSlots?.length?state.slideSlots:state.images.map((image)=>image.id)).map((id,slotIndex)=>({ item:getImage(id), slotIndex })).filter(({item})=>Boolean(item)); for(const [index,{item,slotIndex}] of ordered.entries()){ const image = await imageFromUrl(item.url); const t = slotTransform(slotIndex); const c = state.crop||{left:0,right:0,top:0,bottom:0}; const cropLeftPx = Math.round(image.naturalWidth * (((c.left||0)+t.cropLeft) / 100)); const cropRightPx = Math.round(image.naturalWidth * (((c.right||0)+t.cropRight) / 100)); const cropTopPx = Math.round(image.naturalHeight * (((c.top||0)+t.cropTop) / 100)); const cropBottomPx = Math.round(image.naturalHeight * (((c.bottom||0)+t.cropBottom) / 100)); const sourceWidth = Math.max(1, image.naturalWidth - cropLeftPx - cropRightPx); const sourceHeight = Math.max(1, image.naturalHeight - cropTopPx - cropBottomPx); const canvas = document.createElement("canvas"); canvas.width = sourceWidth; canvas.height = sourceHeight; const ctx = canvas.getContext("2d"); ctx.filter = filter(); ctx.drawImage(image,cropLeftPx,cropTopPx,sourceWidth,sourceHeight,0,0,sourceWidth,sourceHeight); await new Promise((resolve)=>{ canvas.toBlob((blob)=>{ if(!blob){ resolve(); return; } const url = URL.createObjectURL(blob); const link = document.createElement("a"); link.href = url; link.download = \`\${String(index+1).padStart(3,"0")}-\${item.name.replace(/\\.[^.]+$/,"")}.png\`; document.body.append(link); link.click(); link.remove(); URL.revokeObjectURL(url); setTimeout(resolve,120); }, "image/png"); }); } }
