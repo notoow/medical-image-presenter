@@ -1020,6 +1020,15 @@ function syncDeckStatus() {
     : "배경 채우기 꺼짐 Enter";
 }
 
+function revealPanelItem(element) {
+  if (!(element instanceof HTMLElement)) return;
+  element.scrollIntoView({
+    block: "nearest",
+    inline: "nearest",
+    behavior: "smooth",
+  });
+}
+
 function syncPhotoListSelection() {
   if (!els.photoListPanel) return;
 
@@ -1045,6 +1054,7 @@ function syncPhotoListSelection() {
   if (!(nextCard instanceof HTMLElement)) return;
   nextCard.classList.add("is-active");
   activePhotoListCard = nextCard;
+  revealPanelItem(nextCard);
 }
 
 function getVisibleSlideSlotIndices() {
@@ -3012,6 +3022,7 @@ function renderThumbnails() {
   activeThumbnailButton?.classList.remove("is-active");
   activeThumbnailButton = thumbnailPageButtonCache.get(state.pageIndex) ?? null;
   activeThumbnailButton?.classList.add("is-active");
+  revealPanelItem(activeThumbnailButton);
 }
 
 function renderPhotoList() {
