@@ -72,6 +72,7 @@ let activeStageSlotDropTarget = null;
 let activeGuideDrag = null;
 let activeSlotPan = null;
 let activeSlideContextPage = null;
+let activeSlotContextIndex = null;
 let previewRefreshTimer = null;
 let previewWarmHandle = null;
 let previewWarmQueue = [];
@@ -178,6 +179,8 @@ const els = {
   shortcutDialog: document.querySelector("#shortcutDialog"),
   slideContextMenu: document.querySelector("#slideContextMenu"),
   slideContextLabel: document.querySelector("#slideContextLabel"),
+  slotContextMenu: document.querySelector("#slotContextMenu"),
+  slotContextLabel: document.querySelector("#slotContextLabel"),
   exportButton: document.querySelector("#exportButton"),
   openPagesButton: document.querySelector("#openPagesButton"),
   downloadImagesButton: document.querySelector("#downloadImagesButton"),
@@ -249,15 +252,6 @@ const els = {
   resetAllButton: document.querySelector("#resetAllButton"),
   clearSlideSlotsButton: document.querySelector("#clearSlideSlotsButton"),
 };
-
-function relocateSelectedPhotoControls() {
-  const fitRow = els.slotFitButton?.closest(".segmented");
-  const flipRow = els.flipSlotXButton?.closest(".segmented");
-  const selectedPanel = document.querySelector(".selected-photo-panel");
-  if (!(fitRow instanceof HTMLElement) || !(flipRow instanceof HTMLElement) || !(selectedPanel instanceof HTMLElement)) return;
-  if (flipRow.parentElement === selectedPanel && fitRow.nextElementSibling === flipRow) return;
-  fitRow.after(flipRow);
-}
 
 const pageSizeByLayout = {
   single: 1,
@@ -1657,6 +1651,7 @@ function closeSlideContextMenu() {
 }
 
 function openSlideContextMenu(page, clientX, clientY) {
+  closeSlotContextMenu();
   if (!els.slideContextMenu || !els.slideContextLabel) return;
   if (!Number.isFinite(page) || page <= 0) return;
 
@@ -1673,6 +1668,64 @@ function openSlideContextMenu(page, clientX, clientY) {
 
   els.slideContextMenu.style.left = `${left}px`;
   els.slideContextMenu.style.top = `${top}px`;
+}
+
+function closeSlotContextMenu() {
+  activeSlotContextIndex = null;
+  if (!els.slotContextMenu) return;
+  els.slotContextMenu.setAttribute("aria-hidden", "true");
+  els.slotContextMenu.style.removeProperty("left");
+  els.slotContextMenu.style.removeProperty("top");
+}
+
+function syncSlotContextMenuState(slotIndex = activeSlotContextIndex) {
+  if (!els.slotContextMenu || !Number.isFinite(slotIndex) || slotIndex < 0 || !state.slideSlots[slotIndex]) return;
+
+  const transform = getSlotTransform(slotIndex);
+  const buttons = els.slotContextMenu.querySelectorAll("[data-slot-context-action]");
+
+  buttons.forEach((button) => {
+    if (!(button instanceof HTMLButtonElement)) return;
+    const action = button.dataset.slotContextAction;
+    if (action === "paste") {
+      button.disabled = !slotTransformClipboard;
+    } else {
+      button.disabled = false;
+    }
+    if (action === "fit") {
+      button.textContent = transform.fitMode === "fit" ? "이 칸 맞추기 적용됨" : "이 칸 맞추기";
+    }
+    if (action === "fill") {
+      button.textContent = transform.fitMode === "fill" ? "이 칸 채우기 적용됨" : "이 칸 채우기";
+    }
+    if (action === "flip-x") {
+      button.textContent = transform.flipX ? "좌우 반전 해제" : "좌우 반전";
+    }
+    if (action === "flip-y") {
+      button.textContent = transform.flipY ? "상하 반전 해제" : "상하 반전";
+    }
+  });
+}
+
+function openSlotContextMenu(slotIndex, clientX, clientY) {
+  closeSlideContextMenu();
+  if (!els.slotContextMenu || !els.slotContextLabel) return;
+  if (!Number.isFinite(slotIndex) || slotIndex < 0 || !state.slideSlots[slotIndex]) return;
+
+  activeSlotContextIndex = slotIndex;
+  els.slotContextLabel.textContent = `${slotIndex + 1}번 사진 편집`;
+  syncSlotContextMenuState(slotIndex);
+  els.slotContextMenu.setAttribute("aria-hidden", "false");
+
+  const margin = 12;
+  const card = els.slotContextMenu.firstElementChild;
+  const width = card instanceof HTMLElement ? card.offsetWidth : 240;
+  const height = card instanceof HTMLElement ? card.offsetHeight : 260;
+  const left = Math.min(Math.max(clientX, margin), window.innerWidth - width - margin);
+  const top = Math.min(Math.max(clientY, margin), window.innerHeight - height - margin);
+
+  els.slotContextMenu.style.left = `${left}px`;
+  els.slotContextMenu.style.top = `${top}px`;
 }
 
 function runSlideContextAction(action, page = activeSlideContextPage) {
@@ -1715,11 +1768,58 @@ function runSlideContextAction(action, page = activeSlideContextPage) {
   }
 }
 
+function runSlotContextAction(action, slotIndex = activeSlotContextIndex) {
+  if (!Number.isFinite(slotIndex) || slotIndex < 0 || !state.slideSlots[slotIndex]) return;
+
+  if (state.selectedSlotIndex !== slotIndex) selectSlot(slotIndex);
+
+  if (action === "copy") {
+    copySelectedSlotTransform();
+    return;
+  }
+  if (action === "paste") {
+    pasteSelectedSlotTransform();
+    return;
+  }
+  if (action === "fit") {
+    setSelectedSlotFitMode("fit");
+    return;
+  }
+  if (action === "fill") {
+    setSelectedSlotFitMode("fill");
+    return;
+  }
+  if (action === "flip-x") {
+    toggleSelectedSlotFlip("x");
+    return;
+  }
+  if (action === "flip-y") {
+    toggleSelectedSlotFlip("y");
+    return;
+  }
+  if (action === "reset") {
+    beginEditHistoryAction();
+    state.slotTransforms[slotIndex] = getDefaultSlotTransform();
+    render();
+    return;
+  }
+  if (action === "clear") {
+    setSlot(slotIndex, null);
+  }
+}
+
 document.addEventListener("pointerdown", (event) => {
   if (els.slideContextMenu?.getAttribute("aria-hidden") !== "false") return;
   const target = event.target instanceof Element ? event.target : null;
   if (target?.closest("#slideContextMenu")) return;
   closeSlideContextMenu();
+});
+
+document.addEventListener("pointerdown", (event) => {
+  if (els.slotContextMenu?.getAttribute("aria-hidden") !== "false") return;
+  const target = event.target instanceof Element ? event.target : null;
+  if (target?.closest("#slotContextMenu")) return;
+  closeSlotContextMenu();
 });
 
 function closeDialogFromBackdrop(event) {
@@ -1846,7 +1946,7 @@ function syncSelectedSlotControls() {
 
   if (selectedSlotUiKey === nextKey) return;
 
-  const nextLabel = `${slotIndex + 1}번 슬롯 선택됨. Tab/Shift+방향키로 칸 이동, Alt+방향키/대괄호/쉼표/마침표/H/J/F/G로 미세 편집, Alt+C/Alt+V로 값 복사 붙여넣기, Alt+Shift+V/A로 페이지/전체 일괄 적용, Backspace로 비우기, 클릭은 교체, 더블클릭은 다음 슬라이드까지 연속 이동합니다.`;
+  const nextLabel = `${slotIndex + 1}번 슬롯 선택됨. Tab/Shift+방향키로 칸 이동, Alt+방향키/대괄호/쉼표/마침표/H/J/F/G로 미세 편집, Alt+C/Alt+V로 값 복사 붙여넣기, Alt+Shift+V/A로 페이지/전체 일괄 적용, 우클릭으로 빠른 편집, Backspace로 비우기, 클릭은 교체, 더블클릭은 다음 슬라이드까지 연속 이동합니다.`;
   if (els.selectedSlotLabel.textContent !== nextLabel) {
     els.selectedSlotLabel.textContent = nextLabel;
   }
@@ -3125,6 +3225,17 @@ els.stage?.addEventListener("contextmenu", (event) => {
     return;
   }
 
+  const slot = event.target instanceof Element ? event.target.closest("[data-slot-index]") : null;
+  if (slot instanceof HTMLElement) {
+    const slotIndex = Number(slot.dataset.slotIndex);
+    if (Number.isFinite(slotIndex) && slotIndex >= 0 && state.slideSlots[slotIndex]) {
+      event.preventDefault();
+      selectSlot(slotIndex);
+      openSlotContextMenu(slotIndex, event.clientX, event.clientY);
+      return;
+    }
+  }
+
   if (state.pageIndex <= 0) return;
   event.preventDefault();
   openSlideContextMenu(state.pageIndex, event.clientX, event.clientY);
@@ -3478,6 +3589,15 @@ els.slideContextMenu?.addEventListener("click", (event) => {
   closeSlideContextMenu();
 });
 
+els.slotContextMenu?.addEventListener("click", (event) => {
+  const actionButton = event.target instanceof Element ? event.target.closest("[data-slot-context-action]") : null;
+  if (!(actionButton instanceof HTMLButtonElement)) return;
+  const action = actionButton.dataset.slotContextAction;
+  if (!action || actionButton.disabled) return;
+  runSlotContextAction(action);
+  closeSlotContextMenu();
+});
+
 els.sortMode.addEventListener("change", () => {
   state.sortMode = els.sortMode.value;
   imageSortDirty = true;
@@ -3680,6 +3800,10 @@ document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") {
     if (els.shortcutDialog.open) {
       hideShortcutHelp();
+      return;
+    }
+    if (els.slotContextMenu?.getAttribute("aria-hidden") === "false") {
+      closeSlotContextMenu();
       return;
     }
     if (els.slideContextMenu?.getAttribute("aria-hidden") === "false") {
@@ -4434,7 +4558,6 @@ function createStandaloneHtml(data) {
 
 async function initializeDefaultLogo() {
   applyPersistedState();
-  relocateSelectedPhotoControls();
 
   if (state.logoUrl) {
     isRestoring = false;

@@ -161,10 +161,6 @@
             <button id="layoutThreeButton" type="button">3분할</button>
             <button id="layoutFourButton" type="button">4분할</button>
           </div>
-          <div class="segmented">
-            <button id="flipSlotXButton" type="button" disabled>좌우 반전</button>
-            <button id="flipSlotYButton" type="button" disabled>상하 반전</button>
-          </div>
           <div class="grid-controls">
             <label>
               가로 칸
@@ -287,6 +283,10 @@
             <button id="slotFitButton" class="mode-button" type="button" disabled>이 칸 맞추기</button>
             <button id="slotFillButton" class="mode-button" type="button" disabled>이 칸 채우기</button>
           </div>
+          <div class="segmented">
+            <button id="flipSlotXButton" type="button" disabled>좌우 반전</button>
+            <button id="flipSlotYButton" type="button" disabled>상하 반전</button>
+          </div>
           <div class="grid-controls">
             <label>
               왼쪽 crop <output id="slotCropLeftValue">0%</output>
@@ -315,7 +315,7 @@
           <button id="applySlotTransformToPageButton" class="wide-button" type="button" disabled>현재 페이지 사진에 같은 값 적용</button>
           <button id="applySlotTransformToAllButton" class="wide-button" type="button" disabled>전체 사진에 같은 값 적용</button>
           <p class="hint-text">
-            슬라이드 사진을 클릭하면 해당 칸만 크기, 이동, 회전, crop 할 수 있습니다. HTML 다운로드에도 그대로 저장됩니다.
+            슬라이드 사진을 클릭하면 해당 칸만 크기, 이동, 회전, crop 할 수 있고 우클릭으로 빠른 편집도 가능합니다. HTML 다운로드에도 그대로 저장됩니다.
           </p>
         </section>
 
@@ -487,6 +487,20 @@
         <button type="button" data-slide-context-action="insert-after">뒤에 빈 슬라이드 추가</button>
         <button type="button" data-slide-context-action="duplicate">현재 슬라이드 복제</button>
         <button type="button" data-slide-context-action="delete" class="danger">현재 슬라이드 삭제</button>
+      </div>
+    </div>
+
+    <div id="slotContextMenu" class="slot-context-menu" aria-hidden="true">
+      <div class="slide-context-card">
+        <p id="slotContextLabel" class="slide-context-label">선택 사진 편집</p>
+        <button type="button" data-slot-context-action="copy">현재 사진 값 복사</button>
+        <button type="button" data-slot-context-action="paste">붙여넣기</button>
+        <button type="button" data-slot-context-action="fit">이 칸 맞추기</button>
+        <button type="button" data-slot-context-action="fill">이 칸 채우기</button>
+        <button type="button" data-slot-context-action="flip-x">좌우 반전</button>
+        <button type="button" data-slot-context-action="flip-y">상하 반전</button>
+        <button type="button" data-slot-context-action="reset">현재 사진 값 초기화</button>
+        <button type="button" data-slot-context-action="clear" class="danger">이 칸 비우기</button>
       </div>
     </div>
 

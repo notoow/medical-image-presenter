@@ -362,14 +362,16 @@ body.is-file-dragging .drop-card {
   background: linear-gradient(135deg, var(--accent), var(--accent-strong));
 }
 
-.slide-context-menu {
+.slide-context-menu,
+.slot-context-menu {
   position: fixed;
   z-index: 40;
   left: 0;
   top: 0;
 }
 
-.slide-context-menu[aria-hidden="true"] {
+.slide-context-menu[aria-hidden="true"],
+.slot-context-menu[aria-hidden="true"] {
   display: none;
 }
 
