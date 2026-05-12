@@ -103,6 +103,8 @@ let lastAppliedSortMode = state.sortMode;
 let imageByIdIndex = new Map();
 let usedCountsCacheVersion = -1;
 let usedCountsCache = new Map();
+let imagePlacementCacheKey = "";
+let imagePlacementCache = new Map();
 let imagesVersion = 0;
 let slideSlotsVersion = 0;
 let layoutVersion = 0;
@@ -638,6 +640,28 @@ function getUsedCounts() {
   }, new Map());
   usedCountsCacheVersion = slideSlotsVersion;
   return usedCountsCache;
+}
+
+function getImagePlacements() {
+  const nextKey = `${slideSlotsVersion}:${layoutVersion}:${state.slideSlots.length}:${state.slidePageLayouts.length}`;
+  if (imagePlacementCacheKey === nextKey) return imagePlacementCache;
+
+  const placements = new Map();
+  getSlidePages().forEach((page) => {
+    page.slots.forEach((imageId, offset) => {
+      if (!imageId) return;
+      const list = placements.get(imageId) ?? [];
+      list.push({
+        page: page.pageIndex,
+        slot: offset + 1,
+      });
+      placements.set(imageId, list);
+    });
+  });
+
+  imagePlacementCacheKey = nextKey;
+  imagePlacementCache = placements;
+  return imagePlacementCache;
 }
 
 function getDefaultSlotTransform() {
@@ -3081,9 +3105,11 @@ function renderPhotoList() {
   }
 
   const usedCounts = getUsedCounts();
+  const placements = getImagePlacements();
   const nextKey = [
     imagesVersion,
     slideSlotsVersion,
+    layoutVersion,
     state.images.length,
     state.slideSlots.length,
   ].join(":");
@@ -3102,6 +3128,14 @@ function renderPhotoList() {
 
   const cardHtml = (image, index) => {
     const usedCount = usedCounts.get(image.id) ?? 0;
+    const placementList = placements.get(image.id) ?? [];
+    const firstPlacement = placementList[0];
+    const placementText =
+      placementList.length === 0
+        ? "미배치"
+        : placementList.length === 1
+          ? `${firstPlacement.page}페이지 ${firstPlacement.slot}칸`
+          : `${firstPlacement.page}페이지 ${firstPlacement.slot}칸 외 ${placementList.length - 1}곳`;
     return `
       <article
         class="photo-list-card ${usedCount > 0 ? "is-in-slide" : "is-unused"} ${selectedSlotImageId === image.id ? "is-active" : ""}"
@@ -3114,7 +3148,7 @@ function renderPhotoList() {
         <div>
           <strong>${index + 1}</strong>
           <span>${escapeHtml(image.name)}</span>
-          <em>${usedCount > 0 ? `슬라이드 포함 ${usedCount}` : "미배치"}</em>
+          <em>${usedCount > 0 ? `슬라이드 포함 ${usedCount} · ${placementText}` : "미배치"}</em>
         </div>
         <b>${usedCount > 0 ? "배치됨" : "미배치"}</b>
         <button class="photo-list-remove" type="button" data-remove-image-id="${image.id}" aria-label="${escapeHtml(image.name)} 삭제">X</button>
