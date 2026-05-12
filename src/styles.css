@@ -362,6 +362,59 @@ body.is-file-dragging .drop-card {
   background: linear-gradient(135deg, var(--accent), var(--accent-strong));
 }
 
+.slide-context-menu {
+  position: fixed;
+  z-index: 40;
+  left: 0;
+  top: 0;
+}
+
+.slide-context-menu[aria-hidden="true"] {
+  display: none;
+}
+
+.slide-context-card {
+  min-width: 15rem;
+  display: grid;
+  gap: 0.28rem;
+  border: 1px solid rgba(46, 43, 36, 0.18);
+  border-radius: 1rem;
+  padding: 0.5rem;
+  background:
+    radial-gradient(circle at 12% 10%, rgba(138, 75, 45, 0.12), transparent 18rem),
+    rgba(251, 247, 238, 0.98);
+  box-shadow: 0 24px 70px rgba(18, 15, 10, 0.28);
+}
+
+.slide-context-label {
+  margin: 0 0 0.2rem;
+  padding: 0.2rem 0.3rem;
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.slide-context-card button {
+  justify-content: flex-start;
+  width: 100%;
+  min-height: 2.65rem;
+  border-radius: 0.85rem;
+  padding-inline: 0.85rem;
+  color: var(--ink);
+  background: rgba(255, 253, 247, 0.74);
+}
+
+.slide-context-card button:hover,
+.slide-context-card button:focus-visible {
+  border-color: rgba(138, 75, 45, 0.24);
+  background: rgba(255, 253, 247, 0.98);
+}
+
+.slide-context-card button.danger {
+  color: #8e261d;
+  background: rgba(255, 237, 234, 0.96);
+}
+
 .control-panel,
 .photo-panel {
   overflow: auto;

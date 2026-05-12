@@ -442,6 +442,16 @@
       </div>
     </dialog>
 
+    <div id="slideContextMenu" class="slide-context-menu" aria-hidden="true">
+      <div class="slide-context-card">
+        <p id="slideContextLabel" class="slide-context-label">슬라이드 편집</p>
+        <button type="button" data-slide-context-action="insert-before">앞에 빈 슬라이드 추가</button>
+        <button type="button" data-slide-context-action="insert-after">뒤에 빈 슬라이드 추가</button>
+        <button type="button" data-slide-context-action="duplicate">현재 슬라이드 복제</button>
+        <button type="button" data-slide-context-action="delete" class="danger">현재 슬라이드 삭제</button>
+      </div>
+    </div>
+
     <script type="module" src="./src/app.js"></script>
   </body>
 </html>

@@ -71,6 +71,7 @@ let activeSlideReorderTarget = null;
 let activeStageSlotDropTarget = null;
 let activeGuideDrag = null;
 let activeSlotPan = null;
+let activeSlideContextPage = null;
 let previewRefreshTimer = null;
 let previewWarmHandle = null;
 let previewWarmQueue = [];
@@ -162,6 +163,8 @@ const els = {
   shortcutHelpButton: document.querySelector("#shortcutHelpButton"),
   closeShortcutHelpButton: document.querySelector("#closeShortcutHelpButton"),
   shortcutDialog: document.querySelector("#shortcutDialog"),
+  slideContextMenu: document.querySelector("#slideContextMenu"),
+  slideContextLabel: document.querySelector("#slideContextLabel"),
   exportButton: document.querySelector("#exportButton"),
   openPagesButton: document.querySelector("#openPagesButton"),
   downloadImagesButton: document.querySelector("#downloadImagesButton"),
@@ -1419,6 +1422,60 @@ function hasSlideShortcutModifier(event) {
   return event.ctrlKey || event.metaKey;
 }
 
+function closeSlideContextMenu() {
+  activeSlideContextPage = null;
+  if (!els.slideContextMenu) return;
+  els.slideContextMenu.setAttribute("aria-hidden", "true");
+  els.slideContextMenu.style.removeProperty("left");
+  els.slideContextMenu.style.removeProperty("top");
+}
+
+function openSlideContextMenu(page, clientX, clientY) {
+  if (!els.slideContextMenu || !els.slideContextLabel) return;
+  if (!Number.isFinite(page) || page <= 0) return;
+
+  activeSlideContextPage = page;
+  els.slideContextLabel.textContent = `${page}페이지 편집`;
+  els.slideContextMenu.setAttribute("aria-hidden", "false");
+
+  const margin = 12;
+  const card = els.slideContextMenu.firstElementChild;
+  const width = card instanceof HTMLElement ? card.offsetWidth : 240;
+  const height = card instanceof HTMLElement ? card.offsetHeight : 220;
+  const left = Math.min(Math.max(clientX, margin), window.innerWidth - width - margin);
+  const top = Math.min(Math.max(clientY, margin), window.innerHeight - height - margin);
+
+  els.slideContextMenu.style.left = `${left}px`;
+  els.slideContextMenu.style.top = `${top}px`;
+}
+
+function runSlideContextAction(action, page = activeSlideContextPage) {
+  if (!Number.isFinite(page) || page <= 0) return;
+
+  if (action === "insert-before") {
+    insertSlidePage(page, "before");
+    return;
+  }
+  if (action === "insert-after") {
+    insertSlidePage(page, "after");
+    return;
+  }
+  if (action === "duplicate") {
+    duplicateSlidePage(page);
+    return;
+  }
+  if (action === "delete") {
+    deleteSlidePage(page);
+  }
+}
+
+document.addEventListener("pointerdown", (event) => {
+  if (els.slideContextMenu?.getAttribute("aria-hidden") !== "false") return;
+  const target = event.target instanceof Element ? event.target : null;
+  if (target?.closest("#slideContextMenu")) return;
+  closeSlideContextMenu();
+});
+
 function closeDialogFromBackdrop(event) {
   if (event.target !== els.shortcutDialog) return;
 
@@ -2421,16 +2478,22 @@ els.stage?.addEventListener("pointerdown", (event) => {
 });
 
 els.stage?.addEventListener("contextmenu", (event) => {
-  const target = event.target instanceof Element ? event.target.closest(".guide") : null;
-  if (!(target instanceof HTMLElement)) return;
+  const guide = event.target instanceof Element ? event.target.closest(".guide") : null;
+  if (guide instanceof HTMLElement) {
+    event.preventDefault();
+    const index = Number(guide.dataset.guideIndex);
+    const current = state.guides[index]?.percent ?? 50;
+    const next = window.prompt("안내선 위치를 퍼센트로 입력하세요.", current.toFixed(1));
+    if (next === null) return;
+    const value = Number(next);
+    if (!Number.isFinite(value)) return;
+    updateGuide(index, value);
+    return;
+  }
+
+  if (state.pageIndex <= 0) return;
   event.preventDefault();
-  const index = Number(target.dataset.guideIndex);
-  const current = state.guides[index]?.percent ?? 50;
-  const next = window.prompt("안내선 위치를 퍼센트로 입력하세요.", current.toFixed(1));
-  if (next === null) return;
-  const value = Number(next);
-  if (!Number.isFinite(value)) return;
-  updateGuide(index, value);
+  openSlideContextMenu(state.pageIndex, event.clientX, event.clientY);
 });
 
 window.addEventListener("pointermove", (event) => {
@@ -2656,9 +2719,7 @@ els.thumbnailRail?.addEventListener("contextmenu", (event) => {
   event.preventDefault();
   const page = Number(card.dataset.page);
   if (!Number.isFinite(page)) return;
-  if (window.confirm(`${page}페이지를 삭제할까요?`)) {
-    deleteSlidePage(page);
-  }
+  openSlideContextMenu(page, event.clientX, event.clientY);
 });
 
 els.photoListPanel?.addEventListener("dragstart", (event) => {
@@ -2751,6 +2812,15 @@ els.photoListPanel?.addEventListener("contextmenu", (event) => {
   if (window.confirm("이 사진을 전체 목록과 슬라이드에서 함께 삭제할까요?")) {
     removeImageFromLibrary(imageId);
   }
+});
+
+els.slideContextMenu?.addEventListener("click", (event) => {
+  const actionButton = event.target instanceof Element ? event.target.closest("[data-slide-context-action]") : null;
+  if (!(actionButton instanceof HTMLButtonElement)) return;
+  const action = actionButton.dataset.slideContextAction;
+  if (!action) return;
+  runSlideContextAction(action);
+  closeSlideContextMenu();
 });
 
 els.sortMode.addEventListener("change", () => {
@@ -2927,6 +2997,10 @@ document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") {
     if (els.shortcutDialog.open) {
       hideShortcutHelp();
+      return;
+    }
+    if (els.slideContextMenu?.getAttribute("aria-hidden") === "false") {
+      closeSlideContextMenu();
       return;
     }
 
