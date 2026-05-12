@@ -1408,6 +1408,8 @@ function syncShortcutHelpContent() {
     <p><kbd>Ctrl</kbd> + <kbd>D</kbd><span>현재 슬라이드 복제</span></p>
     <p><kbd>Delete</kbd><span>현재 슬라이드 삭제</span></p>
     <p><kbd>Tab</kbd> / <kbd>Shift</kbd> + <kbd>Tab</kbd><span>현재 슬라이드 슬롯 이동</span></p>
+    <p><kbd>Shift</kbd> + <kbd>←</kbd> <kbd>→</kbd> <kbd>↑</kbd> <kbd>↓</kbd><span>그리드 방향대로 슬롯 이동</span></p>
+    <p><kbd>Backspace</kbd><span>선택된 슬롯 비우기</span></p>
     <p><kbd>F</kbd> / <kbd>Shift</kbd> + <kbd>F</kbd><span>사진 맞추기 / 채우기</span></p>
     <p><kbd>Enter</kbd><span>블러 배경 채우기 켜기/끄기</span></p>
     <p><kbd>=</kbd> <kbd>-</kbd> <kbd>휠</kbd><span>확대 / 축소</span></p>
@@ -1558,7 +1560,7 @@ function syncSelectedSlotControls() {
     const nextKey = isEmptySelectedSlot ? `disabled|empty-slot|${slotIndex}` : "disabled|empty";
     if (selectedSlotUiKey !== nextKey) {
       els.selectedSlotLabel.textContent = isEmptySelectedSlot
-        ? `${slotIndex + 1}번 빈 슬롯 선택됨. Tab으로 칸 이동, 클릭은 현재 칸 배치, 더블클릭은 다음 슬라이드까지 연속 배치합니다.`
+        ? `${slotIndex + 1}번 빈 슬롯 선택됨. Tab/Shift+방향키로 칸 이동, 클릭은 현재 칸 배치, 더블클릭은 다음 슬라이드까지 연속 배치합니다.`
         : "슬라이드 사진이나 빈칸을 클릭하세요.";
       selectedSlotUiKey = nextKey;
     }
@@ -1581,7 +1583,7 @@ function syncSelectedSlotControls() {
 
   if (selectedSlotUiKey === nextKey) return;
 
-  const nextLabel = `${slotIndex + 1}번 슬롯 선택됨. Tab으로 칸 이동, 클릭은 교체, 더블클릭은 교체 후 다음 슬라이드까지 연속 이동합니다.`;
+  const nextLabel = `${slotIndex + 1}번 슬롯 선택됨. Tab/Shift+방향키로 칸 이동, Backspace로 비우기, 클릭은 교체, 더블클릭은 다음 슬라이드까지 연속 이동합니다.`;
   if (els.selectedSlotLabel.textContent !== nextLabel) {
     els.selectedSlotLabel.textContent = nextLabel;
   }
@@ -1624,6 +1626,39 @@ function selectAdjacentSlot(step = 1) {
     currentIndex >= 0
       ? (currentIndex + step + slotIndices.length) % slotIndices.length
       : (step >= 0 ? 0 : slotIndices.length - 1);
+
+  selectSlot(slotIndices[nextIndex]);
+}
+
+function selectDirectionalSlot(direction) {
+  if (state.pageIndex <= 0) return;
+
+  const { slotIndices, layout } = getCurrentPageSlotMeta();
+  if (slotIndices.length === 0) return;
+
+  const currentSlotIndex = Number(state.selectedSlotIndex);
+  const currentIndex = slotIndices.indexOf(currentSlotIndex);
+  const baseIndex = currentIndex >= 0 ? currentIndex : 0;
+  const cols = Math.max(1, layout?.cols ?? slotIndices.length);
+  const rows = Math.max(1, layout?.rows ?? Math.ceil(slotIndices.length / cols));
+  const currentRow = Math.floor(baseIndex / cols);
+  const currentCol = baseIndex % cols;
+
+  let nextRow = currentRow;
+  let nextCol = currentCol;
+
+  if (direction === "left") nextCol -= 1;
+  if (direction === "right") nextCol += 1;
+  if (direction === "up") nextRow -= 1;
+  if (direction === "down") nextRow += 1;
+
+  nextRow = (nextRow + rows) % rows;
+  nextCol = (nextCol + cols) % cols;
+
+  let nextIndex = nextRow * cols + nextCol;
+  if (nextIndex >= slotIndices.length) {
+    nextIndex = direction === "left" || direction === "up" ? slotIndices.length - 1 : 0;
+  }
 
   selectSlot(slotIndices[nextIndex]);
 }
@@ -3127,6 +3162,32 @@ document.addEventListener("keydown", (event) => {
     event.preventDefault();
     selectAdjacentSlot(event.shiftKey ? -1 : 1);
     return;
+  }
+
+  if (
+    state.pageIndex > 0 &&
+    event.shiftKey &&
+    !hasSlideShortcutModifier(event) &&
+    ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)
+  ) {
+    event.preventDefault();
+    const directionMap = {
+      ArrowLeft: "left",
+      ArrowRight: "right",
+      ArrowUp: "up",
+      ArrowDown: "down",
+    };
+    selectDirectionalSlot(directionMap[event.key]);
+    return;
+  }
+
+  if (state.pageIndex > 0 && event.key === "Backspace") {
+    const selectedSlotIndex = Number(state.selectedSlotIndex);
+    if (Number.isFinite(selectedSlotIndex) && selectedSlotIndex >= 0) {
+      event.preventDefault();
+      setSlot(selectedSlotIndex, null);
+      return;
+    }
   }
 
   if (state.pageIndex > 0 && hasSlideShortcutModifier(event) && event.key.toLowerCase() === "d") {
