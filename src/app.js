@@ -73,6 +73,7 @@ let activeGuideDrag = null;
 let activeSlotPan = null;
 let activeSlideContextPage = null;
 let activeSlotContextIndex = null;
+let toastTimer = null;
 let previewRefreshTimer = null;
 let previewWarmHandle = null;
 let previewWarmQueue = [];
@@ -181,6 +182,7 @@ const els = {
   slideContextLabel: document.querySelector("#slideContextLabel"),
   slotContextMenu: document.querySelector("#slotContextMenu"),
   slotContextLabel: document.querySelector("#slotContextLabel"),
+  toast: document.querySelector("#toast"),
   exportButton: document.querySelector("#exportButton"),
   openPagesButton: document.querySelector("#openPagesButton"),
   downloadImagesButton: document.querySelector("#downloadImagesButton"),
@@ -1688,6 +1690,18 @@ function closeSlotContextMenu() {
   els.slotContextMenu.style.removeProperty("top");
 }
 
+function showToast(message = "") {
+  if (!els.toast || !message) return;
+  window.clearTimeout(toastTimer);
+  els.toast.textContent = message;
+  els.toast.setAttribute("aria-hidden", "false");
+  els.toast.classList.add("is-visible");
+  toastTimer = window.setTimeout(() => {
+    els.toast.classList.remove("is-visible");
+    els.toast.setAttribute("aria-hidden", "true");
+  }, 1800);
+}
+
 function syncSlotContextMenuState(slotIndex = activeSlotContextIndex) {
   if (!els.slotContextMenu || !Number.isFinite(slotIndex) || slotIndex < 0 || !state.slideSlots[slotIndex]) return;
 
@@ -2109,6 +2123,7 @@ function copySelectedSlotTransform() {
   if (!Number.isFinite(slotIndex) || slotIndex < 0 || !state.slideSlots[slotIndex]) return;
   slotTransformClipboard = { ...getSlotTransform(slotIndex) };
   syncSelectedSlotControls();
+  showToast("현재 사진 값을 복사했습니다.");
 }
 
 function pasteSelectedSlotTransform() {
@@ -2118,6 +2133,7 @@ function pasteSelectedSlotTransform() {
   state.slotTransforms[slotIndex] = { ...slotTransformClipboard };
   scheduleLightweightRefresh([slotIndex]);
   queuePersistSettings();
+  showToast("선택한 칸에 사진 값을 붙여넣었습니다.");
 }
 
 function applySelectedSlotTransformToCurrentPage() {
@@ -2135,6 +2151,7 @@ function applySelectedSlotTransformToCurrentPage() {
   });
   scheduleLightweightRefresh(slotIndices);
   queuePersistSettings();
+  showToast("현재 페이지 사진에 같은 값을 적용했습니다.");
 }
 
 function applySelectedSlotTransformToAllSlides() {
@@ -2153,6 +2170,7 @@ function applySelectedSlotTransformToAllSlides() {
   });
   scheduleLightweightRefresh();
   queuePersistSettings();
+  showToast("전체 사진에 같은 값을 적용했습니다.");
 }
 
 function bindSlotTransform(input, output, key, suffix = "%") {
@@ -2302,6 +2320,7 @@ function moveOrSwapSlotContent(fromSlotIndex, toSlotIndex, { copy = false } = {}
   const toImageId = state.slideSlots[toSlotIndex] ?? null;
   const fromTransform = state.slotTransforms[fromSlotIndex] ? { ...state.slotTransforms[fromSlotIndex] } : null;
   const toTransform = state.slotTransforms[toSlotIndex] ? { ...state.slotTransforms[toSlotIndex] } : null;
+  const movedImageName = getImageById(fromImageId)?.name || "사진";
 
   state.slideSlots[toSlotIndex] = fromImageId;
   if (fromTransform) state.slotTransforms[toSlotIndex] = fromTransform;
@@ -2316,6 +2335,15 @@ function moveOrSwapSlotContent(fromSlotIndex, toSlotIndex, { copy = false } = {}
   markSlideSlotsDirty();
   state.selectedSlotIndex = toSlotIndex;
   render();
+  if (copy) {
+    showToast(`${movedImageName}을(를) 다른 칸에 복제했습니다.`);
+    return;
+  }
+  if (toImageId) {
+    showToast("두 사진의 위치를 서로 바꿨습니다.");
+    return;
+  }
+  showToast(`${movedImageName}을(를) 다른 칸으로 이동했습니다.`);
 }
 
 function findNextEmptySlotIndex(fromSlotIndex = -1) {
@@ -2575,6 +2603,7 @@ function copySlidePageToClipboard(page = state.pageIndex) {
   if (!snapshot) return;
   slideClipboard = snapshot;
   syncDeckStatus();
+  showToast("현재 슬라이드를 복사했습니다.");
 }
 
 function pasteSlidePageAfter(page = state.pageIndex) {
@@ -2624,6 +2653,7 @@ function pasteSlidePageAfter(page = state.pageIndex) {
   normalizeSlideCaptions(nextPages.length);
   state.selectedSlotIndex = null;
   goToPage(page + 1);
+  showToast("복사한 슬라이드를 뒤에 붙여넣었습니다.");
 }
 
 function clearSlidePage(page = state.pageIndex) {

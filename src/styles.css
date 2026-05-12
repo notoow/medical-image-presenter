@@ -417,6 +417,38 @@ body.is-file-dragging .drop-card {
   background: rgba(255, 237, 234, 0.96);
 }
 
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 1.4rem;
+  z-index: 60;
+  max-width: min(32rem, calc(100vw - 2rem));
+  border: 1px solid rgba(255, 253, 247, 0.16);
+  border-radius: 999px;
+  padding: 0.82rem 1.15rem;
+  color: rgba(255, 253, 247, 0.96);
+  background:
+    radial-gradient(circle at 18% 15%, rgba(138, 75, 45, 0.16), transparent 18rem),
+    rgba(20, 18, 15, 0.88);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.32);
+  backdrop-filter: blur(14px);
+  transform: translate(-50%, 1rem) scale(0.96);
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity 180ms ease,
+    transform 180ms ease;
+  text-align: center;
+  font-size: 0.92rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.toast.is-visible {
+  opacity: 1;
+  transform: translate(-50%, 0) scale(1);
+}
+
 .control-panel,
 .photo-panel {
   overflow: auto;
