@@ -1632,6 +1632,21 @@ body.presenting .guide-ruler {
   font-weight: 800;
 }
 
+.slide-action-chip {
+  border: 1px solid rgba(255, 253, 247, 0.12);
+  border-radius: 999px;
+  padding: 0.18rem 0.42rem;
+  color: rgba(255, 253, 247, 0.78);
+  background: rgba(255, 253, 247, 0.05);
+  font-size: 0.66rem;
+  font-weight: 700;
+}
+
+.slide-action-chip:hover {
+  border-color: rgba(255, 253, 247, 0.22);
+  background: rgba(255, 253, 247, 0.12);
+}
+
 .slide-layout-chip.is-active {
   border-color: rgba(211, 138, 93, 0.94);
   color: #fff7f1;

@@ -1778,6 +1778,81 @@ function reorderSlidePage(fromPage, toPage) {
   render();
 }
 
+function insertSlidePage(referencePage, position = "after") {
+  const pages = getSlidePages();
+  const referenceIndex = Number(referencePage) - 1;
+  if (!Number.isFinite(referenceIndex) || referenceIndex < 0 || referenceIndex >= pages.length) return;
+
+  const reference = pages[referenceIndex];
+  const insertIndex = position === "before" ? referenceIndex : referenceIndex + 1;
+  const nextPages = [...pages];
+  nextPages.splice(insertIndex, 0, {
+    pageIndex: insertIndex + 1,
+    start: 0,
+    layout: createLayoutConfig(reference.layout.mode, reference.layout.rows, reference.layout.cols),
+    pageSize: reference.pageSize,
+    slots: Array(reference.pageSize).fill(null),
+    caption: "",
+  });
+
+  state.slideSlots = nextPages.flatMap((entry) => entry.slots);
+  state.slideCaptions = nextPages.map((entry) => entry.caption);
+  state.slidePageLayouts = nextPages.map((page) => createLayoutConfig(page.layout.mode, page.layout.rows, page.layout.cols));
+  rebuildSlotTransformsFromPages(nextPages);
+  markSlideSlotsDirty();
+  markLayoutDirty();
+  normalizeSlideCaptions(nextPages.length);
+
+  const currentPage = state.pageIndex;
+  if (currentPage > 0) {
+    if (currentPage - 1 >= insertIndex) {
+      state.pageIndex += 1;
+    }
+  }
+
+  state.selectedSlotIndex = null;
+  goToPage(position === "before" ? referencePage : referencePage + 1);
+}
+
+function duplicateSlidePage(page) {
+  const pages = getSlidePages();
+  const pageIndex = Number(page) - 1;
+  if (!Number.isFinite(pageIndex) || pageIndex < 0 || pageIndex >= pages.length) return;
+
+  const sourcePage = pages[pageIndex];
+  const nextPages = [...pages];
+  nextPages.splice(pageIndex + 1, 0, {
+    pageIndex: pageIndex + 2,
+    start: 0,
+    layout: createLayoutConfig(sourcePage.layout.mode, sourcePage.layout.rows, sourcePage.layout.cols),
+    pageSize: sourcePage.pageSize,
+    slots: [...sourcePage.slots],
+    caption: sourcePage.caption,
+  });
+
+  state.slideSlots = nextPages.flatMap((entry) => entry.slots);
+  state.slideCaptions = nextPages.map((entry) => entry.caption);
+  state.slidePageLayouts = nextPages.map((entry) => createLayoutConfig(entry.layout.mode, entry.layout.rows, entry.layout.cols));
+
+  const nextTransforms = {};
+  let nextStart = 0;
+  nextPages.forEach((entry, nextPageIndex) => {
+    const sourceStart = nextPageIndex === pageIndex + 1 ? sourcePage.start : entry.start;
+    for (let offset = 0; offset < entry.pageSize; offset += 1) {
+      const transform = state.slotTransforms[sourceStart + offset];
+      if (transform) nextTransforms[nextStart + offset] = { ...transform };
+    }
+    nextStart += entry.pageSize;
+  });
+  state.slotTransforms = nextTransforms;
+
+  markSlideSlotsDirty();
+  markLayoutDirty();
+  normalizeSlideCaptions(nextPages.length);
+  state.selectedSlotIndex = null;
+  goToPage(page + 1);
+}
+
 function deleteSlidePage(page) {
   const pages = getSlidePages();
   const pageIndex = Number(page) - 1;
@@ -1965,6 +2040,9 @@ function renderThumbnails() {
                   <div class="slide-thumb-meta">
                     <span class="slide-thumb-label">${page.pageIndex}</span>
                     <div class="slide-thumb-actions">
+                      <button class="slide-action-chip" type="button" data-insert-slide-before="${page.pageIndex}" aria-label="${page.pageIndex}페이지 앞에 빈 슬라이드 추가">앞+</button>
+                      <button class="slide-action-chip" type="button" data-insert-slide-after="${page.pageIndex}" aria-label="${page.pageIndex}페이지 뒤에 빈 슬라이드 추가">뒤+</button>
+                      <button class="slide-action-chip" type="button" data-duplicate-slide="${page.pageIndex}" aria-label="${page.pageIndex}페이지 복제">복제</button>
                       <button class="slide-layout-chip ${page.layout.mode === "single" ? "is-active" : ""}" type="button" data-slide-layout="${page.pageIndex}:single">1</button>
                       <button class="slide-layout-chip ${page.layout.mode === "pair" ? "is-active" : ""}" type="button" data-slide-layout="${page.pageIndex}:pair">2</button>
                       <button class="slide-layout-chip ${page.layout.mode === "triple" ? "is-active" : ""}" type="button" data-slide-layout="${page.pageIndex}:triple">3</button>
@@ -2395,6 +2473,27 @@ els.stage?.addEventListener("drop", (event) => {
 els.thumbnailRail?.addEventListener("click", (event) => {
   const target = event.target instanceof Element ? event.target : null;
   if (target?.closest("[data-slide-caption-input]")) return;
+  const insertBeforeButton = target?.closest("[data-insert-slide-before]");
+  if (insertBeforeButton instanceof HTMLButtonElement) {
+    event.preventDefault();
+    event.stopPropagation();
+    insertSlidePage(Number(insertBeforeButton.dataset.insertSlideBefore), "before");
+    return;
+  }
+  const insertAfterButton = target?.closest("[data-insert-slide-after]");
+  if (insertAfterButton instanceof HTMLButtonElement) {
+    event.preventDefault();
+    event.stopPropagation();
+    insertSlidePage(Number(insertAfterButton.dataset.insertSlideAfter), "after");
+    return;
+  }
+  const duplicateButton = target?.closest("[data-duplicate-slide]");
+  if (duplicateButton instanceof HTMLButtonElement) {
+    event.preventDefault();
+    event.stopPropagation();
+    duplicateSlidePage(Number(duplicateButton.dataset.duplicateSlide));
+    return;
+  }
   const layoutButton = target?.closest("[data-slide-layout]");
   if (layoutButton instanceof HTMLButtonElement) {
     event.preventDefault();
