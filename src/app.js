@@ -939,6 +939,7 @@ function render({ refreshGuidePanel = true, refreshThumbnails = true, refreshPho
   sortImages();
   ensureSlideSlots();
   state.pageIndex = clamp(state.pageIndex, 0, Math.max(getTotalPages() - 1, 0));
+  syncShortcutHelpContent();
 
   if (state.pageIndex === 0) {
     renderCover();
@@ -1377,6 +1378,7 @@ function togglePresentationMode() {
 }
 
 function showShortcutHelp() {
+  syncShortcutHelpContent();
   if (els.shortcutDialog.open) return;
   els.shortcutDialog.showModal();
 }
@@ -1384,6 +1386,37 @@ function showShortcutHelp() {
 function hideShortcutHelp() {
   if (!els.shortcutDialog.open) return;
   els.shortcutDialog.close();
+}
+
+function syncShortcutHelpContent() {
+  const shortcutGrid = els.shortcutDialog?.querySelector(".shortcut-grid");
+  if (!(shortcutGrid instanceof HTMLElement)) return;
+
+  const nextHtml = `
+    <p><kbd>F5</kbd><span>처음부터 발표 모드</span></p>
+    <p><kbd>Shift</kbd> + <kbd>F5</kbd><span>현재 페이지부터 발표 모드</span></p>
+    <p><kbd>Esc</kbd><span>발표 모드 또는 도움말 닫기</span></p>
+    <p><kbd>←</kbd> <kbd>↑</kbd> <kbd>P</kbd><span>이전 페이지</span></p>
+    <p><kbd>→</kbd> <kbd>↓</kbd> <kbd>Space</kbd> <kbd>N</kbd><span>다음 페이지</span></p>
+    <p><kbd>Home</kbd> / <kbd>End</kbd><span>커버 / 마지막 페이지</span></p>
+    <p><kbd>Ctrl</kbd> + <kbd>M</kbd><span>현재 슬라이드 뒤에 빈 슬라이드 추가</span></p>
+    <p><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>M</kbd><span>현재 슬라이드 앞에 빈 슬라이드 추가</span></p>
+    <p><kbd>Ctrl</kbd> + <kbd>D</kbd><span>현재 슬라이드 복제</span></p>
+    <p><kbd>Delete</kbd><span>현재 슬라이드 삭제</span></p>
+    <p><kbd>F</kbd> / <kbd>Shift</kbd> + <kbd>F</kbd><span>사진 맞추기 / 채우기</span></p>
+    <p><kbd>Enter</kbd><span>블러 배경 채우기 켜기/끄기</span></p>
+    <p><kbd>=</kbd> <kbd>-</kbd> <kbd>휠</kbd><span>확대 / 축소</span></p>
+    <p><kbd>Num +</kbd> <kbd>Num -</kbd> <kbd>0</kbd><span>키패드 확대 / 축소 / 초기화</span></p>
+    <p><kbd>Shift</kbd> + <kbd>?</kbd><span>단축키 도움말</span></p>
+  `;
+
+  if (shortcutGrid.innerHTML !== nextHtml) {
+    shortcutGrid.innerHTML = nextHtml;
+  }
+}
+
+function hasSlideShortcutModifier(event) {
+  return event.ctrlKey || event.metaKey;
 }
 
 function closeDialogFromBackdrop(event) {
@@ -2901,6 +2934,26 @@ document.addEventListener("keydown", (event) => {
       document.body.classList.remove("presenting");
       document.exitFullscreen?.().catch(() => {});
     }
+  }
+
+  if (state.pageIndex > 0 && hasSlideShortcutModifier(event) && event.key.toLowerCase() === "d") {
+    event.preventDefault();
+    duplicateSlidePage(state.pageIndex);
+    return;
+  }
+
+  if (state.pageIndex > 0 && hasSlideShortcutModifier(event) && event.key.toLowerCase() === "m") {
+    event.preventDefault();
+    insertSlidePage(state.pageIndex, event.shiftKey ? "before" : "after");
+    return;
+  }
+
+  if (state.pageIndex > 0 && event.key === "Delete") {
+    event.preventDefault();
+    if (window.confirm(`${state.pageIndex}페이지를 삭제할까요?`)) {
+      deleteSlidePage(state.pageIndex);
+    }
+    return;
   }
 
   if (event.key === "ArrowLeft" || event.key === "ArrowUp" || event.key.toLowerCase() === "p") {
