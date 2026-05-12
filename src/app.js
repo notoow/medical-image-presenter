@@ -1556,7 +1556,7 @@ function syncSelectedSlotControls() {
     const nextKey = isEmptySelectedSlot ? `disabled|empty-slot|${slotIndex}` : "disabled|empty";
     if (selectedSlotUiKey !== nextKey) {
       els.selectedSlotLabel.textContent = isEmptySelectedSlot
-        ? `${slotIndex + 1}번 빈 슬롯 선택됨. 오른쪽 사진을 클릭하면 바로 배치됩니다.`
+        ? `${slotIndex + 1}번 빈 슬롯 선택됨. 클릭은 현재 칸 배치, 더블클릭은 다음 빈칸까지 연속 배치합니다.`
         : "슬라이드 사진이나 빈칸을 클릭하세요.";
       selectedSlotUiKey = nextKey;
     }
@@ -1579,7 +1579,7 @@ function syncSelectedSlotControls() {
 
   if (selectedSlotUiKey === nextKey) return;
 
-  const nextLabel = `${slotIndex + 1}번 슬롯 선택됨. 오른쪽 사진을 클릭하면 바로 교체됩니다.`;
+  const nextLabel = `${slotIndex + 1}번 슬롯 선택됨. 클릭은 교체, 더블클릭은 교체 후 다음 빈칸으로 이동합니다.`;
   if (els.selectedSlotLabel.textContent !== nextLabel) {
     els.selectedSlotLabel.textContent = nextLabel;
   }
@@ -1744,6 +1744,55 @@ function setSlot(slotIndex, imageId) {
   markSlideSlotsDirty();
   if (imageId) state.selectedSlotIndex = slotIndex;
   if (!imageId && state.selectedSlotIndex === slotIndex) state.selectedSlotIndex = null;
+  render();
+}
+
+function findNextEmptySlotIndex(fromSlotIndex = -1) {
+  for (let slotIndex = Math.max(0, fromSlotIndex + 1); slotIndex < state.slideSlots.length; slotIndex += 1) {
+    if (!state.slideSlots[slotIndex]) return slotIndex;
+  }
+  return null;
+}
+
+function resolvePhotoListTargetSlotIndex() {
+  const selectedSlotIndex = Number(state.selectedSlotIndex);
+  if (Number.isFinite(selectedSlotIndex) && selectedSlotIndex >= 0) {
+    return selectedSlotIndex;
+  }
+
+  const emptySlotIndex = findFirstEmptySlotIndexForPage(state.pageIndex);
+  if (state.pageIndex > 0 && Number.isFinite(emptySlotIndex)) {
+    return emptySlotIndex;
+  }
+
+  return null;
+}
+
+function assignImageToSlot(slotIndex, imageId, { advance = false } = {}) {
+  if (!Number.isFinite(slotIndex) || slotIndex < 0 || !imageId) return;
+
+  normalizeSlidePageLayouts(slotIndex + 1);
+  while (state.slideSlots.length <= slotIndex) {
+    state.slideSlots.push(null);
+  }
+
+  state.slideSlots[slotIndex] = imageId;
+  markSlideSlotsDirty();
+
+  if (advance) {
+    const nextEmptySlotIndex = findNextEmptySlotIndex(slotIndex);
+    if (Number.isFinite(nextEmptySlotIndex)) {
+      const location = getSlotLocation(nextEmptySlotIndex);
+      if (location) {
+        state.pageIndex = location.page;
+        state.selectedSlotIndex = nextEmptySlotIndex;
+        render();
+        return;
+      }
+    }
+  }
+
+  state.selectedSlotIndex = slotIndex;
   render();
 }
 
@@ -2808,15 +2857,9 @@ els.photoListPanel?.addEventListener("click", (event) => {
   const imageId = card.dataset.imageId;
   if (!imageId) return;
 
-  const selectedSlotIndex = Number(state.selectedSlotIndex);
-  if (Number.isFinite(selectedSlotIndex) && selectedSlotIndex >= 0) {
-    setSlot(selectedSlotIndex, imageId);
-    return;
-  }
-
-  const emptySlotIndex = findFirstEmptySlotIndexForPage(state.pageIndex);
-  if (state.pageIndex > 0 && Number.isFinite(emptySlotIndex)) {
-    setSlot(emptySlotIndex, imageId);
+  const targetSlotIndex = resolvePhotoListTargetSlotIndex();
+  if (Number.isFinite(targetSlotIndex)) {
+    assignImageToSlot(targetSlotIndex, imageId);
     return;
   }
 
@@ -2825,6 +2868,19 @@ els.photoListPanel?.addEventListener("click", (event) => {
   const location = getSlotLocation(slotIndex);
   if (!location) return;
   goToPageWithSelection(location.page, slotIndex);
+});
+
+els.photoListPanel?.addEventListener("dblclick", (event) => {
+  const card = event.target instanceof Element ? event.target.closest(".photo-list-card") : null;
+  if (!(card instanceof HTMLElement)) return;
+  const imageId = card.dataset.imageId;
+  if (!imageId) return;
+
+  const targetSlotIndex = resolvePhotoListTargetSlotIndex();
+  if (!Number.isFinite(targetSlotIndex)) return;
+
+  event.preventDefault();
+  assignImageToSlot(targetSlotIndex, imageId, { advance: true });
 });
 
 els.photoListPanel?.addEventListener("contextmenu", (event) => {
