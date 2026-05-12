@@ -64,6 +64,7 @@ let photoListRenderKey = "";
 let photoListRenderToken = 0;
 let guidePanelRenderKey = "";
 let activeThumbnailButton = null;
+let activeThumbnailSlotNode = null;
 let activePhotoListCard = null;
 let thumbnailPageButtonCache = new Map();
 let activeReorderTarget = null;
@@ -1045,6 +1046,30 @@ function revealPanelItem(element) {
   });
 }
 
+function syncThumbnailSlotSelection() {
+  if (!els.thumbnailRail) return;
+
+  const selectedSlotIndex = Number(state.selectedSlotIndex);
+
+  if (
+    activeThumbnailSlotNode &&
+    (!Number.isFinite(selectedSlotIndex) ||
+      Number(activeThumbnailSlotNode.getAttribute("data-slot-thumb-index")) !== selectedSlotIndex ||
+      !els.thumbnailRail.contains(activeThumbnailSlotNode))
+  ) {
+    activeThumbnailSlotNode.classList.remove("is-selected-slot");
+    activeThumbnailSlotNode = null;
+  }
+
+  if (!Number.isFinite(selectedSlotIndex) || selectedSlotIndex < 0) return;
+  if (activeThumbnailSlotNode?.getAttribute("data-slot-thumb-index") === String(selectedSlotIndex)) return;
+
+  const nextNode = els.thumbnailRail.querySelector(`[data-slot-thumb-index="${selectedSlotIndex}"]`);
+  if (!(nextNode instanceof HTMLElement)) return;
+  nextNode.classList.add("is-selected-slot");
+  activeThumbnailSlotNode = nextNode;
+}
+
 function syncPhotoListSelection() {
   if (!els.photoListPanel) return;
 
@@ -1142,6 +1167,7 @@ function scheduleLightweightRefresh(slotIndices = null) {
     lightweightRefreshFrame = null;
     syncDeckStatus();
     syncSelectedSlotControls();
+    syncThumbnailSlotSelection();
     syncPhotoListSelection();
     const targetSlots = pendingLightweightSlotIndices ? Array.from(pendingLightweightSlotIndices) : undefined;
     pendingLightweightSlotIndices = null;
@@ -3039,6 +3065,7 @@ function renderThumbnails() {
   activeThumbnailButton = thumbnailPageButtonCache.get(state.pageIndex) ?? null;
   activeThumbnailButton?.classList.add("is-active");
   revealPanelItem(activeThumbnailButton);
+  syncThumbnailSlotSelection();
 }
 
 function renderPhotoList() {

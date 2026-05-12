@@ -1740,6 +1740,13 @@ body.presenting .guide-ruler {
   object-fit: cover;
 }
 
+.slide-thumb-grid img.is-selected-slot,
+.slide-thumb-empty.is-selected-slot {
+  outline: 3px solid rgba(0, 255, 242, 0.88);
+  outline-offset: -3px;
+  box-shadow: inset 0 0 0 1px rgba(7, 14, 14, 0.72);
+}
+
 .slide-thumb-empty {
   display: grid;
   place-items: center;
