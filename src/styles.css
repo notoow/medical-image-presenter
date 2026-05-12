@@ -565,6 +565,19 @@ body.is-file-dragging .drop-card {
   border-color: rgba(67, 88, 78, 0.18);
 }
 
+.photo-list-remove {
+  display: grid;
+  place-items: center;
+  width: 1.85rem;
+  height: 1.85rem;
+  border-radius: 50%;
+  padding: 0;
+  color: #fff7f5;
+  background: rgba(155, 49, 40, 0.9);
+  font-size: 0.82rem;
+  line-height: 1;
+}
+
 .brand-block h1 {
   margin: 0.2rem 0 0.45rem;
   font-size: clamp(1.8rem, 4vw, 2.7rem);

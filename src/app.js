@@ -315,6 +315,16 @@ function normalizeSlideCaptions(pageCount = getSlidePageCount()) {
   }
 }
 
+function trimTrailingEmptySlidePages() {
+  const pageSize = getPageSize();
+  while (state.slideSlots.length > 0) {
+    const lastPageSlots = state.slideSlots.slice(-pageSize);
+    if (lastPageSlots.some(Boolean)) break;
+    state.slideSlots.splice(-pageSize, pageSize);
+  }
+  normalizeSlideCaptions(Math.ceil(state.slideSlots.length / pageSize));
+}
+
 function markImagesDirty({ orderChanged = true } = {}) {
   imageIndexDirty = true;
   imagesVersion += 1;
@@ -1679,6 +1689,49 @@ function updateSlideCaption(page, value) {
   queuePersistSettings();
 }
 
+function removeImageFromLibrary(imageId) {
+  if (!imageId) return;
+  const imageIndex = state.images.findIndex((image) => image.id === imageId);
+  if (imageIndex < 0) return;
+
+  state.images.splice(imageIndex, 1);
+  markImagesDirty();
+
+  let slotsChanged = false;
+  state.slideSlots = state.slideSlots.map((slotId) => {
+    if (slotId !== imageId) return slotId;
+    slotsChanged = true;
+    return null;
+  });
+
+  if (slotsChanged) {
+    markSlideSlotsDirty();
+    trimTrailingEmptySlidePages();
+  }
+
+  const nextTransforms = {};
+  for (const [key, transform] of Object.entries(state.slotTransforms)) {
+    const slotIndex = Number(key);
+    if (state.slideSlots[slotIndex]) {
+      nextTransforms[slotIndex] = transform;
+    }
+  }
+  state.slotTransforms = nextTransforms;
+
+  if (state.selectedSlotIndex !== null && state.slideSlots[state.selectedSlotIndex] !== imageId) {
+    if (!state.slideSlots[state.selectedSlotIndex]) {
+      state.selectedSlotIndex = null;
+    }
+  }
+  if (state.selectedSlotIndex !== null && state.slideSlots[state.selectedSlotIndex] === imageId) {
+    state.selectedSlotIndex = null;
+  }
+
+  state.pageIndex = clamp(state.pageIndex, 0, Math.max(getTotalPages() - 1, 0));
+  render();
+  queuePersistAssets();
+}
+
 function getGuidePercentFromPointer(axis, pointerEvent, rect = els.stage.getBoundingClientRect()) {
   const percent =
     axis === "x"
@@ -1866,6 +1919,7 @@ function renderPhotoList() {
           <em>${usedCount > 0 ? `슬라이드 포함 ${usedCount}` : "미배치"}</em>
         </div>
         <b>${usedCount > 0 ? "배치됨" : "미배치"}</b>
+        <button class="photo-list-remove" type="button" data-remove-image-id="${image.id}" aria-label="${escapeHtml(image.name)} 삭제">X</button>
       </article>
     `;
   };
@@ -2347,6 +2401,18 @@ els.photoListPanel?.addEventListener("dragend", () => {
 });
 
 els.photoListPanel?.addEventListener("click", (event) => {
+  const removeButton = event.target instanceof Element ? event.target.closest("[data-remove-image-id]") : null;
+  if (removeButton instanceof HTMLButtonElement) {
+    event.preventDefault();
+    event.stopPropagation();
+    const imageId = removeButton.dataset.removeImageId;
+    if (!imageId) return;
+    if (window.confirm("이 사진을 전체 목록과 슬라이드에서 함께 삭제할까요?")) {
+      removeImageFromLibrary(imageId);
+    }
+    return;
+  }
+
   const card = event.target instanceof Element ? event.target.closest(".photo-list-card") : null;
   if (!(card instanceof HTMLElement)) return;
   const imageId = card.dataset.imageId;
@@ -2355,6 +2421,17 @@ els.photoListPanel?.addEventListener("click", (event) => {
   if (slotIndex < 0) return;
   const page = 1 + Math.floor(slotIndex / getPageSize());
   goToPageWithSelection(page, slotIndex);
+});
+
+els.photoListPanel?.addEventListener("contextmenu", (event) => {
+  const card = event.target instanceof Element ? event.target.closest(".photo-list-card") : null;
+  if (!(card instanceof HTMLElement)) return;
+  event.preventDefault();
+  const imageId = card.dataset.imageId;
+  if (!imageId) return;
+  if (window.confirm("이 사진을 전체 목록과 슬라이드에서 함께 삭제할까요?")) {
+    removeImageFromLibrary(imageId);
+  }
 });
 
 els.sortMode.addEventListener("change", () => {
