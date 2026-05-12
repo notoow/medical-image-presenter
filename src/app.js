@@ -109,6 +109,7 @@ let lastPersistedAssetsJson = "";
 let isApplyingHistory = false;
 let editHistoryPast = [];
 let editHistoryFuture = [];
+let slideClipboard = null;
 const EDIT_HISTORY_LIMIT = 40;
 const previewCache = new Map();
 const previewJobs = new Map();
@@ -160,6 +161,8 @@ const els = {
   slideQuickActions: document.querySelector("#slideQuickActions"),
   moveSlidePrevButton: document.querySelector("#moveSlidePrevButton"),
   moveSlideNextButton: document.querySelector("#moveSlideNextButton"),
+  copySlideButton: document.querySelector("#copySlideButton"),
+  pasteSlideButton: document.querySelector("#pasteSlideButton"),
   insertSlideBeforeButton: document.querySelector("#insertSlideBeforeButton"),
   insertSlideAfterButton: document.querySelector("#insertSlideAfterButton"),
   duplicateSlideButton: document.querySelector("#duplicateSlideButton"),
@@ -944,6 +947,8 @@ function syncDeckStatus() {
   els.slideQuickActions?.classList.toggle("is-hidden", !hasCurrentSlide);
   if (els.moveSlidePrevButton) els.moveSlidePrevButton.disabled = !canMoveSlidePrev;
   if (els.moveSlideNextButton) els.moveSlideNextButton.disabled = !canMoveSlideNext;
+  if (els.copySlideButton) els.copySlideButton.disabled = !hasCurrentSlide;
+  if (els.pasteSlideButton) els.pasteSlideButton.disabled = !hasCurrentSlide || !slideClipboard;
   if (els.insertSlideBeforeButton) els.insertSlideBeforeButton.disabled = !hasCurrentSlide;
   if (els.insertSlideAfterButton) els.insertSlideAfterButton.disabled = !hasCurrentSlide;
   if (els.duplicateSlideButton) els.duplicateSlideButton.disabled = !hasCurrentSlide;
@@ -1617,6 +1622,14 @@ function runSlideContextAction(action, page = activeSlideContextPage) {
     reorderSlidePage(page, page + 1);
     return;
   }
+  if (action === "copy") {
+    copySlidePageToClipboard(page);
+    return;
+  }
+  if (action === "paste") {
+    pasteSlidePageAfter(page);
+    return;
+  }
   if (action === "insert-before") {
     insertSlidePage(page, "before");
     return;
@@ -2148,6 +2161,24 @@ function rebuildSlotTransformsFromPages(pages) {
   state.slotTransforms = nextTransforms;
 }
 
+function captureSlidePageSnapshot(page = state.pageIndex) {
+  const pageIndex = Number(page) - 1;
+  const pages = getSlidePages();
+  if (!Number.isFinite(pageIndex) || pageIndex < 0 || pageIndex >= pages.length) return null;
+
+  const sourcePage = pages[pageIndex];
+  return {
+    layout: createLayoutConfig(sourcePage.layout.mode, sourcePage.layout.rows, sourcePage.layout.cols),
+    pageSize: sourcePage.pageSize,
+    slots: [...sourcePage.slots],
+    caption: sourcePage.caption,
+    transforms: Array.from({ length: sourcePage.pageSize }, (_, offset) => {
+      const transform = state.slotTransforms[sourcePage.start + offset];
+      return transform ? { ...transform } : null;
+    }),
+  };
+}
+
 function reorderSlidePage(fromPage, toPage) {
   const pages = getSlidePages();
   const fromIndex = Number(fromPage) - 1;
@@ -2196,6 +2227,62 @@ function moveCurrentSlide(step = 0) {
   const targetPage = clamp(state.pageIndex + step, 1, getSlidePageCount());
   if (targetPage === state.pageIndex) return;
   reorderSlidePage(state.pageIndex, targetPage);
+}
+
+function copySlidePageToClipboard(page = state.pageIndex) {
+  const snapshot = captureSlidePageSnapshot(page);
+  if (!snapshot) return;
+  slideClipboard = snapshot;
+  syncDeckStatus();
+}
+
+function pasteSlidePageAfter(page = state.pageIndex) {
+  if (!slideClipboard) return;
+
+  const pages = getSlidePages();
+  const pageIndex = Number(page) - 1;
+  if (!Number.isFinite(pageIndex) || pageIndex < 0 || pageIndex >= pages.length) return;
+
+  beginEditHistoryAction();
+  const snapshot = {
+    layout: createLayoutConfig(slideClipboard.layout.mode, slideClipboard.layout.rows, slideClipboard.layout.cols),
+    pageSize: slideClipboard.pageSize,
+    slots: [...slideClipboard.slots],
+    caption: slideClipboard.caption,
+    transforms: slideClipboard.transforms.map((transform) => (transform ? { ...transform } : null)),
+  };
+
+  const nextPages = [...pages];
+  nextPages.splice(pageIndex + 1, 0, {
+    pageIndex: pageIndex + 2,
+    start: 0,
+    layout: snapshot.layout,
+    pageSize: snapshot.pageSize,
+    slots: snapshot.slots,
+    caption: snapshot.caption,
+  });
+
+  state.slideSlots = nextPages.flatMap((entry) => entry.slots);
+  state.slideCaptions = nextPages.map((entry) => entry.caption);
+  state.slidePageLayouts = nextPages.map((entry) => createLayoutConfig(entry.layout.mode, entry.layout.rows, entry.layout.cols));
+
+  const nextTransforms = {};
+  let nextStart = 0;
+  nextPages.forEach((entry, nextPageIndex) => {
+    const isInsertedSnapshot = nextPageIndex === pageIndex + 1;
+    for (let offset = 0; offset < entry.pageSize; offset += 1) {
+      const transform = isInsertedSnapshot ? snapshot.transforms[offset] : state.slotTransforms[entry.start + offset];
+      if (transform) nextTransforms[nextStart + offset] = { ...transform };
+    }
+    nextStart += entry.pageSize;
+  });
+  state.slotTransforms = nextTransforms;
+
+  markSlideSlotsDirty();
+  markLayoutDirty();
+  normalizeSlideCaptions(nextPages.length);
+  state.selectedSlotIndex = null;
+  goToPage(page + 1);
 }
 
 function insertSlidePage(referencePage, position = "after") {
@@ -3182,6 +3269,12 @@ els.moveSlidePrevButton?.addEventListener("click", () => {
 els.moveSlideNextButton?.addEventListener("click", () => {
   moveCurrentSlide(1);
 });
+els.copySlideButton?.addEventListener("click", () => {
+  copySlidePageToClipboard(state.pageIndex);
+});
+els.pasteSlideButton?.addEventListener("click", () => {
+  pasteSlidePageAfter(state.pageIndex);
+});
 els.insertSlideBeforeButton?.addEventListener("click", () => {
   if (state.pageIndex <= 0) return;
   insertSlidePage(state.pageIndex, "before");
@@ -3393,6 +3486,18 @@ document.addEventListener("keydown", (event) => {
   if (state.pageIndex > 0 && hasSlideShortcutModifier(event) && event.key.toLowerCase() === "d") {
     event.preventDefault();
     duplicateSlidePage(state.pageIndex);
+    return;
+  }
+
+  if (state.pageIndex > 0 && hasSlideShortcutModifier(event) && !event.shiftKey && event.key.toLowerCase() === "c") {
+    event.preventDefault();
+    copySlidePageToClipboard(state.pageIndex);
+    return;
+  }
+
+  if (state.pageIndex > 0 && hasSlideShortcutModifier(event) && !event.shiftKey && event.key.toLowerCase() === "v") {
+    event.preventDefault();
+    pasteSlidePageAfter(state.pageIndex);
     return;
   }
 
