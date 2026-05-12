@@ -1558,7 +1558,7 @@ function syncSelectedSlotControls() {
     const nextKey = isEmptySelectedSlot ? `disabled|empty-slot|${slotIndex}` : "disabled|empty";
     if (selectedSlotUiKey !== nextKey) {
       els.selectedSlotLabel.textContent = isEmptySelectedSlot
-        ? `${slotIndex + 1}번 빈 슬롯 선택됨. Tab으로 칸 이동, 클릭은 현재 칸 배치, 더블클릭은 다음 빈칸까지 연속 배치합니다.`
+        ? `${slotIndex + 1}번 빈 슬롯 선택됨. Tab으로 칸 이동, 클릭은 현재 칸 배치, 더블클릭은 다음 슬라이드까지 연속 배치합니다.`
         : "슬라이드 사진이나 빈칸을 클릭하세요.";
       selectedSlotUiKey = nextKey;
     }
@@ -1581,7 +1581,7 @@ function syncSelectedSlotControls() {
 
   if (selectedSlotUiKey === nextKey) return;
 
-  const nextLabel = `${slotIndex + 1}번 슬롯 선택됨. Tab으로 칸 이동, 클릭은 교체, 더블클릭은 교체 후 다음 빈칸으로 이동합니다.`;
+  const nextLabel = `${slotIndex + 1}번 슬롯 선택됨. Tab으로 칸 이동, 클릭은 교체, 더블클릭은 교체 후 다음 슬라이드까지 연속 이동합니다.`;
   if (els.selectedSlotLabel.textContent !== nextLabel) {
     els.selectedSlotLabel.textContent = nextLabel;
   }
@@ -1808,6 +1808,21 @@ function assignImageToSlot(slotIndex, imageId, { advance = false } = {}) {
         return;
       }
     }
+
+    const layout = getPageLayout(state.pageIndex);
+    const pageSize = getPageSizeForLayout(layout);
+    const nextPageIndex = getSlidePageCount() + 1;
+    state.slidePageLayouts.push(createLayoutConfig(layout.mode, layout.rows, layout.cols));
+    state.slideSlots.push(...Array(pageSize).fill(null));
+    markSlideSlotsDirty();
+    markLayoutDirty();
+    normalizeSlideCaptions();
+
+    const firstSlotIndexOfNextPage = state.slideSlots.length - pageSize;
+    state.pageIndex = nextPageIndex;
+    state.selectedSlotIndex = firstSlotIndexOfNextPage;
+    render();
+    return;
   }
 
   state.selectedSlotIndex = slotIndex;
