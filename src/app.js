@@ -63,6 +63,7 @@ let photoListRenderKey = "";
 let photoListRenderToken = 0;
 let guidePanelRenderKey = "";
 let activeThumbnailButton = null;
+let activePhotoListCard = null;
 let thumbnailPageButtonCache = new Map();
 let activeReorderTarget = null;
 let activeSlideReorderTarget = null;
@@ -671,6 +672,33 @@ function syncDeckStatus() {
     : "배경 채우기 꺼짐 Enter";
 }
 
+function syncPhotoListSelection() {
+  if (!els.photoListPanel) return;
+
+  const selectedImageId =
+    Number.isFinite(state.selectedSlotIndex) && state.selectedSlotIndex >= 0
+      ? state.slideSlots[state.selectedSlotIndex]
+      : null;
+
+  if (
+    activePhotoListCard &&
+    (!selectedImageId ||
+      activePhotoListCard.dataset.imageId !== selectedImageId ||
+      !els.photoListPanel.contains(activePhotoListCard))
+  ) {
+    activePhotoListCard.classList.remove("is-active");
+    activePhotoListCard = null;
+  }
+
+  if (!selectedImageId) return;
+  if (activePhotoListCard?.dataset.imageId === selectedImageId) return;
+
+  const nextCard = els.photoListPanel.querySelector(`[data-image-id="${CSS.escape(selectedImageId)}"]`);
+  if (!(nextCard instanceof HTMLElement)) return;
+  nextCard.classList.add("is-active");
+  activePhotoListCard = nextCard;
+}
+
 function getVisibleSlideSlotIndices() {
   return getCurrentPageSlotMeta().slotIndices;
 }
@@ -739,6 +767,7 @@ function scheduleLightweightRefresh(slotIndices = null) {
     lightweightRefreshFrame = null;
     syncDeckStatus();
     syncSelectedSlotControls();
+    syncPhotoListSelection();
     const targetSlots = pendingLightweightSlotIndices ? Array.from(pendingLightweightSlotIndices) : undefined;
     pendingLightweightSlotIndices = null;
     if (!refreshVisibleSlideCards(targetSlots)) {
@@ -792,6 +821,7 @@ function render({ refreshGuidePanel = true, refreshThumbnails = true, refreshPho
   if (refreshGuidePanel) renderGuideControls();
   if (refreshThumbnails) renderThumbnails();
   if (refreshPhotoList) renderPhotoList();
+  else syncPhotoListSelection();
   if (persist) queuePersistSettings();
   syncLoadingOverlay();
 }
@@ -1793,6 +1823,7 @@ function renderPhotoList() {
   if (state.images.length === 0) {
     photoListRenderKey = "empty";
     photoListRenderToken += 1;
+    activePhotoListCard = null;
     els.photoListPanel.innerHTML = `<p class="photo-list-empty">사진을 업로드하면 전체 목록이 표시됩니다.</p>`;
     unregisterRenderableImageNodesInRoot(els.photoListPanel);
     return;
@@ -1857,7 +1888,10 @@ function renderPhotoList() {
 
     if (startIndex < state.images.length) {
       window.requestAnimationFrame(appendBatch);
+      return;
     }
+
+    syncPhotoListSelection();
   };
 
   appendBatch();

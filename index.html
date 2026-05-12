@@ -6,7 +6,7 @@
     <title>Medical Image Presenter | 병원 비포애프터 사진 발표 웹앱</title>
     <meta
       name="description"
-      content="Medical Image Presenter는 병원 비포애프터 사진을 빠르게 정렬, 보정, 분할, 발표할 수 있는 로컬 우선 웹앱입니다. 젖꼭지 위치 기준 정렬, 배경 블러 채우기, 일괄 색 보정, HTML 내보내기, 발표 모드를 한 번에 제공합니다."
+      content="Medical Image Presenter는 병원 비포애프터 사진을 빠르게 정렬, 보정, 분할, 발표할 수 있는 로컬 우선 웹앱입니다. 안내선 정렬, 배경 블러 채우기, 일괄 색 보정, HTML 내보내기, 발표 모드를 지원합니다."
     />
     <meta
       name="keywords"
@@ -45,7 +45,7 @@
         "operatingSystem": "Web",
         "inLanguage": ["ko", "en"],
         "browserRequirements": "Requires JavaScript. Works in modern desktop browsers.",
-        "description": "Medical Image Presenter는 병원 비포애프터 사진을 빠르게 정렬, 보정, 분할, 발표할 수 있는 로컬 우선 웹앱입니다. 젖꼭지 위치 기준 정렬, 배경 블러 채우기, 일괄 색 보정, HTML 내보내기, 발표 모드를 제공합니다.",
+        "description": "Medical Image Presenter는 병원 비포애프터 사진을 빠르게 정렬, 보정, 분할, 발표할 수 있는 로컬 우선 웹앱입니다. 안내선 정렬, 배경 블러 채우기, 일괄 색 보정, HTML 내보내기, 발표 모드를 제공합니다.",
         "isAccessibleForFree": true,
         "creator": {
           "@type": "Person",
@@ -56,9 +56,7 @@
           "name": "notoow"
         },
         "codeRepository": "https://github.com/notoow/medical-image-presenter",
-        "sameAs": [
-          "https://github.com/notoow/medical-image-presenter"
-        ]
+        "sameAs": ["https://github.com/notoow/medical-image-presenter"]
       }
     </script>
 
@@ -142,8 +140,8 @@
             정렬
             <select id="sortMode">
               <option value="name-asc">이름순</option>
-              <option value="date-asc">수정 날짜 오래된 순</option>
-              <option value="date-desc">수정 날짜 최신 순</option>
+              <option value="date-asc">수정 날짜 오래된순</option>
+              <option value="date-desc">수정 날짜 최신순</option>
               <option value="manual">수동 순서</option>
             </select>
           </label>
@@ -303,7 +301,7 @@
             선택 사진 초기화
           </button>
           <p class="hint-text">
-            슬라이드 사진을 클릭하면 해당 칸만 확대, 이동, 회전, crop 할 수 있습니다. HTML 다운로드에도 그대로 저장됩니다.
+            슬라이드 사진을 클릭하면 해당 칸만 크기, 이동, 회전, crop 할 수 있습니다. HTML 다운로드에도 그대로 저장됩니다.
           </p>
         </section>
 
@@ -320,7 +318,7 @@
           <div id="guideListPanel" class="guide-list-panel" aria-label="안내선 위치 조절"></div>
           <button id="clearGuidesButton" class="wide-button subtle" type="button">안내선 모두 지우기</button>
           <p class="hint-text">
-            + 버튼으로 안내선을 추가하고 슬라이더로 위치를 조절하세요. 상단과 좌측 ruler에서도 직접 끌어와서 놓을 수 있습니다.
+            + 버튼으로 안내선을 추가하고 슬라이더로 위치를 조절하세요. 상단과 좌측 ruler에서도 직접 끌어다 놓을 수 있습니다.
           </p>
         </section>
 
@@ -330,7 +328,7 @@
           <p>Enter: 블러 배경 채우기</p>
           <p>F / Shift+F: 맞추기 / 채우기</p>
           <p>F5 / Esc: 발표 시작 / 종료</p>
-          <p>Shift+?: 단축키 도움말</p>
+          <p>Shift+?: 단축키 안내 열기</p>
           <p>= / - / 휠 / 키패드 +/-: 확대 / 축소</p>
           <p>0: 확대 초기화</p>
           <p>C: 커버로 이동</p>
@@ -358,7 +356,7 @@
           <button id="nextButton" type="button">다음</button>
         </div>
         <article id="stage" class="stage stage-cover"></article>
-        <div id="thumbnailRail" class="thumbnail-rail" aria-label="슬라이드 미리보기"></div>
+        <div id="thumbnailRail" class="thumbnail-rail" aria-label="슬라이드 목록"></div>
       </section>
 
       <aside class="photo-panel" aria-label="전체 사진 목록">
