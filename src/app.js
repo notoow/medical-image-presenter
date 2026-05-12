@@ -732,7 +732,23 @@ function renderSlide() {
     >
       ${pageSlots.map((imageId, offset) => renderImageCard(getImageById(imageId), start + offset)).join("")}
     </div>
-    ${isEmptySlide && slideCaption.trim() ? `<div class="empty-slide-caption">${escapeHtml(slideCaption)}</div>` : ""}
+    ${
+      isEmptySlide
+        ? `
+          <div class="empty-slide-caption-wrap">
+            ${
+              document.body.classList.contains("presenting")
+                ? `<div class="empty-slide-caption-present">${escapeHtml(slideCaption)}</div>`
+                : `<textarea
+                    class="empty-slide-caption-input"
+                    data-empty-slide-caption="${state.pageIndex}"
+                    placeholder="빈 슬라이드 소제목을 입력하세요"
+                  >${escapeHtml(slideCaption)}</textarea>`
+            }
+          </div>
+        `
+        : ""
+    }
     ${renderGuides()}
   `;
 
@@ -2278,6 +2294,14 @@ els.guideListPanel?.addEventListener("click", (event) => {
   state.guides.splice(index, 1);
   markGuidesDirty();
   render();
+});
+
+els.stage?.addEventListener("input", (event) => {
+  const input = event.target instanceof HTMLTextAreaElement ? event.target.closest("[data-empty-slide-caption]") : null;
+  if (!(input instanceof HTMLTextAreaElement)) return;
+  const page = Number(input.dataset.emptySlideCaption);
+  if (!Number.isFinite(page) || page <= 0) return;
+  updateSlideCaption(page, input.value);
 });
 
 els.stage?.addEventListener("pointerdown", (event) => {

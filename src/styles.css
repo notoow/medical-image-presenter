@@ -1685,13 +1685,42 @@ body.presenting .guide-ruler {
   object-fit: cover;
 }
 
-.empty-slide-caption {
+.empty-slide-caption-wrap {
   position: absolute;
   z-index: 6;
   top: 50%;
   left: 50%;
   max-width: min(72%, 30rem);
   transform: translate(-50%, -50%);
+  width: min(72%, 30rem);
+}
+
+.empty-slide-caption-input {
+  width: 100%;
+  min-height: 6.8rem;
+  border: 1px solid rgba(255, 253, 247, 0.22);
+  border-radius: 1rem;
+  padding: 0.9rem 1.2rem;
+  color: rgba(255, 253, 247, 0.9);
+  background: rgba(10, 10, 10, 0.56);
+  font-size: clamp(1.1rem, 2.2vw, 1.6rem);
+  font-weight: 800;
+  text-align: center;
+  backdrop-filter: blur(10px);
+  resize: none;
+}
+
+.empty-slide-caption-input::placeholder {
+  color: rgba(255, 253, 247, 0.46);
+}
+
+.empty-slide-caption-input:focus {
+  outline: none;
+  border-color: rgba(211, 138, 93, 0.94);
+  box-shadow: 0 0 0 3px rgba(138, 75, 45, 0.18);
+}
+
+.empty-slide-caption-present {
   border: 1px solid rgba(255, 253, 247, 0.22);
   border-radius: 1rem;
   padding: 0.9rem 1.2rem;
