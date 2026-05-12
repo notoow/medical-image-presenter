@@ -158,6 +158,8 @@ const els = {
   prevButton: document.querySelector("#prevButton"),
   nextButton: document.querySelector("#nextButton"),
   slideQuickActions: document.querySelector("#slideQuickActions"),
+  moveSlidePrevButton: document.querySelector("#moveSlidePrevButton"),
+  moveSlideNextButton: document.querySelector("#moveSlideNextButton"),
   insertSlideBeforeButton: document.querySelector("#insertSlideBeforeButton"),
   insertSlideAfterButton: document.querySelector("#insertSlideAfterButton"),
   duplicateSlideButton: document.querySelector("#duplicateSlideButton"),
@@ -937,7 +939,11 @@ function syncDeckStatus() {
 
   syncLayoutControls();
   const hasCurrentSlide = state.pageIndex > 0 && getSlidePageCount() > 0;
+  const canMoveSlidePrev = hasCurrentSlide && state.pageIndex > 1;
+  const canMoveSlideNext = hasCurrentSlide && state.pageIndex < getSlidePageCount();
   els.slideQuickActions?.classList.toggle("is-hidden", !hasCurrentSlide);
+  if (els.moveSlidePrevButton) els.moveSlidePrevButton.disabled = !canMoveSlidePrev;
+  if (els.moveSlideNextButton) els.moveSlideNextButton.disabled = !canMoveSlideNext;
   if (els.insertSlideBeforeButton) els.insertSlideBeforeButton.disabled = !hasCurrentSlide;
   if (els.insertSlideAfterButton) els.insertSlideAfterButton.disabled = !hasCurrentSlide;
   if (els.duplicateSlideButton) els.duplicateSlideButton.disabled = !hasCurrentSlide;
@@ -1549,6 +1555,7 @@ function syncShortcutHelpContent() {
     <p><kbd>Home</kbd> / <kbd>End</kbd><span>커버 / 마지막 페이지</span></p>
     <p><kbd>Ctrl</kbd> + <kbd>M</kbd><span>현재 슬라이드 뒤에 빈 슬라이드 추가</span></p>
     <p><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>M</kbd><span>현재 슬라이드 앞에 빈 슬라이드 추가</span></p>
+    <p><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>←</kbd> <kbd>→</kbd><span>현재 슬라이드 순서 이동</span></p>
     <p><kbd>Ctrl</kbd> + <kbd>D</kbd><span>현재 슬라이드 복제</span></p>
     <p><kbd>Ctrl</kbd> + <kbd>Z</kbd><span>되돌리기</span></p>
     <p><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>Z</kbd><span>다시하기</span></p>
@@ -1602,6 +1609,14 @@ function openSlideContextMenu(page, clientX, clientY) {
 function runSlideContextAction(action, page = activeSlideContextPage) {
   if (!Number.isFinite(page) || page <= 0) return;
 
+  if (action === "move-prev") {
+    reorderSlidePage(page, page - 1);
+    return;
+  }
+  if (action === "move-next") {
+    reorderSlidePage(page, page + 1);
+    return;
+  }
   if (action === "insert-before") {
     insertSlidePage(page, "before");
     return;
@@ -2174,6 +2189,13 @@ function reorderSlidePage(fromPage, toPage) {
   }
 
   render();
+}
+
+function moveCurrentSlide(step = 0) {
+  if (state.pageIndex <= 0 || !Number.isFinite(step) || step === 0) return;
+  const targetPage = clamp(state.pageIndex + step, 1, getSlidePageCount());
+  if (targetPage === state.pageIndex) return;
+  reorderSlidePage(state.pageIndex, targetPage);
 }
 
 function insertSlidePage(referencePage, position = "after") {
@@ -3154,6 +3176,12 @@ els.gridCols.addEventListener("input", () => setGrid(Number(els.gridRows.value),
 
 els.prevButton.addEventListener("click", () => goToPage(state.pageIndex - 1));
 els.nextButton.addEventListener("click", () => goToPage(state.pageIndex + 1));
+els.moveSlidePrevButton?.addEventListener("click", () => {
+  moveCurrentSlide(-1);
+});
+els.moveSlideNextButton?.addEventListener("click", () => {
+  moveCurrentSlide(1);
+});
 els.insertSlideBeforeButton?.addEventListener("click", () => {
   if (state.pageIndex <= 0) return;
   insertSlidePage(state.pageIndex, "before");
@@ -3371,6 +3399,17 @@ document.addEventListener("keydown", (event) => {
   if (state.pageIndex > 0 && hasSlideShortcutModifier(event) && event.key.toLowerCase() === "m") {
     event.preventDefault();
     insertSlidePage(state.pageIndex, event.shiftKey ? "before" : "after");
+    return;
+  }
+
+  if (
+    state.pageIndex > 0 &&
+    hasSlideShortcutModifier(event) &&
+    event.shiftKey &&
+    (event.key === "ArrowLeft" || event.key === "ArrowRight")
+  ) {
+    event.preventDefault();
+    moveCurrentSlide(event.key === "ArrowLeft" ? -1 : 1);
     return;
   }
 

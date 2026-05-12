@@ -356,6 +356,8 @@
           <button id="prevButton" type="button">이전</button>
           <span id="pageStatus">Cover</span>
           <div id="slideQuickActions" class="slide-quick-actions">
+            <button id="moveSlidePrevButton" type="button">← 이동</button>
+            <button id="moveSlideNextButton" type="button">이동 →</button>
             <button id="insertSlideBeforeButton" type="button">앞+</button>
             <button id="insertSlideAfterButton" type="button">뒤+</button>
             <button id="duplicateSlideButton" type="button">복제</button>
@@ -437,6 +439,7 @@
           <p><kbd>Home</kbd> / <kbd>End</kbd><span>커버 / 마지막 페이지</span></p>
           <p><kbd>Ctrl</kbd> + <kbd>M</kbd><span>현재 슬라이드 뒤에 빈 슬라이드 추가</span></p>
           <p><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>M</kbd><span>현재 슬라이드 앞에 빈 슬라이드 추가</span></p>
+          <p><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>←</kbd> <kbd>→</kbd><span>현재 슬라이드 순서 이동</span></p>
           <p><kbd>Ctrl</kbd> + <kbd>D</kbd><span>현재 슬라이드 복제</span></p>
           <p><kbd>Ctrl</kbd> + <kbd>Z</kbd><span>되돌리기</span></p>
           <p><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>Z</kbd><span>다시하기</span></p>
@@ -456,6 +459,8 @@
     <div id="slideContextMenu" class="slide-context-menu" aria-hidden="true">
       <div class="slide-context-card">
         <p id="slideContextLabel" class="slide-context-label">슬라이드 편집</p>
+        <button type="button" data-slide-context-action="move-prev">이전 위치로 이동</button>
+        <button type="button" data-slide-context-action="move-next">다음 위치로 이동</button>
         <button type="button" data-slide-context-action="insert-before">앞에 빈 슬라이드 추가</button>
         <button type="button" data-slide-context-action="insert-after">뒤에 빈 슬라이드 추가</button>
         <button type="button" data-slide-context-action="duplicate">현재 슬라이드 복제</button>
