@@ -163,6 +163,7 @@ const els = {
   moveSlideNextButton: document.querySelector("#moveSlideNextButton"),
   copySlideButton: document.querySelector("#copySlideButton"),
   pasteSlideButton: document.querySelector("#pasteSlideButton"),
+  clearSlideButton: document.querySelector("#clearSlideButton"),
   insertSlideBeforeButton: document.querySelector("#insertSlideBeforeButton"),
   insertSlideAfterButton: document.querySelector("#insertSlideAfterButton"),
   duplicateSlideButton: document.querySelector("#duplicateSlideButton"),
@@ -971,6 +972,7 @@ function syncDeckStatus() {
   if (els.moveSlideNextButton) els.moveSlideNextButton.disabled = !canMoveSlideNext;
   if (els.copySlideButton) els.copySlideButton.disabled = !hasCurrentSlide;
   if (els.pasteSlideButton) els.pasteSlideButton.disabled = !hasCurrentSlide || !slideClipboard;
+  if (els.clearSlideButton) els.clearSlideButton.disabled = !hasCurrentSlide;
   if (els.insertSlideBeforeButton) els.insertSlideBeforeButton.disabled = !hasCurrentSlide;
   if (els.insertSlideAfterButton) els.insertSlideAfterButton.disabled = !hasCurrentSlide;
   if (els.duplicateSlideButton) els.duplicateSlideButton.disabled = !hasCurrentSlide;
@@ -1583,6 +1585,8 @@ function syncShortcutHelpContent() {
     <p><kbd>Ctrl</kbd> + <kbd>M</kbd><span>현재 슬라이드 뒤에 빈 슬라이드 추가</span></p>
     <p><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>M</kbd><span>현재 슬라이드 앞에 빈 슬라이드 추가</span></p>
     <p><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>←</kbd> <kbd>→</kbd><span>현재 슬라이드 순서 이동</span></p>
+    <p><kbd>Ctrl</kbd> + <kbd>C</kbd> <kbd>Ctrl</kbd> + <kbd>V</kbd><span>현재 슬라이드 복사 / 뒤에 붙여넣기</span></p>
+    <p><kbd>Ctrl</kbd> + <kbd>Backspace</kbd><span>현재 슬라이드 사진만 비우기</span></p>
     <p><kbd>Ctrl</kbd> + <kbd>D</kbd><span>현재 슬라이드 복제</span></p>
     <p><kbd>Ctrl</kbd> + <kbd>Z</kbd><span>되돌리기</span></p>
     <p><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>Z</kbd><span>다시하기</span></p>
@@ -1650,6 +1654,10 @@ function runSlideContextAction(action, page = activeSlideContextPage) {
   }
   if (action === "paste") {
     pasteSlidePageAfter(page);
+    return;
+  }
+  if (action === "clear") {
+    clearSlidePage(page);
     return;
   }
   if (action === "insert-before") {
@@ -2305,6 +2313,38 @@ function pasteSlidePageAfter(page = state.pageIndex) {
   normalizeSlideCaptions(nextPages.length);
   state.selectedSlotIndex = null;
   goToPage(page + 1);
+}
+
+function clearSlidePage(page = state.pageIndex) {
+  const pageMeta = getSlidePages().find((entry) => entry.pageIndex === Number(page));
+  if (!pageMeta) return;
+
+  beginEditHistoryAction();
+  let changed = false;
+
+  for (let offset = 0; offset < pageMeta.pageSize; offset += 1) {
+    const slotIndex = pageMeta.start + offset;
+    if (state.slideSlots[slotIndex]) {
+      state.slideSlots[slotIndex] = null;
+      changed = true;
+    }
+    if (state.slotTransforms[slotIndex]) {
+      delete state.slotTransforms[slotIndex];
+      changed = true;
+    }
+  }
+
+  if (!changed) return;
+
+  if (Number.isFinite(state.selectedSlotIndex)) {
+    const selectedSlotIndex = Number(state.selectedSlotIndex);
+    if (selectedSlotIndex >= pageMeta.start && selectedSlotIndex < pageMeta.start + pageMeta.pageSize) {
+      state.selectedSlotIndex = null;
+    }
+  }
+
+  markSlideSlotsDirty();
+  render();
 }
 
 function insertSlidePage(referencePage, position = "after") {
@@ -3305,6 +3345,10 @@ els.copySlideButton?.addEventListener("click", () => {
 els.pasteSlideButton?.addEventListener("click", () => {
   pasteSlidePageAfter(state.pageIndex);
 });
+els.clearSlideButton?.addEventListener("click", () => {
+  if (state.pageIndex <= 0) return;
+  clearSlidePage(state.pageIndex);
+});
 els.insertSlideBeforeButton?.addEventListener("click", () => {
   if (state.pageIndex <= 0) return;
   insertSlidePage(state.pageIndex, "before");
@@ -3528,6 +3572,12 @@ document.addEventListener("keydown", (event) => {
   if (state.pageIndex > 0 && hasSlideShortcutModifier(event) && !event.shiftKey && event.key.toLowerCase() === "v") {
     event.preventDefault();
     pasteSlidePageAfter(state.pageIndex);
+    return;
+  }
+
+  if (state.pageIndex > 0 && hasSlideShortcutModifier(event) && event.key === "Backspace") {
+    event.preventDefault();
+    clearSlidePage(state.pageIndex);
     return;
   }
 
