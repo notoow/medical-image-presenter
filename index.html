@@ -6,7 +6,7 @@
     <title>Medical Image Presenter | 병원 비포애프터 사진 발표 웹앱</title>
     <meta
       name="description"
-      content="Medical Image Presenter는 병원 비포애프터 사진을 빠르게 정렬, 보정, 분할, 발표할 수 있는 로컬 우선 웹앱입니다. 안내선 정렬, 배경 블러 채우기, 일괄 색 보정, HTML 내보내기, 발표 모드를 지원합니다."
+      content="Medical Image Presenter는 병원 비포애프터 사진을 빠르게 정렬, 보정, 분할, 발표할 수 있는 로컬 중심 웹앱입니다. 안내선 정렬, 배경 블러 채우기, 색 보정, HTML 내보내기, 발표 모드를 지원합니다."
     />
     <meta
       name="keywords"
@@ -23,7 +23,7 @@
     <meta property="og:title" content="Medical Image Presenter | 병원 비포애프터 사진 발표 웹앱" />
     <meta
       property="og:description"
-      content="병원 비포애프터 사진을 정렬, 분할, 보정, 발표까지 한 번에 처리하는 로컬 우선 웹앱입니다."
+      content="병원 비포애프터 사진을 정렬, 분할, 보정, 발표까지 한 번에 처리하는 로컬 중심 웹앱입니다."
     />
     <meta property="og:url" content="https://notoow.github.io/medical-image-presenter/" />
 
@@ -31,7 +31,7 @@
     <meta name="twitter:title" content="Medical Image Presenter | 병원 비포애프터 사진 발표 웹앱" />
     <meta
       name="twitter:description"
-      content="의료 비포애프터 사진을 빠르게 정렬, 보정, 발표하고 HTML로 내보낼 수 있는 로컬 우선 웹앱."
+      content="의료 비포애프터 사진을 빠르게 정렬, 보정, 발표하고 HTML로 내보낼 수 있는 로컬 중심 웹앱."
     />
 
     <script type="application/ld+json">
@@ -45,7 +45,7 @@
         "operatingSystem": "Web",
         "inLanguage": ["ko", "en"],
         "browserRequirements": "Requires JavaScript. Works in modern desktop browsers.",
-        "description": "Medical Image Presenter는 병원 비포애프터 사진을 빠르게 정렬, 보정, 분할, 발표할 수 있는 로컬 우선 웹앱입니다. 안내선 정렬, 배경 블러 채우기, 일괄 색 보정, HTML 내보내기, 발표 모드를 제공합니다.",
+        "description": "Medical Image Presenter는 병원 비포애프터 사진을 빠르게 정렬, 보정, 분할, 발표할 수 있는 로컬 중심 웹앱입니다. 안내선 정렬, 배경 블러 채우기, 색 보정, HTML 내보내기, 발표 모드를 지원합니다.",
         "isAccessibleForFree": true,
         "creator": {
           "@type": "Person",
@@ -140,8 +140,8 @@
             정렬
             <select id="sortMode">
               <option value="name-asc">이름순</option>
-              <option value="date-asc">수정 날짜 오래된순</option>
-              <option value="date-desc">수정 날짜 최신순</option>
+              <option value="date-asc">생성 날짜 오래된순</option>
+              <option value="date-desc">생성 날짜 최신순</option>
               <option value="manual">수동 순서</option>
             </select>
           </label>
@@ -262,7 +262,7 @@
 
         <section class="panel-section selected-photo-panel">
           <h2>선택 사진 편집</h2>
-          <p id="selectedSlotLabel" class="selected-slot-label">슬라이드 사진을 클릭하세요.</p>
+          <p id="selectedSlotLabel" class="selected-slot-label">슬라이드 사진이나 빈칸을 클릭하세요.</p>
           <label>
             크기 <output id="slotScaleValue">100%</output>
             <input id="slotScale" type="range" min="40" max="240" value="100" disabled />
@@ -318,7 +318,7 @@
           <div id="guideListPanel" class="guide-list-panel" aria-label="안내선 위치 조절"></div>
           <button id="clearGuidesButton" class="wide-button subtle" type="button">안내선 모두 지우기</button>
           <p class="hint-text">
-            + 버튼으로 안내선을 추가하고 슬라이더로 위치를 조절하세요. 상단과 좌측 ruler에서도 직접 끌어다 놓을 수 있습니다.
+            + 버튼으로 안내선을 추가하고 슬라이더로 위치를 조절하세요. 상단과 좌측 ruler에서도 직접 끌어 놓을 수 있습니다.
           </p>
         </section>
 
@@ -344,13 +344,15 @@
           </span>
           <span class="sidebar-footer-copy">
             <strong>GitHub Repository</strong>
-            <small>소스 코드 · 이슈 · 업데이트</small>
+            <small>최신 코드와 업데이트 보기</small>
           </span>
         </button>
       </aside>
 
       <section class="stage-wrap" aria-label="Presentation preview">
         <div class="deck-toolbar">
+          <button id="undoButton" type="button">되돌리기</button>
+          <button id="redoButton" type="button">다시하기</button>
           <button id="prevButton" type="button">이전</button>
           <span id="pageStatus">Cover</span>
           <div id="slideQuickActions" class="slide-quick-actions">
@@ -376,7 +378,7 @@
         <button id="resetAllButton" class="wide-button danger-button" type="button">초기화</button>
         <button id="clearSlideSlotsButton" class="wide-button subtle" type="button">슬라이드 비우기</button>
         <p class="hint-text">
-          사진을 중앙 슬라이드 칸으로 끌어다 놓아 배치하세요. 빈칸 카드를 끌어다 놓으면 해당 칸을 비울 수 있습니다.
+          사진을 중앙 슬라이드 칸으로 끌어 놓아 배치하세요. 빈칸 카드를 끌어 놓으면 해당 칸을 비울 수 있습니다.
         </p>
         <button id="emptySlotToken" class="empty-token" type="button" draggable="true">빈칸</button>
         <div id="photoListPanel" class="photo-list-panel"></div>
@@ -391,8 +393,8 @@
             <path d="M14 38v12c0 3.3 2.7 6 6 6h24c3.3 0 6-2.7 6-6V38" />
           </svg>
         </div>
-        <strong>사진을 여기에 놓으세요</strong>
-        <span>여러 장을 한 번에 업로드하고 슬라이드로 바로 배치할 수 있습니다.</span>
+        <strong>사진을 여기로 놓으세요</strong>
+        <span>여러 파일을 한 번에 업로드하고 슬라이드로 바로 배치할 수 있습니다.</span>
       </div>
     </div>
 
@@ -427,17 +429,26 @@
           <button id="closeShortcutHelpButton" type="button">닫기 Esc</button>
         </div>
         <div class="shortcut-grid">
-          <p><kbd>F5</kbd><span>처음부터 발표모드</span></p>
-          <p><kbd>Shift</kbd> + <kbd>F5</kbd><span>현재 페이지부터 발표모드</span></p>
-          <p><kbd>Esc</kbd><span>발표모드/도움말 종료</span></p>
-          <p><kbd>→</kbd> <kbd>↓</kbd> <kbd>Space</kbd> <kbd>N</kbd><span>다음 페이지</span></p>
+          <p><kbd>F5</kbd><span>처음부터 발표 모드</span></p>
+          <p><kbd>Shift</kbd> + <kbd>F5</kbd><span>현재 페이지부터 발표 모드</span></p>
+          <p><kbd>Esc</kbd><span>발표 모드 또는 도움말 닫기</span></p>
           <p><kbd>←</kbd> <kbd>↑</kbd> <kbd>P</kbd><span>이전 페이지</span></p>
+          <p><kbd>→</kbd> <kbd>↓</kbd> <kbd>Space</kbd> <kbd>N</kbd><span>다음 페이지</span></p>
           <p><kbd>Home</kbd> / <kbd>End</kbd><span>커버 / 마지막 페이지</span></p>
+          <p><kbd>Ctrl</kbd> + <kbd>M</kbd><span>현재 슬라이드 뒤에 빈 슬라이드 추가</span></p>
+          <p><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>M</kbd><span>현재 슬라이드 앞에 빈 슬라이드 추가</span></p>
+          <p><kbd>Ctrl</kbd> + <kbd>D</kbd><span>현재 슬라이드 복제</span></p>
+          <p><kbd>Ctrl</kbd> + <kbd>Z</kbd><span>되돌리기</span></p>
+          <p><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>Z</kbd><span>다시하기</span></p>
+          <p><kbd>Delete</kbd><span>현재 슬라이드 삭제</span></p>
+          <p><kbd>Tab</kbd> / <kbd>Shift</kbd> + <kbd>Tab</kbd><span>현재 슬라이드 슬롯 이동</span></p>
+          <p><kbd>Shift</kbd> + <kbd>←</kbd> <kbd>→</kbd> <kbd>↑</kbd> <kbd>↓</kbd><span>그리드 방향대로 슬롯 이동</span></p>
+          <p><kbd>Backspace</kbd><span>선택된 슬롯 비우기</span></p>
           <p><kbd>F</kbd> / <kbd>Shift</kbd> + <kbd>F</kbd><span>사진 맞추기 / 채우기</span></p>
           <p><kbd>Enter</kbd><span>블러 배경 채우기 켜기/끄기</span></p>
           <p><kbd>=</kbd> <kbd>-</kbd> <kbd>휠</kbd><span>확대 / 축소</span></p>
           <p><kbd>Num +</kbd> <kbd>Num -</kbd> <kbd>0</kbd><span>키패드 확대 / 축소 / 초기화</span></p>
-          <p><kbd>Shift</kbd> + <kbd>?</kbd><span>도움말 열기</span></p>
+          <p><kbd>Shift</kbd> + <kbd>?</kbd><span>단축키 도움말</span></p>
         </div>
       </div>
     </dialog>

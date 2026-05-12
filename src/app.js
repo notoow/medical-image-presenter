@@ -106,6 +106,10 @@ let layoutVersion = 0;
 let guidesVersion = 0;
 let lastPersistedSettingsJson = "";
 let lastPersistedAssetsJson = "";
+let isApplyingHistory = false;
+let editHistoryPast = [];
+let editHistoryFuture = [];
+const EDIT_HISTORY_LIMIT = 40;
 const previewCache = new Map();
 const previewJobs = new Map();
 const imageNameCollator = new Intl.Collator("ko-KR", {
@@ -149,6 +153,8 @@ const els = {
   gridCols: document.querySelector("#gridCols"),
   horizontalSplitButton: document.querySelector("#horizontalSplitButton"),
   verticalSplitButton: document.querySelector("#verticalSplitButton"),
+  undoButton: document.querySelector("#undoButton"),
+  redoButton: document.querySelector("#redoButton"),
   prevButton: document.querySelector("#prevButton"),
   nextButton: document.querySelector("#nextButton"),
   slideQuickActions: document.querySelector("#slideQuickActions"),
@@ -250,6 +256,142 @@ const DEFAULT_SLOT_TRANSFORM = Object.freeze({
 
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
+}
+
+function cloneSlotTransforms(source = state.slotTransforms) {
+  return Object.fromEntries(
+    Object.entries(source).map(([key, value]) => [key, { ...value }]),
+  );
+}
+
+function captureEditHistorySnapshot() {
+  return {
+    images: state.images.map((image) => ({ ...image })),
+    slideSlots: [...state.slideSlots],
+    slideCaptions: [...state.slideCaptions],
+    slidePageLayouts: state.slidePageLayouts.map((layout) => createLayoutConfig(layout.mode, layout.rows, layout.cols)),
+    slotTransforms: cloneSlotTransforms(),
+    selectedSlotIndex: state.selectedSlotIndex,
+    logoUrl: state.logoUrl,
+    pageIndex: state.pageIndex,
+    layoutMode: state.layoutMode,
+    gridRows: state.gridRows,
+    gridCols: state.gridCols,
+    sortMode: state.sortMode,
+    fitMode: state.fitMode,
+    backgroundEnabled: state.backgroundEnabled,
+    zoom: state.zoom,
+    guidesEnabled: state.guidesEnabled,
+    guides: state.guides.map((guide) => ({ ...guide })),
+    crop: { ...state.crop },
+    backgroundFilters: { ...state.backgroundFilters },
+    coverVisibility: { ...state.coverVisibility },
+    filters: { ...state.filters },
+    cover: {
+      title: els.coverTitle?.value ?? "",
+      subtitle: els.coverSubtitle?.value ?? "",
+      hospitalName: els.hospitalName?.value ?? "",
+      presenterName: els.presenterName?.value ?? "",
+    },
+  };
+}
+
+function syncHistoryButtons() {
+  if (els.undoButton) els.undoButton.disabled = editHistoryPast.length === 0;
+  if (els.redoButton) els.redoButton.disabled = editHistoryFuture.length === 0;
+}
+
+function restoreEditHistorySnapshot(snapshot) {
+  if (!snapshot) return;
+
+  isApplyingHistory = true;
+  try {
+    state.images = snapshot.images.map((image) => ({ ...image }));
+    state.slideSlots = [...snapshot.slideSlots];
+    state.slideCaptions = [...snapshot.slideCaptions];
+    state.slidePageLayouts = snapshot.slidePageLayouts.map((layout) =>
+      createLayoutConfig(layout.mode, layout.rows, layout.cols),
+    );
+    state.slotTransforms = cloneSlotTransforms(snapshot.slotTransforms);
+    state.selectedSlotIndex = snapshot.selectedSlotIndex;
+    state.logoUrl = snapshot.logoUrl;
+    state.pageIndex = snapshot.pageIndex;
+    state.layoutMode = snapshot.layoutMode;
+    state.gridRows = snapshot.gridRows;
+    state.gridCols = snapshot.gridCols;
+    state.sortMode = snapshot.sortMode;
+    state.fitMode = snapshot.fitMode;
+    state.backgroundEnabled = snapshot.backgroundEnabled;
+    state.zoom = snapshot.zoom;
+    state.guidesEnabled = snapshot.guidesEnabled;
+    state.guides = snapshot.guides.map((guide) => ({ ...guide }));
+    state.crop = { ...snapshot.crop };
+    state.backgroundFilters = { ...snapshot.backgroundFilters };
+    state.coverVisibility = { ...snapshot.coverVisibility };
+    state.filters = { ...snapshot.filters };
+
+    if (els.coverTitle) els.coverTitle.value = snapshot.cover.title;
+    if (els.coverSubtitle) els.coverSubtitle.value = snapshot.cover.subtitle;
+    if (els.hospitalName) els.hospitalName.value = snapshot.cover.hospitalName;
+    if (els.presenterName) els.presenterName.value = snapshot.cover.presenterName;
+    if (els.sortMode) els.sortMode.value = snapshot.sortMode;
+    if (els.showGuides) els.showGuides.checked = snapshot.guidesEnabled;
+    if (els.brightness) els.brightness.value = String(snapshot.filters.brightness);
+    if (els.contrast) els.contrast.value = String(snapshot.filters.contrast);
+    if (els.saturate) els.saturate.value = String(snapshot.filters.saturate);
+    if (els.hue) els.hue.value = String(snapshot.filters.hue);
+    if (els.bgBrightness) els.bgBrightness.value = String(snapshot.backgroundFilters.brightness);
+    if (els.bgSaturate) els.bgSaturate.value = String(snapshot.backgroundFilters.saturate);
+    if (els.bgBlur) els.bgBlur.value = String(snapshot.backgroundFilters.blur);
+    if (els.bgScale) els.bgScale.value = String(snapshot.backgroundFilters.scale);
+    if (els.bgY) els.bgY.value = String(snapshot.backgroundFilters.y);
+    if (els.cropLeft) els.cropLeft.value = String(snapshot.crop.left);
+    if (els.cropRight) els.cropRight.value = String(snapshot.crop.right);
+    if (els.cropTop) els.cropTop.value = String(snapshot.crop.top);
+    if (els.cropBottom) els.cropBottom.value = String(snapshot.crop.bottom);
+    if (els.showCoverTitle) els.showCoverTitle.checked = snapshot.coverVisibility.title;
+    if (els.showCoverSubtitle) els.showCoverSubtitle.checked = snapshot.coverVisibility.subtitle;
+    if (els.showHospitalName) els.showHospitalName.checked = snapshot.coverVisibility.hospitalName;
+    if (els.showPresenterName) els.showPresenterName.checked = snapshot.coverVisibility.presenterName;
+    if (els.showCoverDate) els.showCoverDate.checked = snapshot.coverVisibility.date;
+    if (els.showCoverLogo) els.showCoverLogo.checked = snapshot.coverVisibility.logo;
+
+    markImagesDirty();
+    markSlideSlotsDirty();
+    markLayoutDirty();
+    markGuidesDirty();
+    normalizeSlidePageLayouts();
+    normalizeSlideCaptions();
+    render();
+    queuePersistAssets();
+  } finally {
+    isApplyingHistory = false;
+    syncHistoryButtons();
+  }
+}
+
+function beginEditHistoryAction() {
+  if (isApplyingHistory || isRestoring) return;
+  editHistoryPast.push(captureEditHistorySnapshot());
+  if (editHistoryPast.length > EDIT_HISTORY_LIMIT) {
+    editHistoryPast = editHistoryPast.slice(-EDIT_HISTORY_LIMIT);
+  }
+  editHistoryFuture = [];
+  syncHistoryButtons();
+}
+
+function undoEditHistory() {
+  const snapshot = editHistoryPast.pop();
+  if (!snapshot) return;
+  editHistoryFuture.push(captureEditHistorySnapshot());
+  restoreEditHistorySnapshot(snapshot);
+}
+
+function redoEditHistory() {
+  const snapshot = editHistoryFuture.pop();
+  if (!snapshot) return;
+  editHistoryPast.push(captureEditHistorySnapshot());
+  restoreEditHistorySnapshot(snapshot);
 }
 
 function createLayoutConfig(mode = "pair", rows = 1, cols = 2) {
@@ -800,6 +942,7 @@ function syncDeckStatus() {
   if (els.insertSlideAfterButton) els.insertSlideAfterButton.disabled = !hasCurrentSlide;
   if (els.duplicateSlideButton) els.duplicateSlideButton.disabled = !hasCurrentSlide;
   if (els.deleteSlideButton) els.deleteSlideButton.disabled = !hasCurrentSlide;
+  syncHistoryButtons();
   els.zoomOutput.textContent = `${Math.round(state.zoom * 100)}%`;
   els.backgroundButton.textContent = state.backgroundEnabled
     ? "배경 채우기 켜짐 Enter"
@@ -1322,6 +1465,7 @@ async function loadImageFiles(fileList) {
 
     updateLoading("슬라이드를 준비하는 중입니다", 1);
 
+    beginEditHistoryAction();
     const wasEmpty = state.images.length === 0;
     state.images = [...state.images, ...addedImages];
     markImagesDirty();
@@ -1406,6 +1550,8 @@ function syncShortcutHelpContent() {
     <p><kbd>Ctrl</kbd> + <kbd>M</kbd><span>현재 슬라이드 뒤에 빈 슬라이드 추가</span></p>
     <p><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>M</kbd><span>현재 슬라이드 앞에 빈 슬라이드 추가</span></p>
     <p><kbd>Ctrl</kbd> + <kbd>D</kbd><span>현재 슬라이드 복제</span></p>
+    <p><kbd>Ctrl</kbd> + <kbd>Z</kbd><span>되돌리기</span></p>
+    <p><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>Z</kbd><span>다시하기</span></p>
     <p><kbd>Delete</kbd><span>현재 슬라이드 삭제</span></p>
     <p><kbd>Tab</kbd> / <kbd>Shift</kbd> + <kbd>Tab</kbd><span>현재 슬라이드 슬롯 이동</span></p>
     <p><kbd>Shift</kbd> + <kbd>←</kbd> <kbd>→</kbd> <kbd>↑</kbd> <kbd>↓</kbd><span>그리드 방향대로 슬롯 이동</span></p>
@@ -1688,6 +1834,7 @@ function syncLayoutControls() {
 
 function applyLayoutToPage(page, mode, rows, cols) {
   if (!Number.isFinite(page) || page <= 0) {
+    beginEditHistoryAction();
     state.layoutMode = createLayoutConfig(mode, rows, cols).mode;
     state.gridRows = createLayoutConfig(mode, rows, cols).rows;
     state.gridCols = createLayoutConfig(mode, rows, cols).cols;
@@ -1696,6 +1843,7 @@ function applyLayoutToPage(page, mode, rows, cols) {
     return;
   }
 
+  beginEditHistoryAction();
   normalizeSlidePageLayouts();
   const nextLayout = createLayoutConfig(mode, rows, cols);
   state.slidePageLayouts[page - 1] = nextLayout;
@@ -1788,6 +1936,7 @@ function renderGuideControls() {
 function setSlot(slotIndex, imageId) {
   if (slotIndex < 0) return;
 
+  beginEditHistoryAction();
   normalizeSlidePageLayouts(slotIndex + 1);
   while (state.slideSlots.length <= slotIndex) {
     state.slideSlots.push(null);
@@ -1824,6 +1973,7 @@ function resolvePhotoListTargetSlotIndex() {
 function assignImageToSlot(slotIndex, imageId, { advance = false } = {}) {
   if (!Number.isFinite(slotIndex) || slotIndex < 0 || !imageId) return;
 
+  beginEditHistoryAction();
   normalizeSlidePageLayouts(slotIndex + 1);
   while (state.slideSlots.length <= slotIndex) {
     state.slideSlots.push(null);
@@ -1865,6 +2015,7 @@ function assignImageToSlot(slotIndex, imageId, { advance = false } = {}) {
 }
 
 function addEmptySlot() {
+  beginEditHistoryAction();
   const layout = getPageLayout(state.pageIndex);
   const pageSize = getPageSizeForLayout(layout);
   state.slidePageLayouts.push(layout);
@@ -1876,6 +2027,7 @@ function addEmptySlot() {
 }
 
 function clearSlideSlots() {
+  beginEditHistoryAction();
   if (state.images.length === 0) {
     state.slideSlots = [];
     state.slidePageLayouts = [];
@@ -1904,6 +2056,7 @@ function resetAllPhotosAndSlides() {
   const shouldReset = window.confirm("업로드한 사진과 슬라이드를 모두 초기화할까요?");
   if (!shouldReset) return;
 
+  beginEditHistoryAction();
   cancelPreviewWarm();
   previewWarmQueue = [];
   previewCache.clear();
@@ -1986,6 +2139,7 @@ function reorderSlidePage(fromPage, toPage) {
   const toIndex = Number(toPage) - 1;
   if (!Number.isFinite(fromIndex) || !Number.isFinite(toIndex) || fromIndex < 0 || toIndex < 0) return;
   if (fromIndex === toIndex || fromIndex >= pages.length || toIndex >= pages.length) return;
+  beginEditHistoryAction();
   const selectedImageId =
     Number.isFinite(state.selectedSlotIndex) && state.selectedSlotIndex >= 0
       ? state.slideSlots[state.selectedSlotIndex]
@@ -2026,6 +2180,7 @@ function insertSlidePage(referencePage, position = "after") {
   const pages = getSlidePages();
   const referenceIndex = Number(referencePage) - 1;
   if (!Number.isFinite(referenceIndex) || referenceIndex < 0 || referenceIndex >= pages.length) return;
+  beginEditHistoryAction();
 
   const reference = pages[referenceIndex];
   const insertIndex = position === "before" ? referenceIndex : referenceIndex + 1;
@@ -2062,6 +2217,7 @@ function duplicateSlidePage(page) {
   const pages = getSlidePages();
   const pageIndex = Number(page) - 1;
   if (!Number.isFinite(pageIndex) || pageIndex < 0 || pageIndex >= pages.length) return;
+  beginEditHistoryAction();
 
   const sourcePage = pages[pageIndex];
   const nextPages = [...pages];
@@ -2101,6 +2257,7 @@ function deleteSlidePage(page) {
   const pages = getSlidePages();
   const pageIndex = Number(page) - 1;
   if (!Number.isFinite(pageIndex) || pageIndex < 0 || pageIndex >= pages.length) return;
+  beginEditHistoryAction();
   const selectedImageId =
     Number.isFinite(state.selectedSlotIndex) && state.selectedSlotIndex >= 0
       ? state.slideSlots[state.selectedSlotIndex]
@@ -2150,6 +2307,7 @@ function removeImageFromLibrary(imageId) {
   if (!imageId) return;
   const imageIndex = state.images.findIndex((image) => image.id === imageId);
   if (imageIndex < 0) return;
+  beginEditHistoryAction();
 
   state.images.splice(imageIndex, 1);
   markImagesDirty();
@@ -3030,6 +3188,8 @@ els.emptySlotToken.addEventListener("dragstart", (event) => {
 els.addEmptySlotButton.addEventListener("click", addEmptySlot);
 els.resetAllButton.addEventListener("click", resetAllPhotosAndSlides);
 els.clearSlideSlotsButton.addEventListener("click", clearSlideSlots);
+els.undoButton?.addEventListener("click", undoEditHistory);
+els.redoButton?.addEventListener("click", redoEditHistory);
 els.zoomOutButton.addEventListener("click", () => updateZoom(-0.1));
 els.zoomInButton.addEventListener("click", () => updateZoom(0.1));
 
@@ -3067,6 +3227,7 @@ bindSlotTransform(els.slotCropBottom, els.slotCropBottomValue, "cropBottom");
 els.resetSlotTransformButton?.addEventListener("click", () => {
   const slotIndex = Number(state.selectedSlotIndex);
   if (!Number.isFinite(slotIndex) || slotIndex < 0) return;
+  beginEditHistoryAction();
   state.slotTransforms[slotIndex] = getDefaultSlotTransform();
   render();
 });
@@ -3083,6 +3244,7 @@ els.clearGuidesButton.addEventListener("click", () => {
 });
 
 els.resetFiltersButton.addEventListener("click", () => {
+  beginEditHistoryAction();
   state.filters = {
     brightness: 100,
     contrast: 100,
@@ -3161,6 +3323,16 @@ document.addEventListener("keydown", (event) => {
   if (state.pageIndex > 0 && event.key === "Tab") {
     event.preventDefault();
     selectAdjacentSlot(event.shiftKey ? -1 : 1);
+    return;
+  }
+
+  if (hasSlideShortcutModifier(event) && event.key.toLowerCase() === "z") {
+    event.preventDefault();
+    if (event.shiftKey) {
+      redoEditHistory();
+    } else {
+      undoEditHistory();
+    }
     return;
   }
 
