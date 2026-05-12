@@ -1595,6 +1595,8 @@ function syncShortcutHelpContent() {
     <p><kbd>Shift</kbd> + <kbd>←</kbd> <kbd>→</kbd> <kbd>↑</kbd> <kbd>↓</kbd><span>그리드 방향대로 슬롯 이동</span></p>
     <p><kbd>Alt</kbd> + <kbd>←</kbd> <kbd>→</kbd> <kbd>↑</kbd> <kbd>↓</kbd><span>선택 사진 미세 이동</span></p>
     <p><kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>←</kbd> <kbd>→</kbd> <kbd>↑</kbd> <kbd>↓</kbd><span>선택 사진 크게 이동</span></p>
+    <p><kbd>Alt</kbd> + <kbd>[</kbd> <kbd>]</kbd><span>선택 사진 크기 줄이기 / 키우기</span></p>
+    <p><kbd>Alt</kbd> + <kbd>,</kbd> <kbd>.</kbd><span>선택 사진 회전</span></p>
     <p><kbd>Backspace</kbd><span>선택된 슬롯 비우기</span></p>
     <p><kbd>F</kbd> / <kbd>Shift</kbd> + <kbd>F</kbd><span>사진 맞추기 / 채우기</span></p>
     <p><kbd>Enter</kbd><span>블러 배경 채우기 켜기/끄기</span></p>
@@ -1789,7 +1791,7 @@ function syncSelectedSlotControls() {
 
   if (selectedSlotUiKey === nextKey) return;
 
-  const nextLabel = `${slotIndex + 1}번 슬롯 선택됨. Tab/Shift+방향키로 칸 이동, Alt+방향키로 미세 이동, Backspace로 비우기, 클릭은 교체, 더블클릭은 다음 슬라이드까지 연속 이동합니다.`;
+  const nextLabel = `${slotIndex + 1}번 슬롯 선택됨. Tab/Shift+방향키로 칸 이동, Alt+방향키/대괄호/쉼표/마침표로 미세 편집, Backspace로 비우기, 클릭은 교체, 더블클릭은 다음 슬라이드까지 연속 이동합니다.`;
   if (els.selectedSlotLabel.textContent !== nextLabel) {
     els.selectedSlotLabel.textContent = nextLabel;
   }
@@ -1887,6 +1889,22 @@ function nudgeSelectedSlotPosition(direction, amount = 1) {
   if (direction === "right") updateSelectedSlotTransform("x", clamp(transform.x + amount, -100, 100), { recordHistory: true });
   if (direction === "up") updateSelectedSlotTransform("y", clamp(transform.y - amount, -100, 100), { recordHistory: true });
   if (direction === "down") updateSelectedSlotTransform("y", clamp(transform.y + amount, -100, 100), { recordHistory: true });
+}
+
+function nudgeSelectedSlotScale(amount = 1) {
+  const slotIndex = Number(state.selectedSlotIndex);
+  if (!Number.isFinite(slotIndex) || slotIndex < 0 || !state.slideSlots[slotIndex]) return;
+
+  const transform = getSlotTransform(slotIndex);
+  updateSelectedSlotTransform("scale", clamp(transform.scale + amount, 40, 240), { recordHistory: true });
+}
+
+function nudgeSelectedSlotRotate(amount = 1) {
+  const slotIndex = Number(state.selectedSlotIndex);
+  if (!Number.isFinite(slotIndex) || slotIndex < 0 || !state.slideSlots[slotIndex]) return;
+
+  const transform = getSlotTransform(slotIndex);
+  updateSelectedSlotTransform("rotate", clamp(transform.rotate + amount, -45, 45), { recordHistory: true });
 }
 
 function bindSlotTransform(input, output, key, suffix = "%") {
@@ -3549,6 +3567,20 @@ document.addEventListener("keydown", (event) => {
       ArrowDown: "down",
     };
     nudgeSelectedSlotPosition(directionMap[event.key], amount);
+    return;
+  }
+
+  if (state.pageIndex > 0 && event.altKey && (event.key === "[" || event.key === "]")) {
+    event.preventDefault();
+    const amount = event.shiftKey ? 5 : 1;
+    nudgeSelectedSlotScale(event.key === "[" ? -amount : amount);
+    return;
+  }
+
+  if (state.pageIndex > 0 && event.altKey && (event.key === "," || event.key === ".")) {
+    event.preventDefault();
+    const amount = event.shiftKey ? 5 : 1;
+    nudgeSelectedSlotRotate(event.key === "," ? -amount : amount);
     return;
   }
 
