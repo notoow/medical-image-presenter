@@ -1529,11 +1529,9 @@ function bindCrop(input, output, key) {
 
 function syncSelectedSlotControls() {
   const slotIndex = Number(state.selectedSlotIndex);
-  const hasSlot =
-    Number.isFinite(slotIndex) &&
-    slotIndex >= 0 &&
-    state.slideSlots[slotIndex] &&
-    Boolean(getImageById(state.slideSlots[slotIndex]));
+  const hasSelectedSlot = Number.isFinite(slotIndex) && slotIndex >= 0;
+  const hasSlot = hasSelectedSlot && state.slideSlots[slotIndex] && Boolean(getImageById(state.slideSlots[slotIndex]));
+  const isEmptySelectedSlot = hasSelectedSlot && !hasSlot;
 
   if (!els.selectedSlotLabel) return;
 
@@ -1555,9 +1553,11 @@ function syncSelectedSlotControls() {
   }
 
   if (!hasSlot) {
-    const nextKey = "disabled|empty";
+    const nextKey = isEmptySelectedSlot ? `disabled|empty-slot|${slotIndex}` : "disabled|empty";
     if (selectedSlotUiKey !== nextKey) {
-      els.selectedSlotLabel.textContent = "슬라이드 사진을 클릭하세요.";
+      els.selectedSlotLabel.textContent = isEmptySelectedSlot
+        ? `${slotIndex + 1}번 빈 슬롯 선택됨. 오른쪽 사진을 클릭하면 바로 배치됩니다.`
+        : "슬라이드 사진이나 빈칸을 클릭하세요.";
       selectedSlotUiKey = nextKey;
     }
     return;
@@ -1822,6 +1822,16 @@ function findFirstFilledSlotIndexForPage(page) {
   for (let offset = 0; offset < pageMeta.pageSize; offset += 1) {
     const slotIndex = pageMeta.start + offset;
     if (state.slideSlots[slotIndex]) return slotIndex;
+  }
+  return null;
+}
+
+function findFirstEmptySlotIndexForPage(page = state.pageIndex) {
+  const pageMeta = getSlidePages().find((entry) => entry.pageIndex === Number(page));
+  if (!pageMeta) return null;
+  for (let offset = 0; offset < pageMeta.pageSize; offset += 1) {
+    const slotIndex = pageMeta.start + offset;
+    if (!state.slideSlots[slotIndex]) return slotIndex;
   }
   return null;
 }
@@ -2553,7 +2563,8 @@ els.stage?.addEventListener("click", (event) => {
   const slot = target?.closest("[data-slot-index]");
   if (!(slot instanceof HTMLElement)) return;
   const slotIndex = Number(slot.dataset.slotIndex);
-  if (state.slideSlots[slotIndex]) selectSlot(slotIndex);
+  if (!Number.isFinite(slotIndex)) return;
+  selectSlot(slotIndex);
 });
 
 els.stage?.addEventListener("keydown", (event) => {
@@ -2561,7 +2572,7 @@ els.stage?.addEventListener("keydown", (event) => {
   const target = event.target instanceof Element ? event.target.closest("[data-slot-index]") : null;
   if (!(target instanceof HTMLElement)) return;
   const slotIndex = Number(target.dataset.slotIndex);
-  if (!state.slideSlots[slotIndex]) return;
+  if (!Number.isFinite(slotIndex)) return;
   event.preventDefault();
   selectSlot(slotIndex);
 });
@@ -2796,6 +2807,19 @@ els.photoListPanel?.addEventListener("click", (event) => {
   if (!(card instanceof HTMLElement)) return;
   const imageId = card.dataset.imageId;
   if (!imageId) return;
+
+  const selectedSlotIndex = Number(state.selectedSlotIndex);
+  if (Number.isFinite(selectedSlotIndex) && selectedSlotIndex >= 0 && !state.slideSlots[selectedSlotIndex]) {
+    setSlot(selectedSlotIndex, imageId);
+    return;
+  }
+
+  const emptySlotIndex = findFirstEmptySlotIndexForPage(state.pageIndex);
+  if (state.pageIndex > 0 && Number.isFinite(emptySlotIndex)) {
+    setSlot(emptySlotIndex, imageId);
+    return;
+  }
+
   const slotIndex = findFirstSlotIndexByImageId(imageId);
   if (slotIndex < 0) return;
   const location = getSlotLocation(slotIndex);
