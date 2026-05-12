@@ -1321,6 +1321,11 @@ kbd {
   font-size: 0.78rem;
 }
 
+.empty-slot.is-selected .empty-slot-inner strong,
+.empty-slot.is-selected .empty-slot-inner span {
+  color: rgba(226, 255, 251, 0.98);
+}
+
 .blur-bg {
   position: absolute;
   top: 50%;

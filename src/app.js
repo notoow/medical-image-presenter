@@ -632,6 +632,7 @@ function renderImageCard(image, slotIndex) {
       <figure
         class="image-card empty-slot ${selectedClass}"
         data-slot-index="${slotIndex}"
+        tabindex="0"
         title="사진 또는 빈칸을 여기로 드래그하세요"
       >
         <div class="empty-slot-inner">
@@ -1406,6 +1407,7 @@ function syncShortcutHelpContent() {
     <p><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>M</kbd><span>현재 슬라이드 앞에 빈 슬라이드 추가</span></p>
     <p><kbd>Ctrl</kbd> + <kbd>D</kbd><span>현재 슬라이드 복제</span></p>
     <p><kbd>Delete</kbd><span>현재 슬라이드 삭제</span></p>
+    <p><kbd>Tab</kbd> / <kbd>Shift</kbd> + <kbd>Tab</kbd><span>현재 슬라이드 슬롯 이동</span></p>
     <p><kbd>F</kbd> / <kbd>Shift</kbd> + <kbd>F</kbd><span>사진 맞추기 / 채우기</span></p>
     <p><kbd>Enter</kbd><span>블러 배경 채우기 켜기/끄기</span></p>
     <p><kbd>=</kbd> <kbd>-</kbd> <kbd>휠</kbd><span>확대 / 축소</span></p>
@@ -1556,7 +1558,7 @@ function syncSelectedSlotControls() {
     const nextKey = isEmptySelectedSlot ? `disabled|empty-slot|${slotIndex}` : "disabled|empty";
     if (selectedSlotUiKey !== nextKey) {
       els.selectedSlotLabel.textContent = isEmptySelectedSlot
-        ? `${slotIndex + 1}번 빈 슬롯 선택됨. 클릭은 현재 칸 배치, 더블클릭은 다음 빈칸까지 연속 배치합니다.`
+        ? `${slotIndex + 1}번 빈 슬롯 선택됨. Tab으로 칸 이동, 클릭은 현재 칸 배치, 더블클릭은 다음 빈칸까지 연속 배치합니다.`
         : "슬라이드 사진이나 빈칸을 클릭하세요.";
       selectedSlotUiKey = nextKey;
     }
@@ -1579,7 +1581,7 @@ function syncSelectedSlotControls() {
 
   if (selectedSlotUiKey === nextKey) return;
 
-  const nextLabel = `${slotIndex + 1}번 슬롯 선택됨. 클릭은 교체, 더블클릭은 교체 후 다음 빈칸으로 이동합니다.`;
+  const nextLabel = `${slotIndex + 1}번 슬롯 선택됨. Tab으로 칸 이동, 클릭은 교체, 더블클릭은 교체 후 다음 빈칸으로 이동합니다.`;
   if (els.selectedSlotLabel.textContent !== nextLabel) {
     els.selectedSlotLabel.textContent = nextLabel;
   }
@@ -1608,6 +1610,22 @@ function syncSelectedSlotControls() {
 function selectSlot(slotIndex) {
   state.selectedSlotIndex = Number(slotIndex);
   scheduleLightweightRefresh();
+}
+
+function selectAdjacentSlot(step = 1) {
+  if (state.pageIndex <= 0) return;
+
+  const { slotIndices } = getCurrentPageSlotMeta();
+  if (slotIndices.length === 0) return;
+
+  const currentSlotIndex = Number(state.selectedSlotIndex);
+  const currentIndex = slotIndices.indexOf(currentSlotIndex);
+  const nextIndex =
+    currentIndex >= 0
+      ? (currentIndex + step + slotIndices.length) % slotIndices.length
+      : (step >= 0 ? 0 : slotIndices.length - 1);
+
+  selectSlot(slotIndices[nextIndex]);
 }
 
 function updateSelectedSlotTransform(key, value) {
@@ -3088,6 +3106,12 @@ document.addEventListener("keydown", (event) => {
       document.body.classList.remove("presenting");
       document.exitFullscreen?.().catch(() => {});
     }
+  }
+
+  if (state.pageIndex > 0 && event.key === "Tab") {
+    event.preventDefault();
+    selectAdjacentSlot(event.shiftKey ? -1 : 1);
+    return;
   }
 
   if (state.pageIndex > 0 && hasSlideShortcutModifier(event) && event.key.toLowerCase() === "d") {
