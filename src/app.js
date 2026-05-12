@@ -408,6 +408,7 @@ function undoEditHistory() {
   if (!snapshot) return;
   editHistoryFuture.push(captureEditHistorySnapshot());
   restoreEditHistorySnapshot(snapshot);
+  showToast("방금 작업을 되돌렸습니다.");
 }
 
 function redoEditHistory() {
@@ -415,6 +416,7 @@ function redoEditHistory() {
   if (!snapshot) return;
   editHistoryPast.push(captureEditHistorySnapshot());
   restoreEditHistorySnapshot(snapshot);
+  showToast("되돌린 작업을 다시 적용했습니다.");
 }
 
 function createLayoutConfig(mode = "pair", rows = 1, cols = 2) {
@@ -1192,6 +1194,7 @@ function updateFitMode(mode) {
   state.fitMode = mode;
   scheduleLightweightRefresh();
   queuePersistSettings();
+  showToast(mode === "fill" ? "전체 사진을 채우기 기준으로 바꿨습니다." : "전체 사진을 맞추기 기준으로 바꿨습니다.");
 }
 
 function updateZoom(delta) {
@@ -1583,6 +1586,7 @@ function toggleBackground() {
     render({ refreshGuidePanel: false, refreshThumbnails: false, refreshPhotoList: false, persist: false });
   }
   queuePersistSettings();
+  showToast(state.backgroundEnabled ? "블러 배경 채우기를 켰습니다." : "블러 배경 채우기를 껐습니다.");
 }
 
 function togglePresentationMode() {
@@ -2433,6 +2437,7 @@ function clearSlideSlots() {
     markLayoutDirty();
     state.pageIndex = 0;
     render();
+    showToast("슬라이드를 비웠습니다.");
     return;
   }
 
@@ -2446,6 +2451,7 @@ function clearSlideSlots() {
   state.selectedSlotIndex = null;
   state.pageIndex = 1;
   render();
+  showToast("슬라이드 칸을 모두 비웠습니다.");
 }
 
 function resetAllPhotosAndSlides() {
@@ -2481,6 +2487,7 @@ function resetAllPhotosAndSlides() {
 
   render();
   queuePersistAssets();
+  showToast("사진과 슬라이드를 모두 초기화했습니다.");
 }
 
 function findFirstFilledSlotIndexForPage(page) {
@@ -2589,6 +2596,7 @@ function reorderSlidePage(fromPage, toPage) {
   }
 
   render();
+  showToast("슬라이드 순서를 변경했습니다.");
 }
 
 function moveCurrentSlide(step = 0) {
@@ -2686,6 +2694,7 @@ function clearSlidePage(page = state.pageIndex) {
 
   markSlideSlotsDirty();
   render();
+  showToast("현재 슬라이드의 사진을 비웠습니다.");
 }
 
 function insertSlidePage(referencePage, position = "after") {
@@ -2723,6 +2732,7 @@ function insertSlidePage(referencePage, position = "after") {
 
   state.selectedSlotIndex = null;
   goToPage(position === "before" ? referencePage : referencePage + 1);
+  showToast(position === "before" ? "현재 슬라이드 앞에 빈 슬라이드를 추가했습니다." : "현재 슬라이드 뒤에 빈 슬라이드를 추가했습니다.");
 }
 
 function duplicateSlidePage(page) {
@@ -2763,6 +2773,7 @@ function duplicateSlidePage(page) {
   normalizeSlideCaptions(nextPages.length);
   state.selectedSlotIndex = null;
   goToPage(page + 1);
+  showToast("현재 슬라이드를 복제했습니다.");
 }
 
 function deleteSlidePage(page) {
@@ -2800,6 +2811,7 @@ function deleteSlidePage(page) {
   }
 
   render();
+  showToast("현재 슬라이드를 삭제했습니다.");
 }
 
 function updateSlideCaption(page, value) {
