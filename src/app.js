@@ -8,6 +8,7 @@ const state = {
   images: [],
   slideSlots: [],
   slideCaptions: [],
+  slidePageLayouts: [],
   slotTransforms: {},
   selectedSlotIndex: null,
   logoUrl: "",
@@ -243,22 +244,113 @@ function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
 }
 
+function createLayoutConfig(mode = "pair", rows = 1, cols = 2) {
+  const nextMode = mode === "custom" ? "custom" : (pageSizeByLayout[mode] ? mode : "pair");
+  const nextRows =
+    nextMode === "custom"
+      ? clamp(Number(rows) || 1, 1, 4)
+      : ({ single: 1, pair: 1, triple: 1, quad: 2 }[nextMode] ?? 1);
+  const nextCols =
+    nextMode === "custom"
+      ? clamp(Number(cols) || 1, 1, 6)
+      : ({ single: 1, pair: 2, triple: 3, quad: 2 }[nextMode] ?? 2);
+
+  return {
+    mode: nextMode,
+    rows: nextRows,
+    cols: nextCols,
+  };
+}
+
+function getPageSizeForLayout(layout) {
+  const normalized = createLayoutConfig(layout?.mode, layout?.rows, layout?.cols);
+  return normalized.mode === "custom"
+    ? normalized.rows * normalized.cols
+    : (pageSizeByLayout[normalized.mode] ?? 2);
+}
+
+function getDefaultLayoutConfig() {
+  return createLayoutConfig(state.layoutMode, state.gridRows, state.gridCols);
+}
+
 function getPageSize() {
   if (pageSizeCacheVersion === layoutVersion) return cachedPageSize;
 
-  cachedPageSize =
-    state.layoutMode === "custom" ? state.gridRows * state.gridCols : (pageSizeByLayout[state.layoutMode] ?? 2);
+  cachedPageSize = getPageSizeForLayout(getDefaultLayoutConfig());
   pageSizeCacheVersion = layoutVersion;
   return cachedPageSize;
 }
 
-function getTotalPages() {
-  const nextKey = `${slideSlotsVersion}:${layoutVersion}:${state.slideSlots.length}`;
-  if (totalPagesCacheKey === nextKey) return cachedTotalPages;
+function normalizeSlidePageLayouts(requiredSlots = state.slideSlots.length) {
+  if (!Array.isArray(state.slidePageLayouts)) {
+    state.slidePageLayouts = [];
+  }
 
-  cachedTotalPages = 1 + Math.ceil(state.slideSlots.length / getPageSize());
-  totalPagesCacheKey = nextKey;
-  return cachedTotalPages;
+  let capacity = 0;
+  state.slidePageLayouts = state.slidePageLayouts.map((layout) => {
+    const normalized = createLayoutConfig(layout?.mode, layout?.rows, layout?.cols);
+    capacity += getPageSizeForLayout(normalized);
+    return normalized;
+  });
+
+  while (capacity < requiredSlots) {
+    const fallback = getDefaultLayoutConfig();
+    state.slidePageLayouts.push(fallback);
+    capacity += getPageSizeForLayout(fallback);
+  }
+}
+
+function getSlidePageCount() {
+  normalizeSlidePageLayouts();
+  return state.slidePageLayouts.length;
+}
+
+function getSlidePages() {
+  normalizeSlidePageLayouts();
+  let start = 0;
+
+  return state.slidePageLayouts.map((layout, pageIndex) => {
+    const pageSize = getPageSizeForLayout(layout);
+    const rawSlots = state.slideSlots.slice(start, start + pageSize);
+    const slots = Array.from({ length: pageSize }, (_, offset) => rawSlots[offset] ?? null);
+    const page = {
+      pageIndex: pageIndex + 1,
+      start,
+      layout,
+      pageSize,
+      slots,
+      caption: state.slideCaptions[pageIndex] ?? "",
+    };
+    start += pageSize;
+    return page;
+  });
+}
+
+function getPageLayout(page = state.pageIndex) {
+  if (!Number.isFinite(page) || page <= 0) {
+    return getDefaultLayoutConfig();
+  }
+
+  normalizeSlidePageLayouts();
+  return state.slidePageLayouts[page - 1] ?? getDefaultLayoutConfig();
+}
+
+function getSlotLocation(slotIndex) {
+  if (!Number.isFinite(slotIndex) || slotIndex < 0) return null;
+
+  for (const page of getSlidePages()) {
+    if (slotIndex >= page.start && slotIndex < page.start + page.pageSize) {
+      return {
+        page: page.pageIndex,
+        pageStart: page.start,
+        pageSize: page.pageSize,
+        layout: page.layout,
+        offset: slotIndex - page.start,
+      };
+    }
+  }
+
+  return null;
 }
 
 function getCurrentPageSlotMeta() {
@@ -266,43 +358,40 @@ function getCurrentPageSlotMeta() {
     return {
       pageSize: getPageSize(),
       start: 0,
+      layout: getDefaultLayoutConfig(),
       slotIndices: [],
       slots: [],
     };
   }
 
-  const pageSize = getPageSize();
-  const start = (state.pageIndex - 1) * pageSize;
+  const page = getPageLayout(state.pageIndex);
+  const pageSize = getPageSizeForLayout(page);
   const nextKey = `${slideSlotsVersion}:${layoutVersion}:${state.pageIndex}:${state.slideSlots.length}:${pageSize}`;
   if (currentPageSlotMetaCacheKey === nextKey && currentPageSlotMetaCache) {
     return currentPageSlotMetaCache;
   }
 
+  const pageMeta = getSlidePages()[state.pageIndex - 1];
   currentPageSlotMetaCache = {
-    pageSize,
-    start,
-    slotIndices: Array.from({ length: pageSize }, (_, offset) => start + offset),
-    slots: state.slideSlots.slice(start, start + pageSize),
+    pageSize: pageMeta?.pageSize ?? pageSize,
+    start: pageMeta?.start ?? 0,
+    layout: pageMeta?.layout ?? page,
+    slotIndices: pageMeta
+      ? Array.from({ length: pageMeta.pageSize }, (_, offset) => pageMeta.start + offset)
+      : [],
+    slots: pageMeta?.slots ?? [],
   };
   currentPageSlotMetaCacheKey = nextKey;
   return currentPageSlotMetaCache;
 }
 
-function getSlidePageCount() {
-  return Math.ceil(state.slideSlots.length / getPageSize());
-}
+function getTotalPages() {
+  const nextKey = `${slideSlotsVersion}:${layoutVersion}:${state.slideSlots.length}:${state.slidePageLayouts.length}`;
+  if (totalPagesCacheKey === nextKey) return cachedTotalPages;
 
-function getSlidePages() {
-  const pageSize = getPageSize();
-  return Array.from({ length: getSlidePageCount() }, (_, pageIndex) => {
-    const start = pageIndex * pageSize;
-    return {
-      pageIndex: pageIndex + 1,
-      start,
-      slots: state.slideSlots.slice(start, start + pageSize),
-      caption: state.slideCaptions[pageIndex] ?? "",
-    };
-  });
+  cachedTotalPages = 1 + getSlidePageCount();
+  totalPagesCacheKey = nextKey;
+  return cachedTotalPages;
 }
 
 function normalizeSlideCaptions(pageCount = getSlidePageCount()) {
@@ -316,13 +405,22 @@ function normalizeSlideCaptions(pageCount = getSlidePageCount()) {
 }
 
 function trimTrailingEmptySlidePages() {
-  const pageSize = getPageSize();
-  while (state.slideSlots.length > 0) {
-    const lastPageSlots = state.slideSlots.slice(-pageSize);
-    if (lastPageSlots.some(Boolean)) break;
-    state.slideSlots.splice(-pageSize, pageSize);
+  const pages = getSlidePages();
+
+  while (pages.length > 0) {
+    const lastPage = pages[pages.length - 1];
+    if (lastPage.slots.some(Boolean)) break;
+    pages.pop();
   }
-  normalizeSlideCaptions(Math.ceil(state.slideSlots.length / pageSize));
+
+  state.slidePageLayouts = pages.map((page) => createLayoutConfig(page.layout.mode, page.layout.rows, page.layout.cols));
+  state.slideCaptions = pages.map((page) => page.caption);
+  const nextSlotLength = pages.length
+    ? pages[pages.length - 1].start + pages[pages.length - 1].pageSize
+    : 0;
+  state.slideSlots = state.slideSlots.slice(0, nextSlotLength);
+  normalizeSlideCaptions(pages.length);
+  markLayoutDirty();
 }
 
 function markImagesDirty({ orderChanged = true } = {}) {
@@ -413,19 +511,13 @@ function ensureSlideSlots() {
     changed = true;
   });
 
-  const pageSize = getPageSize();
-  const remainder = nextSlots.length % pageSize;
-  if (nextSlots.length > 0 && remainder !== 0) {
-    nextSlots.push(...Array(pageSize - remainder).fill(null));
-    changed = true;
-  }
-
   if (changed) {
     state.slideSlots = nextSlots;
     markSlideSlotsDirty();
   }
 
-  normalizeSlideCaptions(Math.ceil(state.slideSlots.length / pageSize));
+  normalizeSlidePageLayouts();
+  normalizeSlideCaptions(getSlidePageCount());
 }
 
 function sortImages() {
@@ -607,11 +699,11 @@ function renderGuides() {
 }
 
 function renderSlide() {
-  const { start, slots: pageSlots } = getCurrentPageSlotMeta();
+  const { start, slots: pageSlots, layout } = getCurrentPageSlotMeta();
   const slideCaption = state.slideCaptions[state.pageIndex - 1] ?? "";
   const isEmptySlide = pageSlots.length > 0 && !pageSlots.some(Boolean);
 
-  els.stage.className = `stage layout-${state.layoutMode}`;
+  els.stage.className = `stage layout-${layout.mode}`;
 
   if (pageSlots.length === 0) {
     visibleSlideCardCache = new Map();
@@ -628,7 +720,7 @@ function renderSlide() {
     return;
   }
 
-  const layoutClass = state.layoutMode === "custom" ? "layout-custom" : `layout-${state.layoutMode}`;
+  const layoutClass = layout.mode === "custom" ? "layout-custom" : `layout-${layout.mode}`;
   visibleSlideCardCache = new Map();
   visibleGuideCache = new Map();
   activeStageSlotDropTarget = null;
@@ -636,7 +728,7 @@ function renderSlide() {
   els.stage.innerHTML = `
     <div
       class="slide-grid ${layoutClass}"
-      style="--grid-cols:${state.gridCols}; --grid-rows:${state.gridRows};"
+      style="--grid-cols:${layout.cols}; --grid-rows:${layout.rows};"
     >
       ${pageSlots.map((imageId, offset) => renderImageCard(getImageById(imageId), start + offset)).join("")}
     </div>
@@ -676,6 +768,7 @@ function syncDeckStatus() {
       ? `Cover / ${getTotalPages()}`
       : `${state.pageIndex + 1} / ${getTotalPages()}`;
 
+  syncLayoutControls();
   els.zoomOutput.textContent = `${Math.round(state.zoom * 100)}%`;
   els.backgroundButton.textContent = state.backgroundEnabled
     ? "배경 채우기 켜짐 Enter"
@@ -1416,19 +1509,48 @@ function bindSlotTransform(input, output, key, suffix = "%") {
   });
 }
 
-function setGrid(rows, cols, mode = "custom") {
-  state.gridRows = clamp(rows, 1, 4);
-  state.gridCols = clamp(cols, 1, 6);
-  state.layoutMode = mode;
+function syncLayoutControls() {
+  const layout = getPageLayout(state.pageIndex);
+  els.gridRows.value = layout.rows;
+  els.gridCols.value = layout.cols;
+  els.layoutMode.value = layout.mode;
+}
+
+function applyLayoutToPage(page, mode, rows, cols) {
+  if (!Number.isFinite(page) || page <= 0) {
+    state.layoutMode = createLayoutConfig(mode, rows, cols).mode;
+    state.gridRows = createLayoutConfig(mode, rows, cols).rows;
+    state.gridCols = createLayoutConfig(mode, rows, cols).cols;
+    markLayoutDirty();
+    render();
+    return;
+  }
+
+  normalizeSlidePageLayouts();
+  const nextLayout = createLayoutConfig(mode, rows, cols);
+  state.slidePageLayouts[page - 1] = nextLayout;
   markLayoutDirty();
-  els.gridRows.value = state.gridRows;
-  els.gridCols.value = state.gridCols;
-  els.layoutMode.value = mode;
-  state.pageIndex = Math.min(state.pageIndex, getTotalPages() - 1);
+  normalizeSlidePageLayouts(state.slideSlots.length);
+  normalizeSlideCaptions();
   render();
 }
 
-function setLayoutPreset(mode) {
+function setGrid(rows, cols, mode = "custom", page = state.pageIndex) {
+  const nextLayout = createLayoutConfig(mode, rows, cols);
+  if (page <= 0) {
+    state.gridRows = nextLayout.rows;
+    state.gridCols = nextLayout.cols;
+    state.layoutMode = nextLayout.mode;
+    markLayoutDirty();
+    syncLayoutControls();
+    render();
+    return;
+  }
+
+  applyLayoutToPage(page, nextLayout.mode, nextLayout.rows, nextLayout.cols);
+}
+
+function setLayoutPreset(mode, page = state.pageIndex) {
   const preset = {
     single: [1, 1],
     pair: [1, 2],
@@ -1436,7 +1558,7 @@ function setLayoutPreset(mode) {
     quad: [2, 2],
   }[mode];
 
-  setGrid(preset[0], preset[1], mode);
+  setGrid(preset[0], preset[1], mode, page);
 }
 
 function addGuide(axis, percent = 50) {
@@ -1496,6 +1618,7 @@ function renderGuideControls() {
 function setSlot(slotIndex, imageId) {
   if (slotIndex < 0) return;
 
+  normalizeSlidePageLayouts(slotIndex + 1);
   while (state.slideSlots.length <= slotIndex) {
     state.slideSlots.push(null);
   }
@@ -1508,24 +1631,34 @@ function setSlot(slotIndex, imageId) {
 }
 
 function addEmptySlot() {
-  state.slideSlots.push(...Array(getPageSize()).fill(null));
+  const layout = getPageLayout(state.pageIndex);
+  const pageSize = getPageSizeForLayout(layout);
+  state.slidePageLayouts.push(layout);
+  state.slideSlots.push(...Array(pageSize).fill(null));
   markSlideSlotsDirty();
+  markLayoutDirty();
   normalizeSlideCaptions();
-  goToPage(Math.max(1, Math.ceil(state.slideSlots.length / getPageSize())));
+  goToPage(getSlidePageCount());
 }
 
 function clearSlideSlots() {
   if (state.images.length === 0) {
     state.slideSlots = [];
+    state.slidePageLayouts = [];
+    state.slideCaptions = [];
     markSlideSlotsDirty();
+    markLayoutDirty();
     state.pageIndex = 0;
     render();
     return;
   }
 
-  state.slideSlots = Array(getPageSize()).fill(null);
+  const layout = getDefaultLayoutConfig();
+  state.slidePageLayouts = [layout];
+  state.slideSlots = Array(getPageSizeForLayout(layout)).fill(null);
   state.slideCaptions = [""];
   markSlideSlotsDirty();
+  markLayoutDirty();
   state.slotTransforms = {};
   state.selectedSlotIndex = null;
   state.pageIndex = 1;
@@ -1551,6 +1684,7 @@ function resetAllPhotosAndSlides() {
   state.images = [];
   state.slideSlots = [];
   state.slideCaptions = [];
+  state.slidePageLayouts = [];
   state.slotTransforms = {};
   state.selectedSlotIndex = null;
   state.pageIndex = 0;
@@ -1566,11 +1700,10 @@ function resetAllPhotosAndSlides() {
 }
 
 function findFirstFilledSlotIndexForPage(page) {
-  const pageIndex = Number(page) - 1;
-  if (!Number.isFinite(pageIndex) || pageIndex < 0) return null;
-  const start = pageIndex * getPageSize();
-  const end = start + getPageSize();
-  for (let slotIndex = start; slotIndex < end; slotIndex += 1) {
+  const pageMeta = getSlidePages().find((entry) => entry.pageIndex === Number(page));
+  if (!pageMeta) return null;
+  for (let offset = 0; offset < pageMeta.pageSize; offset += 1) {
+    const slotIndex = pageMeta.start + offset;
     if (state.slideSlots[slotIndex]) return slotIndex;
   }
   return null;
@@ -1587,16 +1720,17 @@ function goToPageWithSelection(page, slotIndex = null) {
 }
 
 function rebuildSlotTransformsFromPages(pages) {
-  const pageSize = getPageSize();
   const nextTransforms = {};
+  let nextStart = 0;
 
-  pages.forEach((page, nextPageIndex) => {
-    for (let offset = 0; offset < pageSize; offset += 1) {
+  pages.forEach((page) => {
+    for (let offset = 0; offset < page.pageSize; offset += 1) {
       const oldIndex = page.start + offset;
-      const nextIndex = nextPageIndex * pageSize + offset;
+      const nextIndex = nextStart + offset;
       const transform = state.slotTransforms[oldIndex];
       if (transform) nextTransforms[nextIndex] = transform;
     }
+    nextStart += page.pageSize;
   });
 
   state.slotTransforms = nextTransforms;
@@ -1619,8 +1753,10 @@ function reorderSlidePage(fromPage, toPage) {
 
   state.slideSlots = movedPages.flatMap((page) => page.slots);
   state.slideCaptions = movedPages.map((page) => page.caption);
+  state.slidePageLayouts = movedPages.map((page) => createLayoutConfig(page.layout.mode, page.layout.rows, page.layout.cols));
   rebuildSlotTransformsFromPages(movedPages);
   markSlideSlotsDirty();
+  markLayoutDirty();
   normalizeSlideCaptions(movedPages.length);
 
   if (state.pageIndex > 0) {
@@ -1654,8 +1790,10 @@ function deleteSlidePage(page) {
   const nextPages = pages.filter((_, index) => index !== pageIndex);
   state.slideSlots = nextPages.flatMap((entry) => entry.slots);
   state.slideCaptions = nextPages.map((entry) => entry.caption);
+  state.slidePageLayouts = nextPages.map((page) => createLayoutConfig(page.layout.mode, page.layout.rows, page.layout.cols));
   rebuildSlotTransformsFromPages(nextPages);
   markSlideSlotsDirty();
+  markLayoutDirty();
   normalizeSlideCaptions(nextPages.length);
 
   const nextTotalPages = 1 + nextPages.length;
@@ -1772,19 +1910,15 @@ function renderThumbnails() {
     return;
   }
 
-  const pageSize = getPageSize();
   const slidePages = getSlidePages();
-  const slideLayoutClass = state.layoutMode === "custom" ? "layout-custom" : `layout-${state.layoutMode}`;
   const nextKey = [
     imagesVersion,
     slideSlotsVersion,
     layoutVersion,
     state.images.length,
     state.slideSlots.length,
-    state.layoutMode,
-    state.gridCols,
-    state.gridRows,
-  ].join(":");
+    state.slidePageLayouts.length,
+    ].join(":");
 
   if (thumbnailRenderKey !== nextKey) {
     thumbnailRenderKey = nextKey;
@@ -1795,7 +1929,7 @@ function renderThumbnails() {
       <div class="thumbnail-section">
         <div class="thumbnail-section-head">
           <strong>슬라이드 목록</strong>
-          <span>${state.gridCols} x ${state.gridRows} 구성, 페이지당 ${pageSize}장</span>
+          <span>페이지별 1 / 2 / 3 / 4 분할 편집</span>
         </div>
         <div class="slide-preview-row">
           <button class="slide-thumb slide-thumb-cover-card" type="button" data-page="0">
@@ -1814,8 +1948,8 @@ function renderThumbnails() {
                 >
                   <div class="slide-thumb-open" data-page="${page.pageIndex}">
                     <div
-                      class="slide-thumb-grid ${slideLayoutClass}"
-                      style="--grid-cols:${state.gridCols}; --grid-rows:${state.gridRows};"
+                      class="slide-thumb-grid ${page.layout.mode === "custom" ? "layout-custom" : `layout-${page.layout.mode}`}"
+                      style="--grid-cols:${page.layout.cols}; --grid-rows:${page.layout.rows};"
                     >
                       ${page.slots
                         .map((imageId, offset) => {
@@ -1830,7 +1964,13 @@ function renderThumbnails() {
                   </div>
                   <div class="slide-thumb-meta">
                     <span class="slide-thumb-label">${page.pageIndex}</span>
-                    <button class="slide-thumb-delete" type="button" data-delete-slide="${page.pageIndex}" aria-label="${page.pageIndex}페이지 삭제">삭제</button>
+                    <div class="slide-thumb-actions">
+                      <button class="slide-layout-chip ${page.layout.mode === "single" ? "is-active" : ""}" type="button" data-slide-layout="${page.pageIndex}:single">1</button>
+                      <button class="slide-layout-chip ${page.layout.mode === "pair" ? "is-active" : ""}" type="button" data-slide-layout="${page.pageIndex}:pair">2</button>
+                      <button class="slide-layout-chip ${page.layout.mode === "triple" ? "is-active" : ""}" type="button" data-slide-layout="${page.pageIndex}:triple">3</button>
+                      <button class="slide-layout-chip ${page.layout.mode === "quad" ? "is-active" : ""}" type="button" data-slide-layout="${page.pageIndex}:quad">4</button>
+                      <button class="slide-thumb-delete" type="button" data-delete-slide="${page.pageIndex}" aria-label="${page.pageIndex}페이지 삭제">삭제</button>
+                    </div>
                   </div>
                   <input
                     class="slide-caption-input"
@@ -2255,6 +2395,16 @@ els.stage?.addEventListener("drop", (event) => {
 els.thumbnailRail?.addEventListener("click", (event) => {
   const target = event.target instanceof Element ? event.target : null;
   if (target?.closest("[data-slide-caption-input]")) return;
+  const layoutButton = target?.closest("[data-slide-layout]");
+  if (layoutButton instanceof HTMLButtonElement) {
+    event.preventDefault();
+    event.stopPropagation();
+    const [pageText, mode] = (layoutButton.dataset.slideLayout || "").split(":");
+    const page = Number(pageText);
+    if (!Number.isFinite(page) || !mode) return;
+    setLayoutPreset(mode, page);
+    return;
+  }
   const deleteButton = target?.closest("[data-delete-slide]");
   if (deleteButton instanceof HTMLButtonElement) {
     event.preventDefault();
@@ -2267,8 +2417,9 @@ els.thumbnailRail?.addEventListener("click", (event) => {
   if (slotThumb instanceof HTMLElement) {
     const slotIndex = Number(slotThumb.getAttribute("data-slot-thumb-index"));
     if (!Number.isFinite(slotIndex)) return;
-    const nextPage = 1 + Math.floor(slotIndex / getPageSize());
-    goToPageWithSelection(nextPage, state.slideSlots[slotIndex] ? slotIndex : null);
+    const location = getSlotLocation(slotIndex);
+    if (!location) return;
+    goToPageWithSelection(location.page, state.slideSlots[slotIndex] ? slotIndex : null);
     return;
   }
 
@@ -2419,8 +2570,9 @@ els.photoListPanel?.addEventListener("click", (event) => {
   if (!imageId) return;
   const slotIndex = findFirstSlotIndexByImageId(imageId);
   if (slotIndex < 0) return;
-  const page = 1 + Math.floor(slotIndex / getPageSize());
-  goToPageWithSelection(page, slotIndex);
+  const location = getSlotLocation(slotIndex);
+  if (!location) return;
+  goToPageWithSelection(location.page, slotIndex);
 });
 
 els.photoListPanel?.addEventListener("contextmenu", (event) => {
@@ -2441,32 +2593,21 @@ els.sortMode.addEventListener("change", () => {
 });
 
 els.layoutMode.addEventListener("change", () => {
-  state.layoutMode = els.layoutMode.value;
-  markLayoutDirty();
-  if (state.layoutMode !== "custom") {
-    const preset = {
-      single: [1, 1],
-      pair: [1, 2],
-      triple: [1, 3],
-      quad: [2, 2],
-    }[state.layoutMode];
-    state.gridRows = preset[0];
-    state.gridCols = preset[1];
-    els.gridRows.value = state.gridRows;
-    els.gridCols.value = state.gridCols;
+  if (els.layoutMode.value !== "custom") {
+    setLayoutPreset(els.layoutMode.value, state.pageIndex);
+    return;
   }
-  state.pageIndex = Math.min(state.pageIndex, getTotalPages() - 1);
-  render();
+  setGrid(Number(els.gridRows.value), Number(els.gridCols.value), "custom", state.pageIndex);
 });
 
-els.layoutOneButton.addEventListener("click", () => setLayoutPreset("single"));
-els.layoutTwoButton.addEventListener("click", () => setLayoutPreset("pair"));
-els.layoutThreeButton.addEventListener("click", () => setLayoutPreset("triple"));
-els.layoutFourButton.addEventListener("click", () => setLayoutPreset("quad"));
-els.horizontalSplitButton.addEventListener("click", () => setGrid(1, Math.max(2, state.gridCols)));
-els.verticalSplitButton.addEventListener("click", () => setGrid(Math.max(2, state.gridRows), 1));
-els.gridRows.addEventListener("input", () => setGrid(Number(els.gridRows.value), state.gridCols));
-els.gridCols.addEventListener("input", () => setGrid(state.gridRows, Number(els.gridCols.value)));
+els.layoutOneButton.addEventListener("click", () => setLayoutPreset("single", state.pageIndex));
+els.layoutTwoButton.addEventListener("click", () => setLayoutPreset("pair", state.pageIndex));
+els.layoutThreeButton.addEventListener("click", () => setLayoutPreset("triple", state.pageIndex));
+els.layoutFourButton.addEventListener("click", () => setLayoutPreset("quad", state.pageIndex));
+els.horizontalSplitButton.addEventListener("click", () => setGrid(1, Math.max(2, Number(els.gridCols.value)), "custom", state.pageIndex));
+els.verticalSplitButton.addEventListener("click", () => setGrid(Math.max(2, Number(els.gridRows.value)), 1, "custom", state.pageIndex));
+els.gridRows.addEventListener("input", () => setGrid(Number(els.gridRows.value), Number(els.gridCols.value), "custom", state.pageIndex));
+els.gridCols.addEventListener("input", () => setGrid(Number(els.gridRows.value), Number(els.gridCols.value), "custom", state.pageIndex));
 
 els.prevButton.addEventListener("click", () => goToPage(state.pageIndex - 1));
 els.nextButton.addEventListener("click", () => goToPage(state.pageIndex + 1));
@@ -2697,6 +2838,7 @@ function getPresentationData() {
     images: state.images,
     slideSlots: state.slideSlots,
     slideCaptions: state.slideCaptions,
+    slidePageLayouts: state.slidePageLayouts,
     slotTransforms: state.slotTransforms,
     layoutMode: state.layoutMode,
     gridRows: state.gridRows,
@@ -2729,6 +2871,7 @@ function getSettingsData() {
     coverVisibility: state.coverVisibility,
     slideSlots: state.slideSlots,
     slideCaptions: state.slideCaptions,
+    slidePageLayouts: state.slidePageLayouts,
     slotTransforms: state.slotTransforms,
     layoutMode: state.layoutMode,
     gridRows: state.gridRows,
@@ -2861,12 +3004,14 @@ function applyPersistedState() {
     state.slideSlots = Array.isArray(data.slideSlots) ? data.slideSlots : state.slideSlots;
     markSlideSlotsDirty();
     state.slideCaptions = Array.isArray(data.slideCaptions) ? data.slideCaptions : state.slideCaptions;
+    state.slidePageLayouts = Array.isArray(data.slidePageLayouts) ? data.slidePageLayouts : state.slidePageLayouts;
     state.slotTransforms = data.slotTransforms ?? state.slotTransforms;
     state.selectedSlotIndex = data.selectedSlotIndex ?? state.selectedSlotIndex;
     state.layoutMode = data.layoutMode ?? state.layoutMode;
     state.gridRows = data.gridRows ?? state.gridRows;
     state.gridCols = data.gridCols ?? state.gridCols;
     markLayoutDirty();
+    normalizeSlidePageLayouts();
     state.sortMode = data.sortMode ?? state.sortMode;
     state.fitMode = data.fitMode ?? state.fitMode;
     state.backgroundEnabled = data.backgroundEnabled ?? state.backgroundEnabled;
@@ -3108,13 +3253,43 @@ function createStandaloneHtml(data) {
   <script>
     const data = ${serialized};
     const state = { ...data, pageIndex: 0 };
-    const pageSize = () => state.layoutMode==="custom" ? (state.gridRows||1)*(state.gridCols||1) : ({ single:1, pair:2, triple:3, quad:4 }[state.layoutMode] || 2);
-    const totalPages = () => 1 + Math.ceil((state.slideSlots?.length || state.images.length) / pageSize());
+    const normalizeLayout = (layout) => {
+      const mode = layout?.mode === "custom" ? "custom" : ({ single:1, pair:1, triple:1, quad:1 }[layout?.mode] ? layout.mode : "pair");
+      const rows = mode === "custom" ? Math.min(Math.max(Number(layout?.rows)||1,1),4) : ({ single:1, pair:1, triple:1, quad:2 }[mode] || 1);
+      const cols = mode === "custom" ? Math.min(Math.max(Number(layout?.cols)||1,1),6) : ({ single:1, pair:2, triple:3, quad:2 }[mode] || 2);
+      return { mode, rows, cols };
+    };
+    const defaultLayout = () => normalizeLayout({ mode: state.layoutMode, rows: state.gridRows, cols: state.gridCols });
+    const layoutSize = (layout) => layout.mode === "custom" ? layout.rows * layout.cols : ({ single:1, pair:2, triple:3, quad:4 }[layout.mode] || 2);
+    const ensureLayouts = (required = state.slideSlots?.length || 0) => {
+      state.slidePageLayouts = Array.isArray(state.slidePageLayouts) ? state.slidePageLayouts.map(normalizeLayout) : [];
+      let covered = state.slidePageLayouts.reduce((sum, layout) => sum + layoutSize(layout), 0);
+      while (covered < required) {
+        const fallback = defaultLayout();
+        state.slidePageLayouts.push(fallback);
+        covered += layoutSize(fallback);
+      }
+    };
+    const slidePages = () => {
+      ensureLayouts();
+      let start = 0;
+      return state.slidePageLayouts.map((layout, pageIndex) => {
+        const size = layoutSize(layout);
+        const raw = (state.slideSlots?.length ? state.slideSlots : state.images.map((image)=>image.id)).slice(start, start + size);
+        const slots = Array.from({ length: size }, (_, offset) => raw[offset] ?? null);
+        const page = { pageIndex: pageIndex + 1, start, pageSize: size, layout, slots, caption: state.slideCaptions?.[pageIndex] || "" };
+        start += size;
+        return page;
+      });
+    };
+    const pageLayout = (page = state.pageIndex) => page > 0 ? (slidePages()[page - 1]?.layout || defaultLayout()) : defaultLayout();
+    const currentPageMeta = () => state.pageIndex > 0 ? (slidePages()[state.pageIndex - 1] || { start:0, pageSize: layoutSize(defaultLayout()), layout: defaultLayout(), slots: [] }) : { start:0, pageSize: layoutSize(defaultLayout()), layout: defaultLayout(), slots: [] };
+    const totalPages = () => 1 + slidePages().length;
     const $ = (id) => document.getElementById(id);
     const esc = (v) => String(v).replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#039;");
     const filter = () => \`brightness(\${state.filters.brightness}%) contrast(\${state.filters.contrast}%) saturate(\${state.filters.saturate}%) hue-rotate(\${state.filters.hue}deg)\`;
     const imageFromUrl = (url) => new Promise((resolve,reject)=>{ const image = new Image(); image.onload=()=>resolve(image); image.onerror=reject; image.src=url; });
-    function syncInputs(){ $("title").value=state.cover.title; $("subtitle").value=state.cover.subtitle; $("hospital").value=state.cover.hospitalName; $("presenter").value=state.cover.presenterName; $("layout").value=state.layoutMode; $("showTitle").checked=state.coverVisibility.title; $("showSubtitle").checked=state.coverVisibility.subtitle; $("showHospital").checked=state.coverVisibility.hospitalName; $("showPresenter").checked=state.coverVisibility.presenterName; $("showDate").checked=state.coverVisibility.date; $("showLogo").checked=state.coverVisibility.logo; for (const key of ["brightness","contrast","saturate","hue"]) $(key).value=state.filters[key]; }
+    function syncInputs(){ const activeLayout = pageLayout(state.pageIndex); $("title").value=state.cover.title; $("subtitle").value=state.cover.subtitle; $("hospital").value=state.cover.hospitalName; $("presenter").value=state.cover.presenterName; $("layout").value=activeLayout.mode; $("showTitle").checked=state.coverVisibility.title; $("showSubtitle").checked=state.coverVisibility.subtitle; $("showHospital").checked=state.coverVisibility.hospitalName; $("showPresenter").checked=state.coverVisibility.presenterName; $("showDate").checked=state.coverVisibility.date; $("showLogo").checked=state.coverVisibility.logo; for (const key of ["brightness","contrast","saturate","hue"]) $(key).value=state.filters[key]; }
     function render(){ state.pageIndex=Math.min(Math.max(state.pageIndex,0),totalPages()-1); if(state.pageIndex===0) renderCover(); else renderSlide(); $("status").textContent=state.pageIndex===0?\`Cover / \${totalPages()}\`:\`\${state.pageIndex+1} / \${totalPages()}\`; $("bg").textContent=state.backgroundEnabled?"배경 채우기 켜짐 Enter":"배경 채우기 꺼짐 Enter"; }
     function renderCover(){ const meta=[state.coverVisibility.hospitalName?state.cover.hospitalName:"",state.coverVisibility.presenterName?state.cover.presenterName:"",state.coverVisibility.date?state.cover.date:""].filter(Boolean); $("stage").className="stage cover"; $("stage").innerHTML=\`<div class="cover-card">\${state.coverVisibility.logo&&state.cover.logoUrl?\`<img class="cover-logo" src="\${state.cover.logoUrl}" alt="logo">\`:""}\${state.coverVisibility.title?\`<h2 class="cover-title">\${esc(state.cover.title)}</h2>\`:""}\${state.coverVisibility.subtitle?\`<p class="cover-subtitle">\${esc(state.cover.subtitle)}</p>\`:""}\${meta.length?\`<p class="meta">\${meta.map(esc).join(" · ")}</p>\`:""}</div>\`; }
     function getImage(id){ return state.images.find((image)=>image.id===id); }
@@ -3122,7 +3297,7 @@ function createStandaloneHtml(data) {
     function crop(i){ const t=slotTransform(i), c=state.crop||{left:0,right:0,top:0,bottom:0}; return \`inset(\${(c.top||0)+t.cropTop}% \${(c.right||0)+t.cropRight}% \${(c.bottom||0)+t.cropBottom}% \${(c.left||0)+t.cropLeft}%)\`; }
     function photoTransform(i){ const t=slotTransform(i); return \`translate(\${t.x}%, \${t.y}%) scale(\${(state.zoom||1)*(t.scale/100)}) rotate(\${t.rotate}deg)\`; }
     function card(img, slotIndex){ if(!img) return \`<figure class="card empty"></figure>\`; return \`<figure class="card \${state.backgroundEnabled?"bg-on":""} \${state.fitMode==="fill"?"fill":""}"><img class="blur" src="\${img.url}" alt=""><img class="photo" src="\${img.url}" alt="\${esc(img.name)}" style="clip-path:\${crop(slotIndex)};filter:\${filter()};transform:\${photoTransform(slotIndex)}"><figcaption class="label">\${esc(img.name)}</figcaption></figure>\`; }
-    function renderSlide(){ const start=(state.pageIndex-1)*pageSize(); const slots=(state.slideSlots?.length?state.slideSlots:state.images.map((image)=>image.id)).slice(start,start+pageSize()); const cls=state.layoutMode==="custom"?"custom":state.layoutMode; const caption=(state.slideCaptions?.[state.pageIndex-1]||"").trim(); const emptySlide = slots.length > 0 && slots.every((id)=>!id); $("stage").className="stage"; $("stage").innerHTML=\`<div class="grid \${cls}" style="--grid-cols:\${state.gridCols||2};--grid-rows:\${state.gridRows||1}">\${slots.map((id,offset)=>card(getImage(id),start+offset)).join("")}</div>\${emptySlide && caption ? \`<div class="empty-slide-caption">\${esc(caption)}</div>\` : ""}\`; }
+    function renderSlide(){ const meta=currentPageMeta(); const layout=meta.layout; const cls=layout.mode==="custom"?"custom":layout.mode; const caption=(meta.caption||"").trim(); const emptySlide = meta.slots.length > 0 && meta.slots.every((id)=>!id); $("stage").className="stage"; $("stage").innerHTML=\`<div class="grid \${cls}" style="--grid-cols:\${layout.cols||2};--grid-rows:\${layout.rows||1}">\${meta.slots.map((id,offset)=>card(getImage(id),meta.start+offset)).join("")}</div>\${emptySlide && caption ? \`<div class="empty-slide-caption">\${esc(caption)}</div>\` : ""}\`; }
     async function downloadImages(){ if(!state.images.length){ alert("먼저 사진을 넣어주세요."); return; } const ordered = (state.slideSlots?.length?state.slideSlots:state.images.map((image)=>image.id)).map((id,slotIndex)=>({ item:getImage(id), slotIndex })).filter(({item})=>Boolean(item)); for(const [index,{item,slotIndex}] of ordered.entries()){ const image = await imageFromUrl(item.url); const t = slotTransform(slotIndex); const c = state.crop||{left:0,right:0,top:0,bottom:0}; const cropLeftPx = Math.round(image.naturalWidth * (((c.left||0)+t.cropLeft) / 100)); const cropRightPx = Math.round(image.naturalWidth * (((c.right||0)+t.cropRight) / 100)); const cropTopPx = Math.round(image.naturalHeight * (((c.top||0)+t.cropTop) / 100)); const cropBottomPx = Math.round(image.naturalHeight * (((c.bottom||0)+t.cropBottom) / 100)); const sourceWidth = Math.max(1, image.naturalWidth - cropLeftPx - cropRightPx); const sourceHeight = Math.max(1, image.naturalHeight - cropTopPx - cropBottomPx); const canvas = document.createElement("canvas"); canvas.width = sourceWidth; canvas.height = sourceHeight; const ctx = canvas.getContext("2d"); ctx.filter = filter(); ctx.drawImage(image,cropLeftPx,cropTopPx,sourceWidth,sourceHeight,0,0,sourceWidth,sourceHeight); await new Promise((resolve)=>{ canvas.toBlob((blob)=>{ if(!blob){ resolve(); return; } const url = URL.createObjectURL(blob); const link = document.createElement("a"); link.href = url; link.download = \`\${String(index+1).padStart(3,"0")}-\${item.name.replace(/\\.[^.]+$/,"")}.png\`; document.body.append(link); link.click(); link.remove(); URL.revokeObjectURL(url); setTimeout(resolve,120); }, "image/png"); }); } }
     function isZoomInKey(e){ return e.key==="+" || e.key==="=" || e.code==="NumpadAdd"; }
     function isZoomOutKey(e){ return e.key==="-" || e.key==="_" || e.code==="NumpadSubtract"; }
@@ -3140,7 +3315,7 @@ function createStandaloneHtml(data) {
     document.addEventListener("wheel", onWheelZoom, { passive:false });
     for (const id of ["title","subtitle","hospital","presenter"]) $(id).oninput=()=>{ const map={title:"title",subtitle:"subtitle",hospital:"hospitalName",presenter:"presenterName"}; state.cover[map[id]]=$(id).value; render(); };
     for (const [id,key] of [["showTitle","title"],["showSubtitle","subtitle"],["showHospital","hospitalName"],["showPresenter","presenterName"],["showDate","date"],["showLogo","logo"]]) $(id).onchange=()=>{state.coverVisibility[key]=$(id).checked;render()};
-    $("layout").onchange=()=>{state.layoutMode=$("layout").value;render()}; for (const key of ["brightness","contrast","saturate","hue"]) $(key).oninput=()=>{state.filters[key]=Number($(key).value);render()};
+    $("layout").onchange=()=>{ const mode=$("layout").value; if(state.pageIndex>0){ ensureLayouts(); state.slidePageLayouts[state.pageIndex-1]=normalizeLayout({ mode, rows: mode==="custom" ? (pageLayout().rows||1) : undefined, cols: mode==="custom" ? (pageLayout().cols||1) : undefined }); } else { const next=normalizeLayout({ mode, rows: state.gridRows, cols: state.gridCols }); state.layoutMode=next.mode; state.gridRows=next.rows; state.gridCols=next.cols; } render() }; for (const key of ["brightness","contrast","saturate","hue"]) $(key).oninput=()=>{state.filters[key]=Number($(key).value);render()};
     document.onkeydown=(e)=>{ if(["INPUT","TEXTAREA","SELECT"].includes(e.target.tagName)) return; if(e.key==="?"||(e.shiftKey&&e.key==="/")){e.preventDefault();showHelp();return} if(e.key==="Escape"){ if($("shortcutDialog").open){hideHelp();return} if(document.body.classList.contains("presenting")){document.body.classList.remove("presenting");document.exitFullscreen?.().catch(()=>{})} } if(e.key==="F5"){e.preventDefault(); if(!e.shiftKey)go(0); present()} if(e.key==="ArrowLeft"||e.key==="ArrowUp"||e.key==="PageUp"||e.key.toLowerCase()==="p")go(state.pageIndex-1); if(e.key==="ArrowRight"||e.key==="ArrowDown"||e.key==="PageDown"||e.key===" "||e.key.toLowerCase()==="n")go(state.pageIndex+1); if(e.key==="Home")go(0); if(e.key==="End")go(totalPages()-1); if(e.key==="Enter"){state.backgroundEnabled=!state.backgroundEnabled;render()} if(e.key.toLowerCase()==="f"){state.fitMode=e.shiftKey?"fill":"fit";render()} if(isZoomInKey(e)) {e.preventDefault(); updateZoom(.1)} if(isZoomOutKey(e)) {e.preventDefault(); updateZoom(-.1)} if(e.key==="0"){resetZoom()} if(e.key.toLowerCase()==="c")go(0); };
     syncInputs(); render();
   </script>

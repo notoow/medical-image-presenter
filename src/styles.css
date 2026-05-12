@@ -1604,6 +1604,14 @@ body.presenting .guide-ruler {
   gap: 0.4rem;
 }
 
+.slide-thumb-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.24rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
 .slide-thumb-label {
   border-radius: 999px;
   padding: 0.16rem 0.46rem;
@@ -1611,6 +1619,23 @@ body.presenting .guide-ruler {
   background: rgba(0, 0, 0, 0.58);
   font-size: 0.7rem;
   font-weight: 800;
+}
+
+.slide-layout-chip {
+  min-width: 1.7rem;
+  border: 1px solid rgba(255, 253, 247, 0.18);
+  border-radius: 999px;
+  padding: 0.18rem 0.34rem;
+  color: rgba(255, 253, 247, 0.76);
+  background: rgba(255, 253, 247, 0.08);
+  font-size: 0.68rem;
+  font-weight: 800;
+}
+
+.slide-layout-chip.is-active {
+  border-color: rgba(211, 138, 93, 0.94);
+  color: #fff7f1;
+  background: rgba(138, 75, 45, 0.92);
 }
 
 .slide-thumb-delete {
