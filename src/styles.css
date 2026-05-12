@@ -510,6 +510,13 @@ body.is-file-dragging .drop-card {
   transform: translateY(-1px);
 }
 
+.photo-list-card.is-active {
+  border-color: rgba(0, 162, 170, 0.58);
+  box-shadow:
+    0 0 0 3px rgba(0, 162, 170, 0.12),
+    0 12px 26px rgba(0, 162, 170, 0.08);
+}
+
 .photo-list-card img {
   width: 4.4rem;
   height: 3.1rem;
