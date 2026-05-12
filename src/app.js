@@ -210,6 +210,7 @@ const els = {
   copySlotTransformButton: document.querySelector("#copySlotTransformButton"),
   pasteSlotTransformButton: document.querySelector("#pasteSlotTransformButton"),
   applySlotTransformToPageButton: document.querySelector("#applySlotTransformToPageButton"),
+  applySlotTransformToAllButton: document.querySelector("#applySlotTransformToAllButton"),
   showGuides: document.querySelector("#showGuides"),
   addVerticalGuideButton: document.querySelector("#addVerticalGuideButton"),
   addHorizontalGuideButton: document.querySelector("#addHorizontalGuideButton"),
@@ -1603,6 +1604,7 @@ function syncShortcutHelpContent() {
     <p><kbd>Alt</kbd> + <kbd>,</kbd> <kbd>.</kbd><span>선택 사진 회전</span></p>
     <p><kbd>Alt</kbd> + <kbd>C</kbd> <kbd>Alt</kbd> + <kbd>V</kbd><span>선택 사진 값 복사 / 붙여넣기</span></p>
     <p><kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>V</kbd><span>현재 페이지 사진에 같은 값 적용</span></p>
+    <p><kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>A</kbd><span>전체 슬라이드 사진에 같은 값 적용</span></p>
     <p><kbd>Backspace</kbd><span>선택된 슬롯 비우기</span></p>
     <p><kbd>F</kbd> / <kbd>Shift</kbd> + <kbd>F</kbd><span>사진 맞추기 / 채우기</span></p>
     <p><kbd>Enter</kbd><span>블러 배경 채우기 켜기/끄기</span></p>
@@ -1766,6 +1768,7 @@ function syncSelectedSlotControls() {
     els.copySlotTransformButton,
     els.pasteSlotTransformButton,
     els.applySlotTransformToPageButton,
+    els.applySlotTransformToAllButton,
   ].filter(Boolean);
 
   const disabledKey = hasSlot ? "enabled" : "disabled";
@@ -1778,6 +1781,9 @@ function syncSelectedSlotControls() {
   }
   if (els.applySlotTransformToPageButton) {
     els.applySlotTransformToPageButton.disabled = !hasSlot;
+  }
+  if (els.applySlotTransformToAllButton) {
+    els.applySlotTransformToAllButton.disabled = !hasSlot;
   }
 
   if (!hasSlot) {
@@ -1807,7 +1813,7 @@ function syncSelectedSlotControls() {
 
   if (selectedSlotUiKey === nextKey) return;
 
-  const nextLabel = `${slotIndex + 1}번 슬롯 선택됨. Tab/Shift+방향키로 칸 이동, Alt+방향키/대괄호/쉼표/마침표로 미세 편집, Alt+C/Alt+V로 값 복사 붙여넣기, Alt+Shift+V로 현재 페이지 일괄 적용, Backspace로 비우기, 클릭은 교체, 더블클릭은 다음 슬라이드까지 연속 이동합니다.`;
+  const nextLabel = `${slotIndex + 1}번 슬롯 선택됨. Tab/Shift+방향키로 칸 이동, Alt+방향키/대괄호/쉼표/마침표로 미세 편집, Alt+C/Alt+V로 값 복사 붙여넣기, Alt+Shift+V/A로 페이지/전체 일괄 적용, Backspace로 비우기, 클릭은 교체, 더블클릭은 다음 슬라이드까지 연속 이동합니다.`;
   if (els.selectedSlotLabel.textContent !== nextLabel) {
     els.selectedSlotLabel.textContent = nextLabel;
   }
@@ -1953,6 +1959,24 @@ function applySelectedSlotTransformToCurrentPage() {
     state.slotTransforms[candidate] = { ...sourceTransform };
   });
   scheduleLightweightRefresh(slotIndices);
+  queuePersistSettings();
+}
+
+function applySelectedSlotTransformToAllSlides() {
+  const slotIndex = Number(state.selectedSlotIndex);
+  if (!Number.isFinite(slotIndex) || slotIndex < 0 || !state.slideSlots[slotIndex]) return;
+
+  const sourceTransform = { ...getSlotTransform(slotIndex) };
+  const targetSlotIndices = state.slideSlots
+    .map((imageId, index) => (imageId && index !== slotIndex ? index : null))
+    .filter((value) => Number.isFinite(value));
+  if (targetSlotIndices.length === 0) return;
+
+  beginEditHistoryAction();
+  targetSlotIndices.forEach((candidate) => {
+    state.slotTransforms[candidate] = { ...sourceTransform };
+  });
+  scheduleLightweightRefresh();
   queuePersistSettings();
 }
 
@@ -3510,6 +3534,7 @@ els.resetSlotTransformButton?.addEventListener("click", () => {
 els.copySlotTransformButton?.addEventListener("click", copySelectedSlotTransform);
 els.pasteSlotTransformButton?.addEventListener("click", pasteSelectedSlotTransform);
 els.applySlotTransformToPageButton?.addEventListener("click", applySelectedSlotTransformToCurrentPage);
+els.applySlotTransformToAllButton?.addEventListener("click", applySelectedSlotTransformToAllSlides);
 els.showGuides.addEventListener("change", () => {
   state.guidesEnabled = els.showGuides.checked;
   render();
@@ -3653,6 +3678,11 @@ document.addEventListener("keydown", (event) => {
     if (event.key.toLowerCase() === "v") {
       event.preventDefault();
       applySelectedSlotTransformToCurrentPage();
+      return;
+    }
+    if (event.key.toLowerCase() === "a") {
+      event.preventDefault();
+      applySelectedSlotTransformToAllSlides();
       return;
     }
   }
