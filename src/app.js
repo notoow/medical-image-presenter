@@ -818,6 +818,16 @@ function renderImageCard(image, slotIndex) {
       fitMode === "fill" ? "fit-fill" : ""
     } ${selectedClass}" data-slot-index="${slotIndex}" tabindex="0">
       <button
+        class="move-slot-button"
+        type="button"
+        draggable="true"
+        data-drag-slot="${slotIndex}"
+        title="이 사진을 다른 칸으로 이동"
+        aria-label="이 사진을 다른 칸으로 이동"
+      >
+        이동
+      </button>
+      <button
         class="remove-slot-button"
         type="button"
         data-remove-slot="${slotIndex}"
@@ -1918,8 +1928,8 @@ function syncSelectedSlotControls() {
 
   if (!hasSlot) {
     const nextKey = isEmptySelectedSlot ? `disabled|empty-slot|${slotIndex}` : "disabled|empty";
-    if (selectedSlotUiKey !== nextKey) {
-      els.selectedSlotLabel.textContent = isEmptySelectedSlot
+  if (selectedSlotUiKey !== nextKey) {
+    els.selectedSlotLabel.textContent = isEmptySelectedSlot
         ? `${slotIndex + 1}번 빈 슬롯 선택됨. Tab/Shift+방향키로 칸 이동, 클릭은 현재 칸 배치, 더블클릭은 다음 슬라이드까지 연속 배치합니다.`
         : "슬라이드 사진이나 빈칸을 클릭하세요.";
       selectedSlotUiKey = nextKey;
@@ -1946,7 +1956,7 @@ function syncSelectedSlotControls() {
 
   if (selectedSlotUiKey === nextKey) return;
 
-  const nextLabel = `${slotIndex + 1}번 슬롯 선택됨. Tab/Shift+방향키로 칸 이동, Alt+방향키/대괄호/쉼표/마침표/H/J/F/G로 미세 편집, Alt+C/Alt+V로 값 복사 붙여넣기, Alt+Shift+V/A로 페이지/전체 일괄 적용, 우클릭으로 빠른 편집, Backspace로 비우기, 클릭은 교체, 더블클릭은 다음 슬라이드까지 연속 이동합니다.`;
+  const nextLabel = `${slotIndex + 1}번 슬롯 선택됨. Tab/Shift+방향키로 칸 이동, Alt+방향키/대괄호/쉼표/마침표/H/J/F/G로 미세 편집, Alt+C/Alt+V로 값 복사 붙여넣기, Alt+Shift+V/A로 페이지/전체 일괄 적용, 우클릭으로 빠른 편집, 좌상단 이동 핸들 드래그로 자리 이동, Backspace로 비우기, 클릭은 교체, 더블클릭은 다음 슬라이드까지 연속 이동합니다.`;
   if (els.selectedSlotLabel.textContent !== nextLabel) {
     els.selectedSlotLabel.textContent = nextLabel;
   }
@@ -2274,6 +2284,36 @@ function setSlot(slotIndex, imageId) {
   markSlideSlotsDirty();
   if (imageId) state.selectedSlotIndex = slotIndex;
   if (!imageId && state.selectedSlotIndex === slotIndex) state.selectedSlotIndex = null;
+  render();
+}
+
+function moveOrSwapSlotContent(fromSlotIndex, toSlotIndex) {
+  if (!Number.isFinite(fromSlotIndex) || !Number.isFinite(toSlotIndex)) return;
+  if (fromSlotIndex < 0 || toSlotIndex < 0 || fromSlotIndex === toSlotIndex) return;
+  if (!state.slideSlots[fromSlotIndex]) return;
+
+  beginEditHistoryAction();
+  normalizeSlidePageLayouts(Math.max(fromSlotIndex, toSlotIndex) + 1);
+  while (state.slideSlots.length <= Math.max(fromSlotIndex, toSlotIndex)) {
+    state.slideSlots.push(null);
+  }
+
+  const fromImageId = state.slideSlots[fromSlotIndex];
+  const toImageId = state.slideSlots[toSlotIndex] ?? null;
+  const fromTransform = state.slotTransforms[fromSlotIndex] ? { ...state.slotTransforms[fromSlotIndex] } : null;
+  const toTransform = state.slotTransforms[toSlotIndex] ? { ...state.slotTransforms[toSlotIndex] } : null;
+
+  state.slideSlots[toSlotIndex] = fromImageId;
+  state.slideSlots[fromSlotIndex] = toImageId;
+
+  if (fromTransform) state.slotTransforms[toSlotIndex] = fromTransform;
+  else delete state.slotTransforms[toSlotIndex];
+
+  if (toImageId && toTransform) state.slotTransforms[fromSlotIndex] = toTransform;
+  else delete state.slotTransforms[fromSlotIndex];
+
+  markSlideSlotsDirty();
+  state.selectedSlotIndex = toSlotIndex;
   render();
 }
 
@@ -3184,7 +3224,7 @@ els.stage?.addEventListener("pointerdown", (event) => {
   if (event.button !== 0) return;
 
   const target = event.target instanceof Element ? event.target : null;
-  if (target?.closest(".guide, .guide-ruler, [data-remove-slot]")) return;
+  if (target?.closest(".guide, .guide-ruler, [data-remove-slot], [data-drag-slot]")) return;
 
   const slot = target?.closest("[data-slot-index]");
   if (!(slot instanceof HTMLElement)) return;
@@ -3209,6 +3249,20 @@ els.stage?.addEventListener("pointerdown", (event) => {
   selectSlot(slotIndex);
   slot.setPointerCapture?.(event.pointerId);
   event.preventDefault();
+});
+
+els.stage?.addEventListener("dragstart", (event) => {
+  const handle = event.target instanceof Element ? event.target.closest("[data-drag-slot]") : null;
+  if (!(handle instanceof HTMLElement) || !event.dataTransfer) return;
+  const slotIndex = Number(handle.getAttribute("data-drag-slot"));
+  if (!Number.isFinite(slotIndex) || slotIndex < 0 || !state.slideSlots[slotIndex]) {
+    event.preventDefault();
+    return;
+  }
+
+  event.dataTransfer.setData("application/x-medical-slot-index", String(slotIndex));
+  event.dataTransfer.effectAllowed = "move";
+  selectSlot(slotIndex);
 });
 
 els.stage?.addEventListener("contextmenu", (event) => {
@@ -3316,6 +3370,9 @@ els.stage?.addEventListener("dragover", (event) => {
   const target = event.target instanceof Element ? event.target.closest("[data-slot-index]") : null;
   if (!(target instanceof HTMLElement)) return;
   event.preventDefault();
+  if (Array.from(event.dataTransfer?.types ?? []).includes("application/x-medical-slot-index")) {
+    event.dataTransfer.dropEffect = "move";
+  }
   if (activeStageSlotDropTarget === target) return;
   activeStageSlotDropTarget?.classList.remove("is-drop-target");
   activeStageSlotDropTarget = target;
@@ -3339,12 +3396,22 @@ els.stage?.addEventListener("drop", (event) => {
   if (activeStageSlotDropTarget === target) activeStageSlotDropTarget = null;
 
   const slotIndex = Number(target.dataset.slotIndex);
+  const fromSlotIndex = Number(event.dataTransfer?.getData("application/x-medical-slot-index"));
+  if (Number.isFinite(fromSlotIndex)) {
+    moveOrSwapSlotContent(fromSlotIndex, slotIndex);
+    return;
+  }
   const payload = event.dataTransfer?.getData("application/x-medical-presenter");
   if (payload === "empty") {
     setSlot(slotIndex, null);
     return;
   }
   if (payload) setSlot(slotIndex, payload);
+});
+
+els.stage?.addEventListener("dragend", () => {
+  activeStageSlotDropTarget?.classList.remove("is-drop-target");
+  activeStageSlotDropTarget = null;
 });
 
 els.thumbnailRail?.addEventListener("click", (event) => {

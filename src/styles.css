@@ -1264,11 +1264,44 @@ kbd {
     background 140ms ease;
 }
 
+.move-slot-button {
+  position: absolute;
+  top: 0.62rem;
+  left: 0.62rem;
+  z-index: 4;
+  min-width: 3rem;
+  min-height: 2rem;
+  border: 1px solid rgba(255, 253, 247, 0.24);
+  border-radius: 999px;
+  padding: 0.35rem 0.72rem;
+  color: var(--white);
+  background: rgba(0, 0, 0, 0.54);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.24);
+  opacity: 0;
+  transform: translateY(-0.25rem) scale(0.94);
+  transition:
+    opacity 140ms ease,
+    transform 140ms ease,
+    background 140ms ease;
+  cursor: grab;
+}
+
 .image-card:hover .remove-slot-button,
 .image-card:focus-within .remove-slot-button,
-.image-card.is-selected .remove-slot-button {
+.image-card.is-selected .remove-slot-button,
+.image-card:hover .move-slot-button,
+.image-card:focus-within .move-slot-button,
+.image-card.is-selected .move-slot-button {
   opacity: 1;
   transform: translateY(0) scale(1);
+}
+
+.move-slot-button:hover {
+  background: rgba(57, 126, 193, 0.88);
+}
+
+.move-slot-button:active {
+  cursor: grabbing;
 }
 
 .remove-slot-button:hover {
