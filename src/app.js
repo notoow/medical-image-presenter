@@ -2590,6 +2590,29 @@ function findFirstSlotIndexByImageId(imageId) {
   return state.slideSlots.findIndex((slotId) => slotId === imageId);
 }
 
+function findNextSlotIndexByImageId(imageId, currentSlotIndex = state.selectedSlotIndex) {
+  const placements = getImagePlacements().get(imageId) ?? [];
+  if (placements.length === 0) return -1;
+  if (placements.length === 1) {
+    const onlyPlacement = placements[0];
+    const onlyLocation = getSlidePages().find((page) => page.pageIndex === onlyPlacement.page);
+    return onlyLocation ? onlyLocation.start + (onlyPlacement.slot - 1) : findFirstSlotIndexByImageId(imageId);
+  }
+
+  const slotIndices = placements
+    .map(({ page, slot }) => {
+      const pageMeta = getSlidePages().find((entry) => entry.pageIndex === page);
+      return pageMeta ? pageMeta.start + (slot - 1) : null;
+    })
+    .filter((value) => Number.isFinite(value));
+
+  if (slotIndices.length === 0) return findFirstSlotIndexByImageId(imageId);
+
+  const currentIndex = slotIndices.indexOf(Number(currentSlotIndex));
+  if (currentIndex < 0) return slotIndices[0];
+  return slotIndices[(currentIndex + 1) % slotIndices.length];
+}
+
 function goToPageWithSelection(page, slotIndex = null) {
   state.pageIndex = clamp(page, 0, Math.max(getTotalPages() - 1, 0));
   state.selectedSlotIndex = Number.isFinite(slotIndex) && slotIndex >= 0 ? slotIndex : null;
@@ -3750,11 +3773,12 @@ els.photoListPanel?.addEventListener("click", (event) => {
     return;
   }
 
-  const slotIndex = findFirstSlotIndexByImageId(imageId);
+  const slotIndex = findNextSlotIndexByImageId(imageId);
   if (slotIndex < 0) return;
   const location = getSlotLocation(slotIndex);
   if (!location) return;
   goToPageWithSelection(location.page, slotIndex);
+  showToast(`${location.page}페이지 ${slotIndex - location.pageStart + 1}칸으로 이동했습니다.`);
 });
 
 els.photoListPanel?.addEventListener("dblclick", (event) => {
