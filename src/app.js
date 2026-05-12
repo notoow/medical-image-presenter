@@ -7,6 +7,7 @@ const DEFAULT_LOGO_NAME = "하이스트비뇨의학과로고.jpg";
 const state = {
   images: [],
   slideSlots: [],
+  slideCaptions: [],
   slotTransforms: {},
   selectedSlotIndex: null,
   logoUrl: "",
@@ -64,8 +65,10 @@ let guidePanelRenderKey = "";
 let activeThumbnailButton = null;
 let thumbnailPageButtonCache = new Map();
 let activeReorderTarget = null;
+let activeSlideReorderTarget = null;
 let activeStageSlotDropTarget = null;
 let activeGuideDrag = null;
+let activeSlotPan = null;
 let previewRefreshTimer = null;
 let previewWarmHandle = null;
 let previewWarmQueue = [];
@@ -284,6 +287,33 @@ function getCurrentPageSlotMeta() {
   return currentPageSlotMetaCache;
 }
 
+function getSlidePageCount() {
+  return Math.ceil(state.slideSlots.length / getPageSize());
+}
+
+function getSlidePages() {
+  const pageSize = getPageSize();
+  return Array.from({ length: getSlidePageCount() }, (_, pageIndex) => {
+    const start = pageIndex * pageSize;
+    return {
+      pageIndex: pageIndex + 1,
+      start,
+      slots: state.slideSlots.slice(start, start + pageSize),
+      caption: state.slideCaptions[pageIndex] ?? "",
+    };
+  });
+}
+
+function normalizeSlideCaptions(pageCount = getSlidePageCount()) {
+  if (!Array.isArray(state.slideCaptions)) {
+    state.slideCaptions = [];
+  }
+  state.slideCaptions = state.slideCaptions.slice(0, pageCount);
+  while (state.slideCaptions.length < pageCount) {
+    state.slideCaptions.push("");
+  }
+}
+
 function markImagesDirty({ orderChanged = true } = {}) {
   imageIndexDirty = true;
   imagesVersion += 1;
@@ -383,6 +413,8 @@ function ensureSlideSlots() {
     state.slideSlots = nextSlots;
     markSlideSlotsDirty();
   }
+
+  normalizeSlideCaptions(Math.ceil(state.slideSlots.length / pageSize));
 }
 
 function sortImages() {
@@ -517,6 +549,7 @@ function renderImageCard(image, slotIndex) {
         src="${displayUrl}"
         data-renderable-image-id="${image.id}"
         alt=""
+        draggable="false"
         aria-hidden="true"
         style="
           width: ${state.backgroundFilters.scale}%;
@@ -530,6 +563,7 @@ function renderImageCard(image, slotIndex) {
         src="${displayUrl}"
         data-renderable-image-id="${image.id}"
         alt="${escapeHtml(image.name)}"
+        draggable="false"
         style="clip-path: ${cropStyle}; filter: ${filter}; transform: ${imageTransform};"
       />
       <figcaption class="image-label">${escapeHtml(image.name)}</figcaption>
@@ -563,6 +597,8 @@ function renderGuides() {
 
 function renderSlide() {
   const { start, slots: pageSlots } = getCurrentPageSlotMeta();
+  const slideCaption = state.slideCaptions[state.pageIndex - 1] ?? "";
+  const isEmptySlide = pageSlots.length > 0 && !pageSlots.some(Boolean);
 
   els.stage.className = `stage layout-${state.layoutMode}`;
 
@@ -593,6 +629,7 @@ function renderSlide() {
     >
       ${pageSlots.map((imageId, offset) => renderImageCard(getImageById(imageId), start + offset)).join("")}
     </div>
+    ${isEmptySlide && slideCaption.trim() ? `<div class="empty-slide-caption">${escapeHtml(slideCaption)}</div>` : ""}
     ${renderGuides()}
   `;
 
@@ -1142,6 +1179,11 @@ async function loadImageFiles(fileList) {
 }
 
 function hasDraggedFiles(event) {
+  const items = Array.from(event.dataTransfer?.items ?? []);
+  if (items.length > 0) {
+    return items.some((item) => item.kind === "file");
+  }
+
   return Array.from(event.dataTransfer?.types ?? []).includes("Files");
 }
 
@@ -1426,8 +1468,9 @@ function setSlot(slotIndex, imageId) {
 }
 
 function addEmptySlot() {
-  state.slideSlots.push(null);
+  state.slideSlots.push(...Array(getPageSize()).fill(null));
   markSlideSlotsDirty();
+  normalizeSlideCaptions();
   goToPage(Math.max(1, Math.ceil(state.slideSlots.length / getPageSize())));
 }
 
@@ -1441,6 +1484,7 @@ function clearSlideSlots() {
   }
 
   state.slideSlots = Array(getPageSize()).fill(null);
+  state.slideCaptions = [""];
   markSlideSlotsDirty();
   state.slotTransforms = {};
   state.selectedSlotIndex = null;
@@ -1466,6 +1510,7 @@ function resetAllPhotosAndSlides() {
 
   state.images = [];
   state.slideSlots = [];
+  state.slideCaptions = [];
   state.slotTransforms = {};
   state.selectedSlotIndex = null;
   state.pageIndex = 0;
@@ -1478,6 +1523,130 @@ function resetAllPhotosAndSlides() {
 
   render();
   queuePersistAssets();
+}
+
+function findFirstFilledSlotIndexForPage(page) {
+  const pageIndex = Number(page) - 1;
+  if (!Number.isFinite(pageIndex) || pageIndex < 0) return null;
+  const start = pageIndex * getPageSize();
+  const end = start + getPageSize();
+  for (let slotIndex = start; slotIndex < end; slotIndex += 1) {
+    if (state.slideSlots[slotIndex]) return slotIndex;
+  }
+  return null;
+}
+
+function findFirstSlotIndexByImageId(imageId) {
+  return state.slideSlots.findIndex((slotId) => slotId === imageId);
+}
+
+function goToPageWithSelection(page, slotIndex = null) {
+  state.pageIndex = clamp(page, 0, Math.max(getTotalPages() - 1, 0));
+  state.selectedSlotIndex = Number.isFinite(slotIndex) && slotIndex >= 0 ? slotIndex : null;
+  render({ refreshPhotoList: false });
+}
+
+function rebuildSlotTransformsFromPages(pages) {
+  const pageSize = getPageSize();
+  const nextTransforms = {};
+
+  pages.forEach((page, nextPageIndex) => {
+    for (let offset = 0; offset < pageSize; offset += 1) {
+      const oldIndex = page.start + offset;
+      const nextIndex = nextPageIndex * pageSize + offset;
+      const transform = state.slotTransforms[oldIndex];
+      if (transform) nextTransforms[nextIndex] = transform;
+    }
+  });
+
+  state.slotTransforms = nextTransforms;
+}
+
+function reorderSlidePage(fromPage, toPage) {
+  const pages = getSlidePages();
+  const fromIndex = Number(fromPage) - 1;
+  const toIndex = Number(toPage) - 1;
+  if (!Number.isFinite(fromIndex) || !Number.isFinite(toIndex) || fromIndex < 0 || toIndex < 0) return;
+  if (fromIndex === toIndex || fromIndex >= pages.length || toIndex >= pages.length) return;
+  const selectedImageId =
+    Number.isFinite(state.selectedSlotIndex) && state.selectedSlotIndex >= 0
+      ? state.slideSlots[state.selectedSlotIndex]
+      : null;
+
+  const movedPages = [...pages];
+  const [moved] = movedPages.splice(fromIndex, 1);
+  movedPages.splice(toIndex, 0, moved);
+
+  state.slideSlots = movedPages.flatMap((page) => page.slots);
+  state.slideCaptions = movedPages.map((page) => page.caption);
+  rebuildSlotTransformsFromPages(movedPages);
+  markSlideSlotsDirty();
+  normalizeSlideCaptions(movedPages.length);
+
+  if (state.pageIndex > 0) {
+    const currentPageIndex = state.pageIndex - 1;
+    if (currentPageIndex === fromIndex) {
+      state.pageIndex = toIndex + 1;
+    } else if (fromIndex < currentPageIndex && toIndex >= currentPageIndex) {
+      state.pageIndex -= 1;
+    } else if (fromIndex > currentPageIndex && toIndex <= currentPageIndex) {
+      state.pageIndex += 1;
+    }
+  }
+
+  if (selectedImageId) {
+    const nextSelectedSlot = findFirstSlotIndexByImageId(selectedImageId);
+    state.selectedSlotIndex = nextSelectedSlot >= 0 ? nextSelectedSlot : null;
+  }
+
+  render();
+}
+
+function deleteSlidePage(page) {
+  const pages = getSlidePages();
+  const pageIndex = Number(page) - 1;
+  if (!Number.isFinite(pageIndex) || pageIndex < 0 || pageIndex >= pages.length) return;
+  const selectedImageId =
+    Number.isFinite(state.selectedSlotIndex) && state.selectedSlotIndex >= 0
+      ? state.slideSlots[state.selectedSlotIndex]
+      : null;
+
+  const nextPages = pages.filter((_, index) => index !== pageIndex);
+  state.slideSlots = nextPages.flatMap((entry) => entry.slots);
+  state.slideCaptions = nextPages.map((entry) => entry.caption);
+  rebuildSlotTransformsFromPages(nextPages);
+  markSlideSlotsDirty();
+  normalizeSlideCaptions(nextPages.length);
+
+  const nextTotalPages = 1 + nextPages.length;
+  state.pageIndex = clamp(state.pageIndex, 0, Math.max(nextTotalPages - 1, 0));
+  if (state.pageIndex === page) {
+    state.pageIndex = Math.max(1, Math.min(page, nextPages.length));
+  } else if (state.pageIndex > page) {
+    state.pageIndex -= 1;
+  }
+
+  if (selectedImageId) {
+    const nextSelectedSlot = findFirstSlotIndexByImageId(selectedImageId);
+    state.selectedSlotIndex = nextSelectedSlot >= 0 ? nextSelectedSlot : null;
+  } else {
+    state.selectedSlotIndex = null;
+  }
+
+  render();
+}
+
+function updateSlideCaption(page, value) {
+  const pageIndex = Number(page) - 1;
+  if (!Number.isFinite(pageIndex) || pageIndex < 0) return;
+  normalizeSlideCaptions();
+  state.slideCaptions[pageIndex] = value;
+
+  if (state.pageIndex === page && !getCurrentPageSlotMeta().slots.some(Boolean)) {
+    render({ refreshGuidePanel: false, refreshThumbnails: false, refreshPhotoList: false, persist: false });
+  }
+
+  queuePersistSettings();
 }
 
 function getGuidePercentFromPointer(axis, pointerEvent, rect = els.stage.getBoundingClientRect()) {
@@ -1514,21 +1683,14 @@ function renderThumbnails() {
     unregisterRenderableImageNodesInRoot(els.thumbnailRail);
     els.thumbnailRail.innerHTML = `
       <div class="thumbnail-empty">
-        사진을 선택하면 여기에 슬라이드 미리보기와 사진 순서가 표시됩니다.
+        사진을 선택하면 여기에 슬라이드 목록과 순서 편집이 표시됩니다.
       </div>
     `;
     return;
   }
 
   const pageSize = getPageSize();
-  const slidePages = Array.from({ length: Math.ceil(state.slideSlots.length / pageSize) }, (_, pageIndex) => {
-    const start = pageIndex * pageSize;
-    return {
-      pageIndex: pageIndex + 1,
-      slots: state.slideSlots.slice(start, start + pageSize),
-    };
-  });
-
+  const slidePages = getSlidePages();
   const slideLayoutClass = state.layoutMode === "custom" ? "layout-custom" : `layout-${state.layoutMode}`;
   const nextKey = [
     imagesVersion,
@@ -1549,15 +1711,11 @@ function renderThumbnails() {
     const thumbnailHtml = `
       <div class="thumbnail-section">
         <div class="thumbnail-section-head">
-          <strong>슬라이드 미리보기</strong>
+          <strong>슬라이드 목록</strong>
           <span>${state.gridCols} x ${state.gridRows} 구성, 페이지당 ${pageSize}장</span>
         </div>
         <div class="slide-preview-row">
-          <button
-            class="slide-thumb"
-            type="button"
-            data-page="0"
-          >
+          <button class="slide-thumb slide-thumb-cover-card" type="button" data-page="0">
             <div class="slide-thumb-cover">
               <span>Cover</span>
             </div>
@@ -1565,55 +1723,41 @@ function renderThumbnails() {
           ${slidePages
             .map(
               (page) => `
-                <button
-                  class="slide-thumb"
-                  type="button"
+                <article
+                  class="slide-thumb slide-thumb-editor"
+                  draggable="true"
                   data-page="${page.pageIndex}"
                   title="${page.pageIndex}페이지"
                 >
-                  <div
-                    class="slide-thumb-grid ${slideLayoutClass}"
-                    style="--grid-cols:${state.gridCols}; --grid-rows:${state.gridRows};"
-                  >
-                    ${page.slots
-                      .map((imageId) => {
-                        const image = getImageById(imageId);
-                        return image
-                          ? `<img src="${getRenderableImageUrl(image)}" data-renderable-image-id="${image.id}" alt="" loading="lazy" decoding="async" />`
-                          : `<div class="slide-thumb-empty"></div>`;
-                      })
-                      .join("")}
+                  <div class="slide-thumb-open" data-page="${page.pageIndex}">
+                    <div
+                      class="slide-thumb-grid ${slideLayoutClass}"
+                      style="--grid-cols:${state.gridCols}; --grid-rows:${state.gridRows};"
+                    >
+                      ${page.slots
+                        .map((imageId, offset) => {
+                          const slotIndex = page.start + offset;
+                          const image = getImageById(imageId);
+                          return image
+                            ? `<img src="${getRenderableImageUrl(image)}" data-renderable-image-id="${image.id}" data-slot-thumb-index="${slotIndex}" alt="" loading="lazy" decoding="async" />`
+                            : `<button class="slide-thumb-empty slide-slot-empty" type="button" data-slot-thumb-index="${slotIndex}">빈칸</button>`;
+                        })
+                        .join("")}
+                    </div>
                   </div>
-                  <span class="slide-thumb-label">${page.pageIndex}</span>
-                </button>
+                  <div class="slide-thumb-meta">
+                    <span class="slide-thumb-label">${page.pageIndex}</span>
+                    <button class="slide-thumb-delete" type="button" data-delete-slide="${page.pageIndex}" aria-label="${page.pageIndex}페이지 삭제">삭제</button>
+                  </div>
+                  <input
+                    class="slide-caption-input"
+                    type="text"
+                    data-slide-caption-input="${page.pageIndex}"
+                    placeholder="빈 슬라이드 소제목"
+                    value="${escapeHtml(page.caption)}"
+                  />
+                </article>
               `,
-            )
-            .join("")}
-        </div>
-      </div>
-
-        <div class="thumbnail-section">
-        <div class="thumbnail-section-head">
-          <strong>현재 슬라이드 순서</strong>
-          <span>비어 있는 칸도 슬라이드 순서에 포함됩니다.</span>
-        </div>
-        <div class="photo-order-row slot-summary-row">
-          ${state.slideSlots
-            .map(
-              (imageId, index) => {
-                const image = getImageById(imageId);
-              return `
-          <button
-            class="photo-order-card ${image ? "" : "is-empty"}"
-            type="button"
-            data-slot-page="${1 + Math.floor(index / pageSize)}"
-            title="${image ? escapeHtml(image.name) : "빈칸"}"
-          >
-            ${image ? `<img src="${getRenderableImageUrl(image)}" data-renderable-image-id="${image.id}" alt="" loading="lazy" decoding="async" />` : `<div class="photo-empty-thumb">빈칸</div>`}
-            <span>${index + 1}</span>
-          </button>
-        `;
-              },
             )
             .join("")}
         </div>
@@ -1622,10 +1766,11 @@ function renderThumbnails() {
     const fragment = createFragmentFromHtml(thumbnailHtml);
     registerRenderableImageNodesInRoot(fragment, els.thumbnailRail);
     els.thumbnailRail.replaceChildren(fragment);
-    els.thumbnailRail.querySelectorAll(".slide-thumb[data-page]").forEach((button) => {
+    els.thumbnailRail.querySelectorAll("[data-page]").forEach((button) => {
       const page = Number(button.getAttribute("data-page"));
       if (!Number.isFinite(page)) return;
-      thumbnailPageButtonCache.set(page, button);
+      const owner = button.closest(".slide-thumb") ?? button;
+      thumbnailPageButtonCache.set(page, owner);
     });
   }
 
@@ -1866,6 +2011,37 @@ els.stage?.addEventListener("pointerdown", (event) => {
   syncGuideVisual(index);
 });
 
+els.stage?.addEventListener("pointerdown", (event) => {
+  if (event.button !== 0) return;
+
+  const target = event.target instanceof Element ? event.target : null;
+  if (target?.closest(".guide, .guide-ruler, [data-remove-slot]")) return;
+
+  const slot = target?.closest("[data-slot-index]");
+  if (!(slot instanceof HTMLElement)) return;
+
+  const slotIndex = Number(slot.dataset.slotIndex);
+  if (!Number.isFinite(slotIndex) || !state.slideSlots[slotIndex]) return;
+
+  const rect = slot.getBoundingClientRect();
+  const transform = getSlotTransform(slotIndex);
+  activeSlotPan = {
+    slotIndex,
+    pointerId: event.pointerId,
+    startX: event.clientX,
+    startY: event.clientY,
+    originX: transform.x,
+    originY: transform.y,
+    width: Math.max(rect.width, 1),
+    height: Math.max(rect.height, 1),
+    moved: false,
+  };
+
+  selectSlot(slotIndex);
+  slot.setPointerCapture?.(event.pointerId);
+  event.preventDefault();
+});
+
 els.stage?.addEventListener("contextmenu", (event) => {
   const target = event.target instanceof Element ? event.target.closest(".guide") : null;
   if (!(target instanceof HTMLElement)) return;
@@ -1888,10 +2064,39 @@ window.addEventListener("pointermove", (event) => {
   syncGuideVisual(activeGuideDrag.index);
 });
 
+window.addEventListener("pointermove", (event) => {
+  if (!activeSlotPan || event.pointerId !== activeSlotPan.pointerId) return;
+
+  const dx = event.clientX - activeSlotPan.startX;
+  const dy = event.clientY - activeSlotPan.startY;
+  const nextX = clamp(Number((activeSlotPan.originX + (dx / activeSlotPan.width) * 100).toFixed(2)), -100, 100);
+  const nextY = clamp(Number((activeSlotPan.originY + (dy / activeSlotPan.height) * 100).toFixed(2)), -100, 100);
+  const transform = getSlotTransform(activeSlotPan.slotIndex);
+
+  if (transform.x === nextX && transform.y === nextY) return;
+
+  transform.x = nextX;
+  transform.y = nextY;
+  activeSlotPan.moved = true;
+  scheduleLightweightRefresh([activeSlotPan.slotIndex]);
+});
+
 window.addEventListener("pointerup", (event) => {
   if (!activeGuideDrag || event.pointerId !== activeGuideDrag.pointerId) return;
   activeGuideDrag = null;
   render();
+});
+
+window.addEventListener("pointerup", (event) => {
+  if (!activeSlotPan || event.pointerId !== activeSlotPan.pointerId) return;
+  const shouldPersist = activeSlotPan.moved;
+  activeSlotPan = null;
+  if (shouldPersist) queuePersistSettings();
+});
+
+window.addEventListener("pointercancel", () => {
+  if (!activeSlotPan) return;
+  activeSlotPan = null;
 });
 
 els.stage?.addEventListener("click", (event) => {
@@ -1957,15 +2162,92 @@ els.stage?.addEventListener("drop", (event) => {
 
 els.thumbnailRail?.addEventListener("click", (event) => {
   const target = event.target instanceof Element ? event.target : null;
-  const slideThumb = target?.closest(".slide-thumb");
-  if (slideThumb instanceof HTMLButtonElement) {
-    goToPage(Number(slideThumb.dataset.page));
+  if (target?.closest("[data-slide-caption-input]")) return;
+  const deleteButton = target?.closest("[data-delete-slide]");
+  if (deleteButton instanceof HTMLButtonElement) {
+    event.preventDefault();
+    event.stopPropagation();
+    deleteSlidePage(Number(deleteButton.dataset.deleteSlide));
     return;
   }
 
-  const photoOrderCard = target?.closest(".photo-order-card");
-  if (photoOrderCard instanceof HTMLButtonElement) {
-    goToPage(Number(photoOrderCard.dataset.slotPage));
+  const slotThumb = target?.closest("[data-slot-thumb-index]");
+  if (slotThumb instanceof HTMLElement) {
+    const slotIndex = Number(slotThumb.getAttribute("data-slot-thumb-index"));
+    if (!Number.isFinite(slotIndex)) return;
+    const nextPage = 1 + Math.floor(slotIndex / getPageSize());
+    goToPageWithSelection(nextPage, state.slideSlots[slotIndex] ? slotIndex : null);
+    return;
+  }
+
+  const slideThumb = target?.closest("[data-page]");
+  if (slideThumb instanceof HTMLElement) {
+    const page = Number(slideThumb.dataset.page);
+    if (!Number.isFinite(page)) return;
+    const slotIndex = page > 0 ? findFirstFilledSlotIndexForPage(page) : null;
+    goToPageWithSelection(page, slotIndex);
+  }
+});
+
+els.thumbnailRail?.addEventListener("input", (event) => {
+  const input = event.target instanceof HTMLInputElement ? event.target.closest("[data-slide-caption-input]") : null;
+  if (!(input instanceof HTMLInputElement)) return;
+  updateSlideCaption(Number(input.dataset.slideCaptionInput), input.value);
+});
+
+els.thumbnailRail?.addEventListener("dragstart", (event) => {
+  const card = event.target instanceof Element ? event.target.closest(".slide-thumb-editor") : null;
+  if (!(card instanceof HTMLElement) || !event.dataTransfer) return;
+  event.dataTransfer.setData("application/x-medical-slide-page", card.dataset.page);
+  event.dataTransfer.effectAllowed = "move";
+});
+
+els.thumbnailRail?.addEventListener("dragover", (event) => {
+  const card = event.target instanceof Element ? event.target.closest(".slide-thumb-editor") : null;
+  if (!(card instanceof HTMLElement)) return;
+  event.preventDefault();
+  if (activeSlideReorderTarget === card) return;
+  activeSlideReorderTarget?.classList.remove("is-reorder-target");
+  activeSlideReorderTarget = card;
+  activeSlideReorderTarget.classList.add("is-reorder-target");
+});
+
+els.thumbnailRail?.addEventListener("dragleave", (event) => {
+  const card = event.target instanceof Element ? event.target.closest(".slide-thumb-editor") : null;
+  if (!(card instanceof HTMLElement)) return;
+  const nextTarget = event.relatedTarget instanceof Element ? event.relatedTarget.closest(".slide-thumb-editor") : null;
+  if (nextTarget === card) return;
+  card.classList.remove("is-reorder-target");
+  if (activeSlideReorderTarget === card) activeSlideReorderTarget = null;
+});
+
+els.thumbnailRail?.addEventListener("drop", (event) => {
+  const card = event.target instanceof Element ? event.target.closest(".slide-thumb-editor") : null;
+  if (!(card instanceof HTMLElement)) return;
+  event.preventDefault();
+  card.classList.remove("is-reorder-target");
+  if (activeSlideReorderTarget === card) activeSlideReorderTarget = null;
+
+  const fromPage = Number(event.dataTransfer?.getData("application/x-medical-slide-page"));
+  const toPage = Number(card.dataset.page);
+  if (!Number.isFinite(fromPage) || !Number.isFinite(toPage) || fromPage === toPage) return;
+  reorderSlidePage(fromPage, toPage);
+});
+
+els.thumbnailRail?.addEventListener("dragend", () => {
+  activeSlideReorderTarget?.classList.remove("is-reorder-target");
+  activeSlideReorderTarget = null;
+});
+
+els.thumbnailRail?.addEventListener("contextmenu", (event) => {
+  const card = event.target instanceof Element ? event.target.closest(".slide-thumb-editor") : null;
+  if (!(card instanceof HTMLElement)) return;
+  if (event.target instanceof Element && event.target.closest("[data-slide-caption-input]")) return;
+  event.preventDefault();
+  const page = Number(card.dataset.page);
+  if (!Number.isFinite(page)) return;
+  if (window.confirm(`${page}페이지를 삭제할까요?`)) {
+    deleteSlidePage(page);
   }
 });
 
@@ -2024,6 +2306,17 @@ els.photoListPanel?.addEventListener("drop", (event) => {
 els.photoListPanel?.addEventListener("dragend", () => {
   activeReorderTarget?.classList.remove("is-reorder-target");
   activeReorderTarget = null;
+});
+
+els.photoListPanel?.addEventListener("click", (event) => {
+  const card = event.target instanceof Element ? event.target.closest(".photo-list-card") : null;
+  if (!(card instanceof HTMLElement)) return;
+  const imageId = card.dataset.imageId;
+  if (!imageId) return;
+  const slotIndex = findFirstSlotIndexByImageId(imageId);
+  if (slotIndex < 0) return;
+  const page = 1 + Math.floor(slotIndex / getPageSize());
+  goToPageWithSelection(page, slotIndex);
 });
 
 els.sortMode.addEventListener("change", () => {
@@ -2288,6 +2581,7 @@ function getPresentationData() {
     coverVisibility: state.coverVisibility,
     images: state.images,
     slideSlots: state.slideSlots,
+    slideCaptions: state.slideCaptions,
     slotTransforms: state.slotTransforms,
     layoutMode: state.layoutMode,
     gridRows: state.gridRows,
@@ -2319,6 +2613,7 @@ function getSettingsData() {
     },
     coverVisibility: state.coverVisibility,
     slideSlots: state.slideSlots,
+    slideCaptions: state.slideCaptions,
     slotTransforms: state.slotTransforms,
     layoutMode: state.layoutMode,
     gridRows: state.gridRows,
@@ -2450,6 +2745,7 @@ function applyPersistedState() {
 
     state.slideSlots = Array.isArray(data.slideSlots) ? data.slideSlots : state.slideSlots;
     markSlideSlotsDirty();
+    state.slideCaptions = Array.isArray(data.slideCaptions) ? data.slideCaptions : state.slideCaptions;
     state.slotTransforms = data.slotTransforms ?? state.slotTransforms;
     state.selectedSlotIndex = data.selectedSlotIndex ?? state.selectedSlotIndex;
     state.layoutMode = data.layoutMode ?? state.layoutMode;
