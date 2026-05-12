@@ -1149,10 +1149,30 @@ kbd {
 }
 
 #pageStatus {
-  min-width: 9rem;
+  min-width: 16rem;
+  display: grid;
+  justify-items: center;
+  gap: 0.1rem;
   text-align: center;
   color: var(--muted);
   font-variant-numeric: tabular-nums;
+}
+
+#pageStatus .status-primary {
+  color: var(--ink);
+  font-size: 0.94rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+#pageStatus .status-secondary {
+  max-width: 24rem;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .stage {

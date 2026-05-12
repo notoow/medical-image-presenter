@@ -994,10 +994,26 @@ function renderSlide() {
 }
 
 function syncDeckStatus() {
-  els.pageStatus.textContent =
-    state.pageIndex === 0
-      ? `Cover / ${getTotalPages()}`
-      : `${state.pageIndex + 1} / ${getTotalPages()}`;
+  const totalPages = getTotalPages();
+  const selectedImage =
+    Number.isFinite(state.selectedSlotIndex) && state.selectedSlotIndex >= 0
+      ? getImageById(state.slideSlots[state.selectedSlotIndex])
+      : null;
+
+  if (state.pageIndex === 0) {
+    els.pageStatus.innerHTML = `
+      <span class="status-primary">Cover / ${totalPages}</span>
+      <span class="status-secondary">커버 편집</span>
+    `;
+  } else {
+    const pageCaption = (state.slideCaptions[state.pageIndex - 1] || "").trim();
+    const captionText = pageCaption ? `소제목: ${escapeHtml(pageCaption)}` : "소제목 없음";
+    const imageText = selectedImage ? `선택 사진: ${escapeHtml(selectedImage.name)}` : "선택 사진 없음";
+    els.pageStatus.innerHTML = `
+      <span class="status-primary">${state.pageIndex + 1} / ${totalPages}</span>
+      <span class="status-secondary">${captionText} · ${imageText}</span>
+    `;
+  }
 
   syncLayoutControls();
   const hasCurrentSlide = state.pageIndex > 0 && getSlidePageCount() > 0;
