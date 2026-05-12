@@ -1579,7 +1579,7 @@ function syncSelectedSlotControls() {
 
   if (selectedSlotUiKey === nextKey) return;
 
-  const nextLabel = `${slotIndex + 1}번 슬롯 선택됨`;
+  const nextLabel = `${slotIndex + 1}번 슬롯 선택됨. 오른쪽 사진을 클릭하면 바로 교체됩니다.`;
   if (els.selectedSlotLabel.textContent !== nextLabel) {
     els.selectedSlotLabel.textContent = nextLabel;
   }
@@ -2809,7 +2809,7 @@ els.photoListPanel?.addEventListener("click", (event) => {
   if (!imageId) return;
 
   const selectedSlotIndex = Number(state.selectedSlotIndex);
-  if (Number.isFinite(selectedSlotIndex) && selectedSlotIndex >= 0 && !state.slideSlots[selectedSlotIndex]) {
+  if (Number.isFinite(selectedSlotIndex) && selectedSlotIndex >= 0) {
     setSlot(selectedSlotIndex, imageId);
     return;
   }
