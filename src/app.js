@@ -110,6 +110,7 @@ let isApplyingHistory = false;
 let editHistoryPast = [];
 let editHistoryFuture = [];
 let slideClipboard = null;
+let slotTransformClipboard = null;
 const EDIT_HISTORY_LIMIT = 40;
 const previewCache = new Map();
 const previewJobs = new Map();
@@ -206,6 +207,8 @@ const els = {
   slotCropTop: document.querySelector("#slotCropTop"),
   slotCropBottom: document.querySelector("#slotCropBottom"),
   resetSlotTransformButton: document.querySelector("#resetSlotTransformButton"),
+  copySlotTransformButton: document.querySelector("#copySlotTransformButton"),
+  pasteSlotTransformButton: document.querySelector("#pasteSlotTransformButton"),
   showGuides: document.querySelector("#showGuides"),
   addVerticalGuideButton: document.querySelector("#addVerticalGuideButton"),
   addHorizontalGuideButton: document.querySelector("#addHorizontalGuideButton"),
@@ -1597,6 +1600,7 @@ function syncShortcutHelpContent() {
     <p><kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>←</kbd> <kbd>→</kbd> <kbd>↑</kbd> <kbd>↓</kbd><span>선택 사진 크게 이동</span></p>
     <p><kbd>Alt</kbd> + <kbd>[</kbd> <kbd>]</kbd><span>선택 사진 크기 줄이기 / 키우기</span></p>
     <p><kbd>Alt</kbd> + <kbd>,</kbd> <kbd>.</kbd><span>선택 사진 회전</span></p>
+    <p><kbd>Alt</kbd> + <kbd>C</kbd> <kbd>Alt</kbd> + <kbd>V</kbd><span>선택 사진 값 복사 / 붙여넣기</span></p>
     <p><kbd>Backspace</kbd><span>선택된 슬롯 비우기</span></p>
     <p><kbd>F</kbd> / <kbd>Shift</kbd> + <kbd>F</kbd><span>사진 맞추기 / 채우기</span></p>
     <p><kbd>Enter</kbd><span>블러 배경 채우기 켜기/끄기</span></p>
@@ -1757,11 +1761,17 @@ function syncSelectedSlotControls() {
     els.slotCropTop,
     els.slotCropBottom,
     els.resetSlotTransformButton,
+    els.copySlotTransformButton,
+    els.pasteSlotTransformButton,
   ].filter(Boolean);
 
   const disabledKey = hasSlot ? "enabled" : "disabled";
   if (!selectedSlotUiKey.startsWith(`${disabledKey}|`)) {
     for (const control of controls) control.disabled = !hasSlot;
+  }
+
+  if (els.pasteSlotTransformButton) {
+    els.pasteSlotTransformButton.disabled = !hasSlot || !slotTransformClipboard;
   }
 
   if (!hasSlot) {
@@ -1791,7 +1801,7 @@ function syncSelectedSlotControls() {
 
   if (selectedSlotUiKey === nextKey) return;
 
-  const nextLabel = `${slotIndex + 1}번 슬롯 선택됨. Tab/Shift+방향키로 칸 이동, Alt+방향키/대괄호/쉼표/마침표로 미세 편집, Backspace로 비우기, 클릭은 교체, 더블클릭은 다음 슬라이드까지 연속 이동합니다.`;
+  const nextLabel = `${slotIndex + 1}번 슬롯 선택됨. Tab/Shift+방향키로 칸 이동, Alt+방향키/대괄호/쉼표/마침표로 미세 편집, Alt+C/Alt+V로 값 복사 붙여넣기, Backspace로 비우기, 클릭은 교체, 더블클릭은 다음 슬라이드까지 연속 이동합니다.`;
   if (els.selectedSlotLabel.textContent !== nextLabel) {
     els.selectedSlotLabel.textContent = nextLabel;
   }
@@ -1905,6 +1915,22 @@ function nudgeSelectedSlotRotate(amount = 1) {
 
   const transform = getSlotTransform(slotIndex);
   updateSelectedSlotTransform("rotate", clamp(transform.rotate + amount, -45, 45), { recordHistory: true });
+}
+
+function copySelectedSlotTransform() {
+  const slotIndex = Number(state.selectedSlotIndex);
+  if (!Number.isFinite(slotIndex) || slotIndex < 0 || !state.slideSlots[slotIndex]) return;
+  slotTransformClipboard = { ...getSlotTransform(slotIndex) };
+  syncSelectedSlotControls();
+}
+
+function pasteSelectedSlotTransform() {
+  const slotIndex = Number(state.selectedSlotIndex);
+  if (!slotTransformClipboard || !Number.isFinite(slotIndex) || slotIndex < 0 || !state.slideSlots[slotIndex]) return;
+  beginEditHistoryAction();
+  state.slotTransforms[slotIndex] = { ...slotTransformClipboard };
+  scheduleLightweightRefresh([slotIndex]);
+  queuePersistSettings();
 }
 
 function bindSlotTransform(input, output, key, suffix = "%") {
@@ -3458,6 +3484,8 @@ els.resetSlotTransformButton?.addEventListener("click", () => {
   state.slotTransforms[slotIndex] = getDefaultSlotTransform();
   render();
 });
+els.copySlotTransformButton?.addEventListener("click", copySelectedSlotTransform);
+els.pasteSlotTransformButton?.addEventListener("click", pasteSelectedSlotTransform);
 els.showGuides.addEventListener("change", () => {
   state.guidesEnabled = els.showGuides.checked;
   render();
@@ -3582,6 +3610,19 @@ document.addEventListener("keydown", (event) => {
     const amount = event.shiftKey ? 5 : 1;
     nudgeSelectedSlotRotate(event.key === "," ? -amount : amount);
     return;
+  }
+
+  if (state.pageIndex > 0 && event.altKey && !event.shiftKey && !event.ctrlKey && !event.metaKey) {
+    if (event.key.toLowerCase() === "c") {
+      event.preventDefault();
+      copySelectedSlotTransform();
+      return;
+    }
+    if (event.key.toLowerCase() === "v") {
+      event.preventDefault();
+      pasteSelectedSlotTransform();
+      return;
+    }
   }
 
   if (hasSlideShortcutModifier(event) && event.key.toLowerCase() === "z") {
