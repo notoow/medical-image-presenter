@@ -1746,6 +1746,53 @@ body.presenting .guide-ruler {
   font-size: 0.76rem;
 }
 
+.slide-stage-caption-wrap {
+  position: absolute;
+  z-index: 6;
+  top: 1rem;
+  left: 1rem;
+  max-width: min(38rem, calc(100% - 3.2rem));
+}
+
+.slide-stage-caption-input {
+  min-width: min(22rem, 60vw);
+  max-width: 100%;
+  border: 1px solid rgba(255, 253, 247, 0.18);
+  border-radius: 999px;
+  padding: 0.66rem 1rem;
+  color: rgba(255, 253, 247, 0.94);
+  background: rgba(10, 10, 10, 0.5);
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  backdrop-filter: blur(10px);
+}
+
+.slide-stage-caption-input::placeholder {
+  color: rgba(255, 253, 247, 0.42);
+}
+
+.slide-stage-caption-input:focus {
+  outline: none;
+  border-color: rgba(211, 138, 93, 0.94);
+  box-shadow: 0 0 0 3px rgba(138, 75, 45, 0.18);
+}
+
+.slide-stage-caption-present {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  border: 1px solid rgba(255, 253, 247, 0.16);
+  border-radius: 999px;
+  padding: 0.62rem 0.95rem;
+  color: rgba(255, 253, 247, 0.94);
+  background: rgba(10, 10, 10, 0.52);
+  font-size: clamp(0.95rem, 1.6vw, 1.08rem);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  backdrop-filter: blur(10px);
+}
+
 .slide-slot-empty {
   width: 100%;
   height: 100%;

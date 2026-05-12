@@ -857,6 +857,7 @@ function renderGuides() {
 function renderSlide() {
   const { start, slots: pageSlots, layout } = getCurrentPageSlotMeta();
   const slideCaption = state.slideCaptions[state.pageIndex - 1] ?? "";
+  const trimmedCaption = slideCaption.trim();
   const isEmptySlide = pageSlots.length > 0 && !pageSlots.some(Boolean);
 
   els.stage.className = `stage layout-${layout.mode}`;
@@ -889,12 +890,33 @@ function renderSlide() {
       ${pageSlots.map((imageId, offset) => renderImageCard(getImageById(imageId), start + offset)).join("")}
     </div>
     ${
+      !isEmptySlide
+        ? `
+          <div class="slide-stage-caption-wrap ${trimmedCaption ? "has-value" : ""}">
+            ${
+              document.body.classList.contains("presenting")
+                ? (trimmedCaption
+                    ? `<div class="slide-stage-caption-present">${escapeHtml(trimmedCaption)}</div>`
+                    : "")
+                : `<input
+                    class="slide-stage-caption-input"
+                    type="text"
+                    data-stage-slide-caption="${state.pageIndex}"
+                    placeholder="슬라이드 소제목을 입력하세요"
+                    value="${escapeHtml(slideCaption)}"
+                  />`
+            }
+          </div>
+        `
+        : ""
+    }
+    ${
       isEmptySlide
         ? `
           <div class="empty-slide-caption-wrap">
             ${
               document.body.classList.contains("presenting")
-                ? `<div class="empty-slide-caption-present">${escapeHtml(slideCaption)}</div>`
+                ? `<div class="empty-slide-caption-present">${escapeHtml(trimmedCaption)}</div>`
                 : `<textarea
                     class="empty-slide-caption-input"
                     data-empty-slide-caption="${state.pageIndex}"
@@ -2565,7 +2587,7 @@ function renderThumbnails() {
                     class="slide-caption-input"
                     type="text"
                     data-slide-caption-input="${page.pageIndex}"
-                    placeholder="빈 슬라이드 소제목"
+                    placeholder="슬라이드 소제목"
                     value="${escapeHtml(page.caption)}"
                   />
                 </article>
@@ -2793,10 +2815,18 @@ els.guideListPanel?.addEventListener("click", (event) => {
 
 els.stage?.addEventListener("input", (event) => {
   const input = event.target instanceof HTMLTextAreaElement ? event.target.closest("[data-empty-slide-caption]") : null;
-  if (!(input instanceof HTMLTextAreaElement)) return;
-  const page = Number(input.dataset.emptySlideCaption);
+  if (input instanceof HTMLTextAreaElement) {
+    const page = Number(input.dataset.emptySlideCaption);
+    if (!Number.isFinite(page) || page <= 0) return;
+    updateSlideCaption(page, input.value);
+    return;
+  }
+
+  const inlineInput = event.target instanceof HTMLInputElement ? event.target.closest("[data-stage-slide-caption]") : null;
+  if (!(inlineInput instanceof HTMLInputElement)) return;
+  const page = Number(inlineInput.dataset.stageSlideCaption);
   if (!Number.isFinite(page) || page <= 0) return;
-  updateSlideCaption(page, input.value);
+  updateSlideCaption(page, inlineInput.value);
 });
 
 els.stage?.addEventListener("pointerdown", (event) => {
@@ -3938,6 +3968,7 @@ function createStandaloneHtml(data) {
     .photo { position:absolute; inset:0; width:100%; height:100%; object-fit:contain; transform-origin:center; }
     .fill .photo { object-fit:cover; }
     .label { position:absolute; z-index:2; left:.8rem; right:.8rem; bottom:.7rem; overflow:hidden; color:rgba(255,253,247,.78); white-space:nowrap; text-overflow:ellipsis; font-size:.82rem; }
+    .slide-caption { position:absolute; z-index:6; top:1rem; left:1rem; display:inline-flex; align-items:center; max-width:min(38rem,calc(100% - 3rem)); border:1px solid var(--line); border-radius:999px; padding:.62rem .95rem; color:rgba(255,253,247,.94); background:rgba(10,10,10,.52); font-size:clamp(.95rem,1.6vw,1.08rem); font-weight:800; letter-spacing:-.02em; backdrop-filter:blur(10px); }
     .empty-slide-caption { position:absolute; z-index:6; top:50%; left:50%; max-width:min(72%,30rem); transform:translate(-50%,-50%); border:1px solid var(--line); border-radius:1rem; padding:.9rem 1.2rem; color:rgba(255,253,247,.9); background:rgba(10,10,10,.56); font-size:clamp(1.1rem,2.2vw,1.6rem); font-weight:800; text-align:center; backdrop-filter:blur(10px); }
     dialog { width:min(54rem,calc(100vw - 2rem)); border:1px solid var(--line); border-radius:1.5rem; padding:0; color:var(--ink); background:linear-gradient(145deg,rgba(37,34,30,.98),rgba(8,8,7,.98)); box-shadow:0 28px 90px rgba(0,0,0,.5); }
     dialog::backdrop { background:rgba(0,0,0,.58); backdrop-filter:blur(10px); }
@@ -4070,7 +4101,7 @@ function createStandaloneHtml(data) {
     function crop(i){ const t=slotTransform(i), c=state.crop||{left:0,right:0,top:0,bottom:0}; return \`inset(\${(c.top||0)+t.cropTop}% \${(c.right||0)+t.cropRight}% \${(c.bottom||0)+t.cropBottom}% \${(c.left||0)+t.cropLeft}%)\`; }
     function photoTransform(i){ const t=slotTransform(i); return \`translate(\${t.x}%, \${t.y}%) scale(\${(state.zoom||1)*(t.scale/100)}) rotate(\${t.rotate}deg)\`; }
     function card(img, slotIndex){ if(!img) return \`<figure class="card empty"></figure>\`; return \`<figure class="card \${state.backgroundEnabled?"bg-on":""} \${state.fitMode==="fill"?"fill":""}"><img class="blur" src="\${img.url}" alt=""><img class="photo" src="\${img.url}" alt="\${esc(img.name)}" style="clip-path:\${crop(slotIndex)};filter:\${filter()};transform:\${photoTransform(slotIndex)}"><figcaption class="label">\${esc(img.name)}</figcaption></figure>\`; }
-    function renderSlide(){ const meta=currentPageMeta(); const layout=meta.layout; const cls=layout.mode==="custom"?"custom":layout.mode; const caption=(meta.caption||"").trim(); const emptySlide = meta.slots.length > 0 && meta.slots.every((id)=>!id); $("stage").className="stage"; $("stage").innerHTML=\`<div class="grid \${cls}" style="--grid-cols:\${layout.cols||2};--grid-rows:\${layout.rows||1}">\${meta.slots.map((id,offset)=>card(getImage(id),meta.start+offset)).join("")}</div>\${emptySlide && caption ? \`<div class="empty-slide-caption">\${esc(caption)}</div>\` : ""}\`; }
+    function renderSlide(){ const meta=currentPageMeta(); const layout=meta.layout; const cls=layout.mode==="custom"?"custom":layout.mode; const caption=(meta.caption||"").trim(); const emptySlide = meta.slots.length > 0 && meta.slots.every((id)=>!id); $("stage").className="stage"; $("stage").innerHTML=\`<div class="grid \${cls}" style="--grid-cols:\${layout.cols||2};--grid-rows:\${layout.rows||1}">\${meta.slots.map((id,offset)=>card(getImage(id),meta.start+offset)).join("")}</div>\${!emptySlide && caption ? \`<div class="slide-caption">\${esc(caption)}</div>\` : ""}\${emptySlide && caption ? \`<div class="empty-slide-caption">\${esc(caption)}</div>\` : ""}\`; }
     async function downloadImages(){ if(!state.images.length){ alert("먼저 사진을 넣어주세요."); return; } const ordered = (state.slideSlots?.length?state.slideSlots:state.images.map((image)=>image.id)).map((id,slotIndex)=>({ item:getImage(id), slotIndex })).filter(({item})=>Boolean(item)); for(const [index,{item,slotIndex}] of ordered.entries()){ const image = await imageFromUrl(item.url); const t = slotTransform(slotIndex); const c = state.crop||{left:0,right:0,top:0,bottom:0}; const cropLeftPx = Math.round(image.naturalWidth * (((c.left||0)+t.cropLeft) / 100)); const cropRightPx = Math.round(image.naturalWidth * (((c.right||0)+t.cropRight) / 100)); const cropTopPx = Math.round(image.naturalHeight * (((c.top||0)+t.cropTop) / 100)); const cropBottomPx = Math.round(image.naturalHeight * (((c.bottom||0)+t.cropBottom) / 100)); const sourceWidth = Math.max(1, image.naturalWidth - cropLeftPx - cropRightPx); const sourceHeight = Math.max(1, image.naturalHeight - cropTopPx - cropBottomPx); const canvas = document.createElement("canvas"); canvas.width = sourceWidth; canvas.height = sourceHeight; const ctx = canvas.getContext("2d"); ctx.filter = filter(); ctx.drawImage(image,cropLeftPx,cropTopPx,sourceWidth,sourceHeight,0,0,sourceWidth,sourceHeight); await new Promise((resolve)=>{ canvas.toBlob((blob)=>{ if(!blob){ resolve(); return; } const url = URL.createObjectURL(blob); const link = document.createElement("a"); link.href = url; link.download = \`\${String(index+1).padStart(3,"0")}-\${item.name.replace(/\\.[^.]+$/,"")}.png\`; document.body.append(link); link.click(); link.remove(); URL.revokeObjectURL(url); setTimeout(resolve,120); }, "image/png"); }); } }
     function isZoomInKey(e){ return e.key==="+" || e.key==="=" || e.code==="NumpadAdd"; }
     function isZoomOutKey(e){ return e.key==="-" || e.key==="_" || e.code==="NumpadSubtract"; }
