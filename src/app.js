@@ -212,6 +212,7 @@ const els = {
   photoListPanel: document.querySelector("#photoListPanel"),
   emptySlotToken: document.querySelector("#emptySlotToken"),
   addEmptySlotButton: document.querySelector("#addEmptySlotButton"),
+  resetAllButton: document.querySelector("#resetAllButton"),
   clearSlideSlotsButton: document.querySelector("#clearSlideSlotsButton"),
 };
 
@@ -1447,6 +1448,38 @@ function clearSlideSlots() {
   render();
 }
 
+function resetAllPhotosAndSlides() {
+  if (state.images.length === 0 && state.slideSlots.length === 0) return;
+  const shouldReset = window.confirm("업로드한 사진과 슬라이드를 모두 초기화할까요?");
+  if (!shouldReset) return;
+
+  cancelPreviewWarm();
+  previewWarmQueue = [];
+  previewCache.clear();
+  previewJobs.clear();
+  pendingPreviewRefreshIds.clear();
+  window.clearTimeout(previewRefreshTimer);
+  previewRefreshTimer = null;
+  photoListRenderToken += 1;
+  thumbnailRenderKey = "";
+  photoListRenderKey = "";
+
+  state.images = [];
+  state.slideSlots = [];
+  state.slotTransforms = {};
+  state.selectedSlotIndex = null;
+  state.pageIndex = 0;
+
+  markImagesDirty();
+  markSlideSlotsDirty();
+
+  if (els.imageInput) els.imageInput.value = "";
+  if (els.imageFileName) els.imageFileName.textContent = "선택된 사진 없음";
+
+  render();
+  queuePersistAssets();
+}
+
 function getGuidePercentFromPointer(axis, pointerEvent, rect = els.stage.getBoundingClientRect()) {
   const percent =
     axis === "x"
@@ -2045,6 +2078,7 @@ els.emptySlotToken.addEventListener("dragstart", (event) => {
   event.dataTransfer.setData("application/x-medical-presenter", "empty");
 });
 els.addEmptySlotButton.addEventListener("click", addEmptySlot);
+els.resetAllButton.addEventListener("click", resetAllPhotosAndSlides);
 els.clearSlideSlotsButton.addEventListener("click", clearSlideSlots);
 els.zoomOutButton.addEventListener("click", () => updateZoom(-0.1));
 els.zoomInButton.addEventListener("click", () => updateZoom(0.1));

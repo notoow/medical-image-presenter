@@ -898,6 +898,21 @@ body.is-file-dragging .drop-card {
   color: var(--muted);
 }
 
+.danger-button {
+  border-color: rgba(157, 44, 44, 0.16);
+  color: #fff7f5;
+  background: linear-gradient(180deg, #c24b43, #96362f);
+  box-shadow:
+    0 12px 26px rgba(132, 40, 35, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+
+.danger-button:hover,
+.danger-button:focus-visible {
+  border-color: rgba(157, 44, 44, 0.28);
+  background: linear-gradient(180deg, #cf574f, #a63c34);
+}
+
 .zoom-row output {
   min-width: 4rem;
   text-align: center;
