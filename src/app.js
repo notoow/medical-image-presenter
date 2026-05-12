@@ -150,6 +150,11 @@ const els = {
   verticalSplitButton: document.querySelector("#verticalSplitButton"),
   prevButton: document.querySelector("#prevButton"),
   nextButton: document.querySelector("#nextButton"),
+  slideQuickActions: document.querySelector("#slideQuickActions"),
+  insertSlideBeforeButton: document.querySelector("#insertSlideBeforeButton"),
+  insertSlideAfterButton: document.querySelector("#insertSlideAfterButton"),
+  duplicateSlideButton: document.querySelector("#duplicateSlideButton"),
+  deleteSlideButton: document.querySelector("#deleteSlideButton"),
   fitButton: document.querySelector("#fitButton"),
   fillButton: document.querySelector("#fillButton"),
   backgroundButton: document.querySelector("#backgroundButton"),
@@ -785,6 +790,12 @@ function syncDeckStatus() {
       : `${state.pageIndex + 1} / ${getTotalPages()}`;
 
   syncLayoutControls();
+  const hasCurrentSlide = state.pageIndex > 0 && getSlidePageCount() > 0;
+  els.slideQuickActions?.classList.toggle("is-hidden", !hasCurrentSlide);
+  if (els.insertSlideBeforeButton) els.insertSlideBeforeButton.disabled = !hasCurrentSlide;
+  if (els.insertSlideAfterButton) els.insertSlideAfterButton.disabled = !hasCurrentSlide;
+  if (els.duplicateSlideButton) els.duplicateSlideButton.disabled = !hasCurrentSlide;
+  if (els.deleteSlideButton) els.deleteSlideButton.disabled = !hasCurrentSlide;
   els.zoomOutput.textContent = `${Math.round(state.zoom * 100)}%`;
   els.backgroundButton.textContent = state.backgroundEnabled
     ? "배경 채우기 켜짐 Enter"
@@ -2734,6 +2745,22 @@ els.gridCols.addEventListener("input", () => setGrid(Number(els.gridRows.value),
 
 els.prevButton.addEventListener("click", () => goToPage(state.pageIndex - 1));
 els.nextButton.addEventListener("click", () => goToPage(state.pageIndex + 1));
+els.insertSlideBeforeButton?.addEventListener("click", () => {
+  if (state.pageIndex <= 0) return;
+  insertSlidePage(state.pageIndex, "before");
+});
+els.insertSlideAfterButton?.addEventListener("click", () => {
+  if (state.pageIndex <= 0) return;
+  insertSlidePage(state.pageIndex, "after");
+});
+els.duplicateSlideButton?.addEventListener("click", () => {
+  if (state.pageIndex <= 0) return;
+  duplicateSlidePage(state.pageIndex);
+});
+els.deleteSlideButton?.addEventListener("click", () => {
+  if (state.pageIndex <= 0) return;
+  deleteSlidePage(state.pageIndex);
+});
 els.fitButton.addEventListener("click", () => updateFitMode("fit"));
 els.fillButton.addEventListener("click", () => updateFitMode("fill"));
 els.backgroundButton.addEventListener("click", toggleBackground);

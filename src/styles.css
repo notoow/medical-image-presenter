@@ -835,6 +835,21 @@ body.is-file-dragging .drop-card {
   flex: 1;
 }
 
+.slide-quick-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex: 1.6;
+}
+
+.slide-quick-actions.is-hidden {
+  display: none;
+}
+
+.slide-quick-actions button {
+  flex: 1;
+}
+
 .grid-controls {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1039,6 +1054,11 @@ kbd {
   padding: 0.45rem;
   background: rgba(244, 239, 228, 0.7);
   box-shadow: 0 16px 50px rgba(18, 15, 10, 0.12);
+}
+
+.deck-toolbar button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 #pageStatus {
