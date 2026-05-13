@@ -1032,6 +1032,20 @@ body.is-file-dragging .drop-card {
   width: 100%;
 }
 
+.presentation-mode-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.55rem;
+}
+
+.wide-button.is-active-mode {
+  border-color: rgba(138, 75, 45, 0.34);
+  background: linear-gradient(180deg, rgba(195, 139, 95, 0.28), rgba(143, 92, 56, 0.22));
+  box-shadow:
+    0 12px 26px rgba(132, 40, 35, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.22);
+}
+
 .subtle {
   color: var(--muted);
 }

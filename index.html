@@ -184,7 +184,14 @@
             <button id="fillButton" type="button">채우기 Shift+F</button>
           </div>
           <button id="backgroundButton" class="wide-button" type="button">배경 채우기 Enter</button>
-          <button id="presentButton" class="wide-button" type="button">발표모드 F5</button>
+          <div class="presentation-mode-row">
+            <button id="presentButton" class="wide-button" type="button">일반 발표 F5</button>
+            <button id="autoplayButton" class="wide-button" type="button">자동재생 F6</button>
+          </div>
+          <label>
+            자동재생 간격 <output id="autoplaySecondsValue">3.0초</output>
+            <input id="autoplaySeconds" type="range" min="1" max="10" step="0.5" value="3" />
+          </label>
           <button id="shortcutHelpButton" class="wide-button" type="button">단축키 보기 Shift+?</button>
           <button id="exportButton" class="wide-button" type="button">HTML 내려받기</button>
           <button id="downloadImagesButton" class="wide-button" type="button">편집 사진 다운로드</button>

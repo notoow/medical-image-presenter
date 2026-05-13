@@ -19,6 +19,7 @@ const state = {
   sortMode: "name-asc",
   fitMode: "fit",
   backgroundEnabled: true,
+  autoplaySeconds: 3,
   zoom: 1,
   guidesEnabled: true,
   guides: [],
@@ -116,6 +117,8 @@ let editHistoryPast = [];
 let editHistoryFuture = [];
 let slideClipboard = null;
 let slotTransformClipboard = null;
+let presentationPlaybackMode = "manual";
+let autoplayTimer = null;
 const EDIT_HISTORY_LIMIT = 40;
 const previewCache = new Map();
 const previewJobs = new Map();
@@ -178,6 +181,9 @@ const els = {
   fillButton: document.querySelector("#fillButton"),
   backgroundButton: document.querySelector("#backgroundButton"),
   presentButton: document.querySelector("#presentButton"),
+  autoplayButton: document.querySelector("#autoplayButton"),
+  autoplaySeconds: document.querySelector("#autoplaySeconds"),
+  autoplaySecondsValue: document.querySelector("#autoplaySecondsValue"),
   shortcutHelpButton: document.querySelector("#shortcutHelpButton"),
   closeShortcutHelpButton: document.querySelector("#closeShortcutHelpButton"),
   shortcutDialog: document.querySelector("#shortcutDialog"),
@@ -306,6 +312,7 @@ function captureEditHistorySnapshot() {
     sortMode: state.sortMode,
     fitMode: state.fitMode,
     backgroundEnabled: state.backgroundEnabled,
+    autoplaySeconds: state.autoplaySeconds,
     zoom: state.zoom,
     guidesEnabled: state.guidesEnabled,
     guides: state.guides.map((guide) => ({ ...guide })),
@@ -348,6 +355,7 @@ function restoreEditHistorySnapshot(snapshot) {
     state.sortMode = snapshot.sortMode;
     state.fitMode = snapshot.fitMode;
     state.backgroundEnabled = snapshot.backgroundEnabled;
+    state.autoplaySeconds = normalizeAutoplaySeconds(snapshot.autoplaySeconds ?? state.autoplaySeconds);
     state.zoom = snapshot.zoom;
     state.guidesEnabled = snapshot.guidesEnabled;
     state.guides = snapshot.guides.map((guide) => ({ ...guide }));
@@ -362,6 +370,8 @@ function restoreEditHistorySnapshot(snapshot) {
     if (els.presenterName) els.presenterName.value = snapshot.cover.presenterName;
     if (els.sortMode) els.sortMode.value = snapshot.sortMode;
     if (els.showGuides) els.showGuides.checked = snapshot.guidesEnabled;
+    if (els.autoplaySeconds) els.autoplaySeconds.value = String(state.autoplaySeconds);
+    if (els.autoplaySecondsValue) els.autoplaySecondsValue.textContent = `${state.autoplaySeconds.toFixed(1)}초`;
     if (els.brightness) els.brightness.value = String(snapshot.filters.brightness);
     if (els.contrast) els.contrast.value = String(snapshot.filters.contrast);
     if (els.saturate) els.saturate.value = String(snapshot.filters.saturate);
@@ -1024,11 +1034,16 @@ function syncDeckStatus() {
     Number.isFinite(state.selectedSlotIndex) && state.selectedSlotIndex >= 0
       ? getImageById(state.slideSlots[state.selectedSlotIndex])
       : null;
+  const playbackText = isPresenting()
+    ? presentationPlaybackMode === "autoplay"
+      ? `자동재생 · ${normalizeAutoplaySeconds(state.autoplaySeconds).toFixed(1)}초`
+      : "일반 발표"
+    : "편집 중";
 
   if (state.pageIndex === 0) {
     els.pageStatus.innerHTML = `
       <span class="status-primary">Cover / ${totalPages}</span>
-      <span class="status-secondary">커버 편집</span>
+      <span class="status-secondary">${playbackText} · 커버 편집</span>
     `;
   } else {
     const pageCaption = (state.slideCaptions[state.pageIndex - 1] || "").trim();
@@ -1036,7 +1051,7 @@ function syncDeckStatus() {
     const imageText = selectedImage ? `선택 사진: ${escapeHtml(selectedImage.name)}` : "선택 사진 없음";
     els.pageStatus.innerHTML = `
       <span class="status-primary">${state.pageIndex + 1} / ${totalPages}</span>
-      <span class="status-secondary">${captionText} · ${imageText}</span>
+      <span class="status-secondary">${playbackText} · ${captionText} · ${imageText}</span>
     `;
   }
 
@@ -1059,6 +1074,15 @@ function syncDeckStatus() {
   els.backgroundButton.textContent = state.backgroundEnabled
     ? "배경 채우기 켜짐 Enter"
     : "배경 채우기 꺼짐 Enter";
+  if (els.presentButton) {
+    els.presentButton.classList.toggle("is-active-mode", isPresenting() && presentationPlaybackMode === "manual");
+  }
+  if (els.autoplayButton) {
+    els.autoplayButton.classList.toggle("is-active-mode", isPresenting() && presentationPlaybackMode === "autoplay");
+  }
+  if (els.autoplaySecondsValue) {
+    els.autoplaySecondsValue.textContent = `${normalizeAutoplaySeconds(state.autoplaySeconds).toFixed(1)}초`;
+  }
 }
 
 function revealPanelItem(element) {
@@ -1261,9 +1285,26 @@ function escapeHtml(value) {
     .replaceAll("'", "&#039;");
 }
 
+function normalizeAutoplaySeconds(value) {
+  return clamp(Number(Number(value).toFixed(1)) || 3, 1, 10);
+}
+
+function isPresenting() {
+  return document.body.classList.contains("presenting");
+}
+
+function stopAutoplayTimer() {
+  if (!autoplayTimer) return;
+  window.clearTimeout(autoplayTimer);
+  autoplayTimer = null;
+}
+
 function goToPage(nextPage) {
   state.pageIndex = clamp(nextPage, 0, Math.max(getTotalPages() - 1, 0));
   render({ refreshPhotoList: false });
+  if (presentationPlaybackMode === "autoplay" && isPresenting()) {
+    scheduleAutoplayAdvance();
+  }
 }
 
 function updateFitMode(mode) {
@@ -1672,14 +1713,88 @@ function toggleBackground() {
   showToast(state.backgroundEnabled ? "블러 배경 채우기를 켰습니다." : "블러 배경 채우기를 껐습니다.");
 }
 
-function togglePresentationMode() {
-  document.body.classList.toggle("presenting");
+function scheduleAutoplayAdvance() {
+  stopAutoplayTimer();
+  if (!isPresenting() || presentationPlaybackMode !== "autoplay") return;
 
-  if (document.body.classList.contains("presenting")) {
-    els.stage.requestFullscreen?.().catch(() => {});
-  } else if (document.fullscreenElement) {
+  autoplayTimer = window.setTimeout(() => {
+    autoplayTimer = null;
+    if (!isPresenting() || presentationPlaybackMode !== "autoplay") return;
+
+    const lastPageIndex = Math.max(getTotalPages() - 1, 0);
+    if (state.pageIndex >= lastPageIndex) {
+      stopPresentationMode({ silent: true });
+      showToast("자동재생이 끝나 발표 모드를 종료했습니다.");
+      return;
+    }
+
+    goToPage(state.pageIndex + 1);
+  }, normalizeAutoplaySeconds(state.autoplaySeconds) * 1000);
+}
+
+function startPresentationMode({ autoplay = false } = {}) {
+  presentationPlaybackMode = autoplay ? "autoplay" : "manual";
+  document.body.classList.add("presenting");
+  syncDeckStatus();
+
+  if (autoplay) {
+    scheduleAutoplayAdvance();
+  } else {
+    stopAutoplayTimer();
+  }
+
+  els.stage.requestFullscreen?.().catch(() => {});
+  showToast(
+    autoplay
+      ? `자동재생 발표를 ${normalizeAutoplaySeconds(state.autoplaySeconds).toFixed(1)}초 간격으로 시작했습니다.`
+      : "일반 발표를 시작했습니다.",
+  );
+}
+
+function stopPresentationMode({ silent = false } = {}) {
+  const wasPresenting = isPresenting();
+  stopAutoplayTimer();
+  presentationPlaybackMode = "manual";
+  document.body.classList.remove("presenting");
+  syncDeckStatus();
+
+  if (document.fullscreenElement) {
     document.exitFullscreen?.().catch(() => {});
   }
+
+  if (wasPresenting && !silent) {
+    showToast("발표 모드를 종료했습니다.");
+  }
+}
+
+function toggleAutoplayPresentation() {
+  if (!isPresenting()) return;
+
+  if (presentationPlaybackMode === "autoplay") {
+    presentationPlaybackMode = "manual";
+    stopAutoplayTimer();
+    syncDeckStatus();
+    showToast("자동재생을 멈추고 일반 발표로 전환했습니다.");
+    return;
+  }
+
+  presentationPlaybackMode = "autoplay";
+  syncDeckStatus();
+  scheduleAutoplayAdvance();
+  showToast(`자동재생 ${normalizeAutoplaySeconds(state.autoplaySeconds).toFixed(1)}초 간격으로 전환했습니다.`);
+}
+
+function updateAutoplaySeconds(value, { persist = true } = {}) {
+  state.autoplaySeconds = normalizeAutoplaySeconds(value);
+  if (els.autoplaySeconds) els.autoplaySeconds.value = String(state.autoplaySeconds);
+  if (els.autoplaySecondsValue) els.autoplaySecondsValue.textContent = `${state.autoplaySeconds.toFixed(1)}초`;
+  syncDeckStatus();
+
+  if (presentationPlaybackMode === "autoplay" && isPresenting()) {
+    scheduleAutoplayAdvance();
+  }
+
+  if (persist) queuePersistSettings();
 }
 
 function showShortcutHelp() {
@@ -1698,8 +1813,11 @@ function syncShortcutHelpContent() {
   if (!(shortcutGrid instanceof HTMLElement)) return;
 
   const nextHtml = `
-    <p><kbd>F5</kbd><span>처음부터 발표 모드</span></p>
-    <p><kbd>Shift</kbd> + <kbd>F5</kbd><span>현재 페이지부터 발표 모드</span></p>
+    <p><kbd>F5</kbd><span>처음부터 일반 발표</span></p>
+    <p><kbd>Shift</kbd> + <kbd>F5</kbd><span>현재 페이지부터 일반 발표</span></p>
+    <p><kbd>F6</kbd><span>처음부터 자동재생 발표</span></p>
+    <p><kbd>Shift</kbd> + <kbd>F6</kbd><span>현재 페이지부터 자동재생 발표</span></p>
+    <p><kbd>A</kbd><span>발표 중 일반 발표 / 자동재생 전환</span></p>
     <p><kbd>Esc</kbd><span>발표 모드 또는 도움말 닫기</span></p>
     <p><kbd>←</kbd> <kbd>↑</kbd> <kbd>P</kbd><span>이전 페이지</span></p>
     <p><kbd>→</kbd> <kbd>↓</kbd> <kbd>Space</kbd> <kbd>N</kbd><span>다음 페이지</span></p>
@@ -3936,7 +4054,15 @@ els.deleteSlideButton?.addEventListener("click", () => {
 els.fitButton.addEventListener("click", () => updateFitMode("fit"));
 els.fillButton.addEventListener("click", () => updateFitMode("fill"));
 els.backgroundButton.addEventListener("click", toggleBackground);
-els.presentButton.addEventListener("click", togglePresentationMode);
+els.presentButton.addEventListener("click", () => {
+  goToPage(0);
+  startPresentationMode({ autoplay: false });
+});
+els.autoplayButton?.addEventListener("click", () => {
+  goToPage(0);
+  startPresentationMode({ autoplay: true });
+});
+els.autoplaySeconds?.addEventListener("input", (event) => updateAutoplaySeconds(event.target.value));
 els.shortcutHelpButton.addEventListener("click", showShortcutHelp);
 els.closeShortcutHelpButton.addEventListener("click", hideShortcutHelp);
 els.shortcutDialog.addEventListener("click", closeDialogFromBackdrop);
@@ -4089,9 +4215,8 @@ document.addEventListener("keydown", (event) => {
       return;
     }
 
-    if (document.body.classList.contains("presenting")) {
-      document.body.classList.remove("presenting");
-      document.exitFullscreen?.().catch(() => {});
+    if (isPresenting()) {
+      stopPresentationMode();
     }
   }
 
@@ -4297,7 +4422,13 @@ document.addEventListener("keydown", (event) => {
   if (event.key === "F5") {
     event.preventDefault();
     if (!event.shiftKey) goToPage(0);
-    togglePresentationMode();
+    startPresentationMode({ autoplay: false });
+  }
+
+  if (event.key === "F6") {
+    event.preventDefault();
+    if (!event.shiftKey) goToPage(0);
+    startPresentationMode({ autoplay: true });
   }
 
   if (event.key === "Enter") {
@@ -4330,6 +4461,11 @@ document.addEventListener("keydown", (event) => {
     goToPage(0);
   }
 
+  if (event.key.toLowerCase() === "a" && isPresenting()) {
+    event.preventDefault();
+    toggleAutoplayPresentation();
+  }
+
 });
 
 document.addEventListener("wheel", handleStageWheelZoom, { passive: false });
@@ -4356,6 +4492,7 @@ function getPresentationData() {
     sortMode: state.sortMode,
     fitMode: state.fitMode,
     backgroundEnabled: state.backgroundEnabled,
+    autoplaySeconds: state.autoplaySeconds,
     backgroundFilters: state.backgroundFilters,
     crop: state.crop,
     zoom: state.zoom,
@@ -4389,6 +4526,7 @@ function getSettingsData() {
     sortMode: state.sortMode,
     fitMode: state.fitMode,
     backgroundEnabled: state.backgroundEnabled,
+    autoplaySeconds: state.autoplaySeconds,
     backgroundFilters: state.backgroundFilters,
     crop: state.crop,
     zoom: state.zoom,
@@ -4525,6 +4663,7 @@ function applyPersistedState() {
     state.sortMode = data.sortMode ?? state.sortMode;
     state.fitMode = data.fitMode ?? state.fitMode;
     state.backgroundEnabled = data.backgroundEnabled ?? state.backgroundEnabled;
+    state.autoplaySeconds = normalizeAutoplaySeconds(data.autoplaySeconds ?? state.autoplaySeconds);
     state.backgroundFilters = { ...state.backgroundFilters, ...(data.backgroundFilters ?? {}) };
     state.crop = { ...state.crop, ...(data.crop ?? {}) };
     state.zoom = data.zoom ?? state.zoom;
@@ -4540,6 +4679,8 @@ function applyPersistedState() {
     els.layoutMode.value = state.layoutMode;
     els.gridRows.value = state.gridRows;
     els.gridCols.value = state.gridCols;
+    if (els.autoplaySeconds) els.autoplaySeconds.value = String(state.autoplaySeconds);
+    if (els.autoplaySecondsValue) els.autoplaySecondsValue.textContent = `${state.autoplaySeconds.toFixed(1)}초`;
     els.showGuides.checked = state.guidesEnabled;
     els.cropLeft.value = state.crop.left;
     els.cropRight.value = state.crop.right;
@@ -4656,6 +4797,8 @@ function createStandaloneHtml(data) {
     .toggle-pill:has(input:checked)::before { right:.58rem; }
     .row { display:flex; gap:.5rem; align-items:center; }
     .row > * { flex:1; }
+    .presentation-mode-row { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:.5rem; }
+    .is-active-mode { border-color:rgba(217,160,111,.42); background:linear-gradient(180deg,rgba(217,160,111,.22),rgba(143,92,56,.18)); }
     .stack { display:grid; gap:.55rem; }
     .stage-wrap { display:grid; grid-template-rows:auto 1fr; gap:1rem; min-width:0; }
     .toolbar { display:flex; gap:.5rem; justify-content:flex-end; align-items:center; }
@@ -4717,15 +4860,20 @@ function createStandaloneHtml(data) {
       <label>페이지 구성 <select id="layout"><option value="single">낱장</option><option value="pair">2분할</option><option value="triple">3분할</option></select></label>
       <div class="row"><button id="fit">맞추기 F</button><button id="fill">채우기 Shift+F</button></div>
       <button id="bg">배경 채우기 Enter</button>
-      <button id="present">발표모드 F5</button>
+      <div class="presentation-mode-row">
+        <button id="present">일반 발표 F5</button>
+        <button id="autoplay">자동재생 F6</button>
+      </div>
+      <label>자동재생 간격 <output id="autoplayValue">3.0초</output><input id="autoplaySeconds" type="range" min="1" max="10" step="0.5" /></label>
       <button id="help">단축키 보기 Shift+?</button>
       <button id="downloadImages">편집 사진 다운로드</button>
       <label>밝기 <input id="brightness" type="range" min="50" max="150" /></label>
       <label>대비<input id="contrast" type="range" min="50" max="160" /></label>
       <label>채도 <input id="saturate" type="range" min="0" max="180" /></label>
       <label>색조 <input id="hue" type="range" min="-45" max="45" /></label>
-      <p>F5: 발표 시작 / Esc: 종료 / Shift+?: 도움말</p>
-      <p>화살표 N P Space: 페이지 이동 / = - 휠 키패드 +/-: 확대 축소 / 0: 초기화 / C: 커버</p>
+      <p>F5 / Shift+F5: 일반 발표 시작 / 현재 페이지부터 시작</p>
+      <p>F6 / Shift+F6: 자동재생 시작 / 현재 페이지부터 시작 / A: 발표 중 자동재생 전환</p>
+      <p>Esc / 화살표 / Space / = - 휠 / 0 / C: 종료 · 이동 · 확대 축소 · 초기화 · 커버</p>
       <button id="openPages" class="sidebar-footer-link" type="button" aria-label="GitHub Pages 열기">
         <span class="sidebar-footer-mark" aria-hidden="true">
           <svg viewBox="0 0 24 24" role="img">
@@ -4747,8 +4895,11 @@ function createStandaloneHtml(data) {
     <div class="help-card">
       <div class="help-head"><h2>PPT 친화 단축키</h2><button id="closeHelp">닫기 Esc</button></div>
       <div class="help-grid">
-        <p><kbd>F5</kbd><span>처음부터 발표</span></p>
-        <p><kbd>Shift</kbd> + <kbd>F5</kbd><span>현재 페이지부터 발표</span></p>
+        <p><kbd>F5</kbd><span>처음부터 일반 발표</span></p>
+        <p><kbd>Shift</kbd> + <kbd>F5</kbd><span>현재 페이지부터 일반 발표</span></p>
+        <p><kbd>F6</kbd><span>처음부터 자동재생 발표</span></p>
+        <p><kbd>Shift</kbd> + <kbd>F6</kbd><span>현재 페이지부터 자동재생 발표</span></p>
+        <p><kbd>A</kbd><span>발표 중 자동재생 토글</span></p>
         <p><kbd>Esc</kbd><span>발표/도움말 종료</span></p>
         <p><kbd>→</kbd> <kbd>↓</kbd> <kbd>N</kbd><span>다음 페이지</span></p>
         <p><kbd>←</kbd> <kbd>↑</kbd> <kbd>P</kbd><span>이전 페이지</span></p>
@@ -4763,7 +4914,9 @@ function createStandaloneHtml(data) {
   </dialog>
   <script>
     const data = ${serialized};
-    const state = { ...data, pageIndex: 0 };
+    const state = { ...data, pageIndex: 0, autoplaySeconds: Number(data.autoplaySeconds ?? 3) || 3 };
+    let playbackMode = "manual";
+    let autoplayTimer = null;
     const normalizeLayout = (layout) => {
       const mode = layout?.mode === "custom" ? "custom" : ({ single:1, pair:1, triple:1, quad:1 }[layout?.mode] ? layout.mode : "pair");
       const rows = mode === "custom" ? Math.min(Math.max(Number(layout?.rows)||1,1),4) : ({ single:1, pair:1, triple:1, quad:2 }[mode] || 1);
@@ -4798,10 +4951,11 @@ function createStandaloneHtml(data) {
     const totalPages = () => 1 + slidePages().length;
     const $ = (id) => document.getElementById(id);
     const esc = (v) => String(v).replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#039;");
+    const normalizeAutoplaySeconds = (value) => Math.min(Math.max(Number(Number(value).toFixed(1)) || 3, 1), 10);
     const filter = () => \`brightness(\${state.filters.brightness}%) contrast(\${state.filters.contrast}%) saturate(\${state.filters.saturate}%) hue-rotate(\${state.filters.hue}deg)\`;
     const imageFromUrl = (url) => new Promise((resolve,reject)=>{ const image = new Image(); image.onload=()=>resolve(image); image.onerror=reject; image.src=url; });
-    function syncInputs(){ const activeLayout = pageLayout(state.pageIndex); $("title").value=state.cover.title; $("subtitle").value=state.cover.subtitle; $("hospital").value=state.cover.hospitalName; $("presenter").value=state.cover.presenterName; $("layout").value=activeLayout.mode; $("showTitle").checked=state.coverVisibility.title; $("showSubtitle").checked=state.coverVisibility.subtitle; $("showHospital").checked=state.coverVisibility.hospitalName; $("showPresenter").checked=state.coverVisibility.presenterName; $("showDate").checked=state.coverVisibility.date; $("showLogo").checked=state.coverVisibility.logo; for (const key of ["brightness","contrast","saturate","hue"]) $(key).value=state.filters[key]; }
-    function render(){ state.pageIndex=Math.min(Math.max(state.pageIndex,0),totalPages()-1); if(state.pageIndex===0) renderCover(); else renderSlide(); $("status").textContent=state.pageIndex===0?\`Cover / \${totalPages()}\`:\`\${state.pageIndex+1} / \${totalPages()}\`; $("bg").textContent=state.backgroundEnabled?"배경 채우기 켜짐 Enter":"배경 채우기 꺼짐 Enter"; }
+    function syncInputs(){ const activeLayout = pageLayout(state.pageIndex); $("title").value=state.cover.title; $("subtitle").value=state.cover.subtitle; $("hospital").value=state.cover.hospitalName; $("presenter").value=state.cover.presenterName; $("layout").value=activeLayout.mode; $("showTitle").checked=state.coverVisibility.title; $("showSubtitle").checked=state.coverVisibility.subtitle; $("showHospital").checked=state.coverVisibility.hospitalName; $("showPresenter").checked=state.coverVisibility.presenterName; $("showDate").checked=state.coverVisibility.date; $("showLogo").checked=state.coverVisibility.logo; $("autoplaySeconds").value=String(normalizeAutoplaySeconds(state.autoplaySeconds)); $("autoplayValue").textContent=\`\${normalizeAutoplaySeconds(state.autoplaySeconds).toFixed(1)}초\`; for (const key of ["brightness","contrast","saturate","hue"]) $(key).value=state.filters[key]; }
+    function render(){ state.pageIndex=Math.min(Math.max(state.pageIndex,0),totalPages()-1); if(state.pageIndex===0) renderCover(); else renderSlide(); const modeText=document.body.classList.contains("presenting")?(playbackMode==="autoplay"?\`자동재생 \${normalizeAutoplaySeconds(state.autoplaySeconds).toFixed(1)}초\`:"일반 발표"):"편집 중"; $("status").textContent=state.pageIndex===0?\`Cover / \${totalPages()} · \${modeText}\`:\`\${state.pageIndex+1} / \${totalPages()} · \${modeText}\`; $("bg").textContent=state.backgroundEnabled?"배경 채우기 켜짐 Enter":"배경 채우기 꺼짐 Enter"; $("present").classList.toggle("is-active-mode",document.body.classList.contains("presenting")&&playbackMode==="manual"); $("autoplay").classList.toggle("is-active-mode",document.body.classList.contains("presenting")&&playbackMode==="autoplay"); $("autoplayValue").textContent=\`\${normalizeAutoplaySeconds(state.autoplaySeconds).toFixed(1)}초\`; }
     function renderCover(){ const meta=[state.coverVisibility.hospitalName?state.cover.hospitalName:"",state.coverVisibility.presenterName?state.cover.presenterName:"",state.coverVisibility.date?state.cover.date:""].filter(Boolean); $("stage").className="stage cover"; $("stage").innerHTML=\`<div class="cover-card">\${state.coverVisibility.logo&&state.cover.logoUrl?\`<img class="cover-logo" src="\${state.cover.logoUrl}" alt="logo">\`:""}\${state.coverVisibility.title?\`<h2 class="cover-title">\${esc(state.cover.title)}</h2>\`:""}\${state.coverVisibility.subtitle?\`<p class="cover-subtitle">\${esc(state.cover.subtitle)}</p>\`:""}\${meta.length?\`<p class="meta">\${meta.map(esc).join(" · ")}</p>\`:""}</div>\`; }
     function getImage(id){ return state.images.find((image)=>image.id===id); }
     function slotTransform(i){ return {scale:100,x:0,y:0,rotate:0,fitMode:"inherit",flipX:false,flipY:false,cropLeft:0,cropRight:0,cropTop:0,cropBottom:0,...(state.slotTransforms?.[i]||{})}; }
@@ -4812,22 +4966,26 @@ function createStandaloneHtml(data) {
     async function downloadImages(){ if(!state.images.length){ alert("먼저 사진을 넣어주세요."); return; } const ordered = (state.slideSlots?.length?state.slideSlots:state.images.map((image)=>image.id)).map((id,slotIndex)=>({ item:getImage(id), slotIndex })).filter(({item})=>Boolean(item)); for(const [index,{item,slotIndex}] of ordered.entries()){ const image = await imageFromUrl(item.url); const t = slotTransform(slotIndex); const c = state.crop||{left:0,right:0,top:0,bottom:0}; const cropLeftPx = Math.round(image.naturalWidth * (((c.left||0)+t.cropLeft) / 100)); const cropRightPx = Math.round(image.naturalWidth * (((c.right||0)+t.cropRight) / 100)); const cropTopPx = Math.round(image.naturalHeight * (((c.top||0)+t.cropTop) / 100)); const cropBottomPx = Math.round(image.naturalHeight * (((c.bottom||0)+t.cropBottom) / 100)); const sourceWidth = Math.max(1, image.naturalWidth - cropLeftPx - cropRightPx); const sourceHeight = Math.max(1, image.naturalHeight - cropTopPx - cropBottomPx); const canvas = document.createElement("canvas"); canvas.width = sourceWidth; canvas.height = sourceHeight; const ctx = canvas.getContext("2d"); ctx.filter = filter(); ctx.drawImage(image,cropLeftPx,cropTopPx,sourceWidth,sourceHeight,0,0,sourceWidth,sourceHeight); await new Promise((resolve)=>{ canvas.toBlob((blob)=>{ if(!blob){ resolve(); return; } const url = URL.createObjectURL(blob); const link = document.createElement("a"); link.href = url; link.download = \`\${String(index+1).padStart(3,"0")}-\${item.name.replace(/\\.[^.]+$/,"")}.png\`; document.body.append(link); link.click(); link.remove(); URL.revokeObjectURL(url); setTimeout(resolve,120); }, "image/png"); }); } }
     function isZoomInKey(e){ return e.key==="+" || e.key==="=" || e.code==="NumpadAdd"; }
     function isZoomOutKey(e){ return e.key==="-" || e.key==="_" || e.code==="NumpadSubtract"; }
-    function go(n){ state.pageIndex=n; render(); }
+    function stopAutoplay(){ if(!autoplayTimer) return; window.clearTimeout(autoplayTimer); autoplayTimer=null; }
+    function scheduleAutoplay(){ stopAutoplay(); if(playbackMode!=="autoplay"||!document.body.classList.contains("presenting")) return; autoplayTimer=window.setTimeout(()=>{ autoplayTimer=null; if(playbackMode!=="autoplay"||!document.body.classList.contains("presenting")) return; if(state.pageIndex>=totalPages()-1){ stopPresentation(true); return; } go(state.pageIndex+1); }, normalizeAutoplaySeconds(state.autoplaySeconds)*1000); }
+    function go(n){ state.pageIndex=n; render(); if(playbackMode==="autoplay"&&document.body.classList.contains("presenting")) scheduleAutoplay(); }
     function updateZoom(delta){ state.zoom=Math.min(Math.max(Number((state.zoom+delta).toFixed(2)),.5),2.5); render(); }
     function resetZoom(){ state.zoom=1; render(); }
-    function present(){ document.body.classList.toggle("presenting"); if(document.body.classList.contains("presenting")) $("stage").requestFullscreen?.().catch(()=>{}); else document.exitFullscreen?.().catch(()=>{}); }
+    function startPresentation(autoplay=false){ playbackMode=autoplay?"autoplay":"manual"; document.body.classList.add("presenting"); if(autoplay) scheduleAutoplay(); else stopAutoplay(); $("stage").requestFullscreen?.().catch(()=>{}); render(); }
+    function stopPresentation(silent=false){ stopAutoplay(); playbackMode="manual"; document.body.classList.remove("presenting"); if(document.fullscreenElement) document.exitFullscreen?.().catch(()=>{}); render(); }
+    function toggleAutoplay(){ if(!document.body.classList.contains("presenting")) return; if(playbackMode==="autoplay"){ playbackMode="manual"; stopAutoplay(); } else { playbackMode="autoplay"; scheduleAutoplay(); } render(); }
     function showHelp(){ if(!$("shortcutDialog").open) $("shortcutDialog").showModal(); }
     function hideHelp(){ if($("shortcutDialog").open) $("shortcutDialog").close(); }
     function backdropClose(e){ if(e.target!==$("shortcutDialog")) return; const r=$("shortcutDialog").getBoundingClientRect(); if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom) hideHelp(); }
     function onWheelZoom(e){ if(!(e.target instanceof Element) || !e.target.closest("#stage")) return; e.preventDefault(); if(e.deltaY<0) updateZoom(.1); else if(e.deltaY>0) updateZoom(-.1); }
-    $("prev").onclick=()=>go(state.pageIndex-1); $("next").onclick=()=>go(state.pageIndex+1); $("fit").onclick=()=>{state.fitMode="fit";render()}; $("fill").onclick=()=>{state.fitMode="fill";render()}; $("bg").onclick=()=>{state.backgroundEnabled=!state.backgroundEnabled;render()}; $("present").onclick=present;
+    $("prev").onclick=()=>go(state.pageIndex-1); $("next").onclick=()=>go(state.pageIndex+1); $("fit").onclick=()=>{state.fitMode="fit";render()}; $("fill").onclick=()=>{state.fitMode="fill";render()}; $("bg").onclick=()=>{state.backgroundEnabled=!state.backgroundEnabled;render()}; $("present").onclick=()=>{go(0);startPresentation(false)}; $("autoplay").onclick=()=>{go(0);startPresentation(true)}; $("autoplaySeconds").oninput=()=>{ state.autoplaySeconds=normalizeAutoplaySeconds($("autoplaySeconds").value); render(); if(playbackMode==="autoplay"&&document.body.classList.contains("presenting")) scheduleAutoplay(); };
     $("help").onclick=showHelp; $("closeHelp").onclick=hideHelp; $("downloadImages").onclick=downloadImages; $("openPages").onclick=()=>window.open("https://github.com/notoow/medical-image-presenter","_blank","noopener,noreferrer");
     $("shortcutDialog").onclick=backdropClose;
     document.addEventListener("wheel", onWheelZoom, { passive:false });
     for (const id of ["title","subtitle","hospital","presenter"]) $(id).oninput=()=>{ const map={title:"title",subtitle:"subtitle",hospital:"hospitalName",presenter:"presenterName"}; state.cover[map[id]]=$(id).value; render(); };
     for (const [id,key] of [["showTitle","title"],["showSubtitle","subtitle"],["showHospital","hospitalName"],["showPresenter","presenterName"],["showDate","date"],["showLogo","logo"]]) $(id).onchange=()=>{state.coverVisibility[key]=$(id).checked;render()};
     $("layout").onchange=()=>{ const mode=$("layout").value; if(state.pageIndex>0){ ensureLayouts(); state.slidePageLayouts[state.pageIndex-1]=normalizeLayout({ mode, rows: mode==="custom" ? (pageLayout().rows||1) : undefined, cols: mode==="custom" ? (pageLayout().cols||1) : undefined }); } else { const next=normalizeLayout({ mode, rows: state.gridRows, cols: state.gridCols }); state.layoutMode=next.mode; state.gridRows=next.rows; state.gridCols=next.cols; } render() }; for (const key of ["brightness","contrast","saturate","hue"]) $(key).oninput=()=>{state.filters[key]=Number($(key).value);render()};
-    document.onkeydown=(e)=>{ if(["INPUT","TEXTAREA","SELECT"].includes(e.target.tagName)) return; if(e.key==="?"||(e.shiftKey&&e.key==="/")){e.preventDefault();showHelp();return} if(e.key==="Escape"){ if($("shortcutDialog").open){hideHelp();return} if(document.body.classList.contains("presenting")){document.body.classList.remove("presenting");document.exitFullscreen?.().catch(()=>{})} } if(e.key==="F5"){e.preventDefault(); if(!e.shiftKey)go(0); present()} if(e.key==="ArrowLeft"||e.key==="ArrowUp"||e.key==="PageUp"||e.key.toLowerCase()==="p")go(state.pageIndex-1); if(e.key==="ArrowRight"||e.key==="ArrowDown"||e.key==="PageDown"||e.key===" "||e.key.toLowerCase()==="n")go(state.pageIndex+1); if(e.key==="Home")go(0); if(e.key==="End")go(totalPages()-1); if(e.key==="Enter"){state.backgroundEnabled=!state.backgroundEnabled;render()} if(e.key.toLowerCase()==="f"){state.fitMode=e.shiftKey?"fill":"fit";render()} if(isZoomInKey(e)) {e.preventDefault(); updateZoom(.1)} if(isZoomOutKey(e)) {e.preventDefault(); updateZoom(-.1)} if(e.key==="0"){resetZoom()} if(e.key.toLowerCase()==="c")go(0); };
+    document.onkeydown=(e)=>{ if(["INPUT","TEXTAREA","SELECT"].includes(e.target.tagName)) return; if(e.key==="?"||(e.shiftKey&&e.key==="/")){e.preventDefault();showHelp();return} if(e.key==="Escape"){ if($("shortcutDialog").open){hideHelp();return} if(document.body.classList.contains("presenting")) stopPresentation(); } if(e.key==="F5"){e.preventDefault(); if(!e.shiftKey)go(0); startPresentation(false)} if(e.key==="F6"){e.preventDefault(); if(!e.shiftKey)go(0); startPresentation(true)} if(e.key.toLowerCase()==="a"&&document.body.classList.contains("presenting")){e.preventDefault();toggleAutoplay()} if(e.key==="ArrowLeft"||e.key==="ArrowUp"||e.key==="PageUp"||e.key.toLowerCase()==="p")go(state.pageIndex-1); if(e.key==="ArrowRight"||e.key==="ArrowDown"||e.key==="PageDown"||e.key===" "||e.key.toLowerCase()==="n")go(state.pageIndex+1); if(e.key==="Home")go(0); if(e.key==="End")go(totalPages()-1); if(e.key==="Enter"){state.backgroundEnabled=!state.backgroundEnabled;render()} if(e.key.toLowerCase()==="f"){state.fitMode=e.shiftKey?"fill":"fit";render()} if(isZoomInKey(e)) {e.preventDefault(); updateZoom(.1)} if(isZoomOutKey(e)) {e.preventDefault(); updateZoom(-.1)} if(e.key==="0"){resetZoom()} if(e.key.toLowerCase()==="c")go(0); };
     syncInputs(); render();
   </script>
 </body>
