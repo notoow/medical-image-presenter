@@ -126,6 +126,7 @@ const imageNameCollator = new Intl.Collator("ko-KR", {
   numeric: true,
   sensitivity: "base",
 });
+const MOBILE_PANEL_MEDIA_QUERY = "(max-width: 680px)";
 
 const els = {
   stage: document.querySelector("#stage"),
@@ -1285,6 +1286,93 @@ function escapeHtml(value) {
     .replaceAll("'", "&#039;");
 }
 
+function getControlPanelSections() {
+  return Array.from(document.querySelectorAll(".control-panel .panel-section"));
+}
+
+function isMobilePanelMode() {
+  return window.matchMedia(MOBILE_PANEL_MEDIA_QUERY).matches;
+}
+
+function getDefaultMobileSectionCollapsed(index) {
+  return ![0, 1, 2, 6].includes(index);
+}
+
+function applyMobileSectionCollapsed(section, collapsed) {
+  if (!(section instanceof HTMLElement)) return;
+  section.classList.toggle("is-collapsed", collapsed);
+  const toggle = section.querySelector(".panel-section-toggle");
+  if (toggle instanceof HTMLButtonElement) {
+    toggle.setAttribute("aria-expanded", collapsed ? "false" : "true");
+    toggle.textContent = collapsed ? "펼치기" : "접기";
+  }
+}
+
+function ensureMobileSectionAccordion() {
+  const sections = getControlPanelSections();
+
+  sections.forEach((section, index) => {
+    const heading = section.querySelector("h2");
+    if (!(heading instanceof HTMLElement)) return;
+
+    section.dataset.mobileSectionIndex = String(index);
+    if (!heading.classList.contains("panel-section-heading")) {
+      const headingText = heading.textContent?.trim() || `섹션 ${index + 1}`;
+      heading.textContent = "";
+      heading.classList.add("panel-section-heading");
+
+      const title = document.createElement("span");
+      title.textContent = headingText;
+
+      const toggle = document.createElement("button");
+      toggle.type = "button";
+      toggle.className = "panel-section-toggle";
+      toggle.addEventListener("click", () => {
+        if (!isMobilePanelMode()) return;
+        applyMobileSectionCollapsed(section, !section.classList.contains("is-collapsed"));
+      });
+
+      heading.append(title, toggle);
+    }
+
+    if (!section.dataset.mobileAccordionReady) {
+      section.dataset.mobileAccordionReady = "true";
+      applyMobileSectionCollapsed(section, getDefaultMobileSectionCollapsed(index));
+    }
+  });
+
+  syncMobileSectionAccordion();
+}
+
+function syncMobileSectionAccordion() {
+  const isMobile = isMobilePanelMode();
+
+  getControlPanelSections().forEach((section, index) => {
+    section.classList.toggle("is-collapsible", isMobile);
+    if (!isMobile) {
+      section.classList.remove("is-collapsed");
+      const toggle = section.querySelector(".panel-section-toggle");
+      if (toggle instanceof HTMLButtonElement) {
+        toggle.hidden = true;
+        toggle.setAttribute("aria-expanded", "true");
+      }
+      return;
+    }
+
+    const toggle = section.querySelector(".panel-section-toggle");
+    if (toggle instanceof HTMLButtonElement) {
+      toggle.hidden = false;
+    }
+
+    if (!section.dataset.mobileStateInitialized) {
+      section.dataset.mobileStateInitialized = "true";
+      applyMobileSectionCollapsed(section, getDefaultMobileSectionCollapsed(index));
+    } else {
+      applyMobileSectionCollapsed(section, section.classList.contains("is-collapsed"));
+    }
+  });
+}
+
 function normalizeAutoplaySeconds(value) {
   return clamp(Number(Number(value).toFixed(1)) || 3, 1, 10);
 }
@@ -2143,6 +2231,13 @@ function syncSelectedSlotControls() {
   }
   if (els.applySlotTransformToAllButton) {
     els.applySlotTransformToAllButton.disabled = !hasSlot;
+  }
+
+  if (hasSelectedSlot && isMobilePanelMode()) {
+    const selectedPanelSection = getControlPanelSections()[6];
+    if (selectedPanelSection) {
+      applyMobileSectionCollapsed(selectedPanelSection, false);
+    }
   }
 
   if (!hasSlot) {
@@ -5014,5 +5109,7 @@ async function initializeDefaultLogo() {
   warmPreviewCache(state.images);
 }
 
+ensureMobileSectionAccordion();
+window.addEventListener("resize", syncMobileSectionAccordion);
 initializeDefaultLogo();
 
