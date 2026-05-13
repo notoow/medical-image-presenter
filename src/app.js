@@ -12,6 +12,8 @@ const state = {
   slotTransforms: {},
   selectedSlotIndex: null,
   logoUrl: "",
+  backgroundMusicUrl: "",
+  backgroundMusicName: "",
   pageIndex: 0,
   layoutMode: "pair",
   gridRows: 1,
@@ -259,6 +261,10 @@ const els = {
   resetFiltersButton: document.querySelector("#resetFiltersButton"),
   thumbnailRail: document.querySelector("#thumbnailRail"),
   photoListPanel: document.querySelector("#photoListPanel"),
+  backgroundMusicInput: document.querySelector("#backgroundMusicInput"),
+  backgroundMusicName: document.querySelector("#backgroundMusicName"),
+  clearBackgroundMusicButton: document.querySelector("#clearBackgroundMusicButton"),
+  backgroundMusicAudio: document.querySelector("#backgroundMusicAudio"),
   emptySlotToken: document.querySelector("#emptySlotToken"),
   addEmptySlotButton: document.querySelector("#addEmptySlotButton"),
   resetAllButton: document.querySelector("#resetAllButton"),
@@ -1647,6 +1653,50 @@ async function urlToDataUrl(url) {
   return fileToDataUrl(blob);
 }
 
+function syncBackgroundMusicUi() {
+  if (els.backgroundMusicName) {
+    els.backgroundMusicName.textContent = state.backgroundMusicName || "음악 없음";
+  }
+
+  if (els.clearBackgroundMusicButton) {
+    els.clearBackgroundMusicButton.disabled = !state.backgroundMusicUrl;
+  }
+
+  if (els.backgroundMusicAudio) {
+    if (state.backgroundMusicUrl) {
+      if (els.backgroundMusicAudio.src !== state.backgroundMusicUrl) {
+        els.backgroundMusicAudio.src = state.backgroundMusicUrl;
+      }
+      els.backgroundMusicAudio.hidden = false;
+    } else {
+      els.backgroundMusicAudio.pause();
+      els.backgroundMusicAudio.removeAttribute("src");
+      els.backgroundMusicAudio.load();
+      els.backgroundMusicAudio.hidden = true;
+    }
+  }
+}
+
+async function loadBackgroundMusic(file) {
+  if (!file) return;
+  const dataUrl = await fileToDataUrl(file);
+  state.backgroundMusicUrl = dataUrl;
+  state.backgroundMusicName = file.name || "배경 음악";
+  syncBackgroundMusicUi();
+  queuePersistAssets();
+  showToast("배경 음악을 불러왔습니다.");
+}
+
+function clearBackgroundMusic() {
+  if (!state.backgroundMusicUrl) return;
+  state.backgroundMusicUrl = "";
+  state.backgroundMusicName = "";
+  if (els.backgroundMusicInput) els.backgroundMusicInput.value = "";
+  syncBackgroundMusicUi();
+  queuePersistAssets();
+  showToast("배경 음악을 제거했습니다.");
+}
+
 function getImageFiles(fileList) {
   return Array.from(fileList ?? []).filter((file) => file.type.startsWith("image/"));
 }
@@ -1831,6 +1881,13 @@ function startPresentationMode({ autoplay = false } = {}) {
     stopAutoplayTimer();
   }
 
+  if (state.backgroundMusicUrl && els.backgroundMusicAudio) {
+    try {
+      els.backgroundMusicAudio.currentTime = 0;
+    } catch {}
+    els.backgroundMusicAudio.play().catch(() => {});
+  }
+
   els.stage.requestFullscreen?.().catch(() => {});
   showToast(
     autoplay
@@ -1845,6 +1902,13 @@ function stopPresentationMode({ silent = false } = {}) {
   presentationPlaybackMode = "manual";
   document.body.classList.remove("presenting");
   syncDeckStatus();
+
+  if (els.backgroundMusicAudio) {
+    els.backgroundMusicAudio.pause();
+    try {
+      els.backgroundMusicAudio.currentTime = 0;
+    } catch {}
+  }
 
   if (document.fullscreenElement) {
     document.exitFullscreen?.().catch(() => {});
@@ -4162,6 +4226,12 @@ els.openPagesButton.addEventListener("click", () => {
   window.open("https://github.com/notoow/medical-image-presenter", "_blank", "noopener,noreferrer");
 });
 els.downloadImagesButton.addEventListener("click", downloadAdjustedImages);
+els.backgroundMusicInput?.addEventListener("change", async (event) => {
+  const [file] = Array.from(event.target.files ?? []);
+  if (!file) return;
+  await loadBackgroundMusic(file);
+});
+els.clearBackgroundMusicButton?.addEventListener("click", clearBackgroundMusic);
 els.emptySlotToken.addEventListener("dragstart", (event) => {
   event.dataTransfer.setData("application/x-medical-presenter", "empty");
 });
@@ -4570,6 +4640,8 @@ function getPresentationData() {
       presenterName: els.presenterName.value,
       date: new Date().toLocaleDateString("ko-KR"),
       logoUrl: state.logoUrl,
+      backgroundMusicUrl: state.backgroundMusicUrl,
+      backgroundMusicName: state.backgroundMusicName,
     },
     coverVisibility: state.coverVisibility,
     images: state.images,
@@ -4634,6 +4706,8 @@ function getAssetsData() {
   return {
     images: state.images,
     logoUrl: state.logoUrl,
+    backgroundMusicUrl: state.backgroundMusicUrl,
+    backgroundMusicName: state.backgroundMusicName,
   };
 }
 
@@ -4732,6 +4806,8 @@ function applyPersistedState() {
     state.images = Array.isArray(assets.images) ? assets.images : state.images;
     markImagesDirty();
     state.logoUrl = assets.logoUrl || state.logoUrl;
+    state.backgroundMusicUrl = assets.backgroundMusicUrl || "";
+    state.backgroundMusicName = assets.backgroundMusicName || "";
 
     if (data.cover) {
       els.coverTitle.value = data.cover.title ?? els.coverTitle.value;
@@ -4739,6 +4815,8 @@ function applyPersistedState() {
       els.hospitalName.value = data.cover.hospitalName ?? els.hospitalName.value;
       els.presenterName.value = data.cover.presenterName ?? els.presenterName.value;
     }
+
+    syncBackgroundMusicUi();
 
     state.slideSlots = Array.isArray(data.slideSlots) ? data.slideSlots : state.slideSlots;
     markSlideSlotsDirty();
@@ -4956,6 +5034,8 @@ function createStandaloneHtml(data) {
         <button id="autoplay">자동재생 F6</button>
       </div>
       <label>자동재생 간격 <output id="autoplayValue">3.0초</output><input id="autoplaySeconds" type="range" min="1" max="10" step="0.5" /></label>
+      <label>배경 음악<input id="bgMusicName" type="text" readonly /></label>
+      <audio id="bgMusic" controls preload="metadata"></audio>
       <button id="help">단축키 보기 Shift+?</button>
       <button id="downloadImages">편집 사진 다운로드</button>
       <label>밝기 <input id="brightness" type="range" min="50" max="150" /></label>
@@ -5045,7 +5125,7 @@ function createStandaloneHtml(data) {
     const normalizeAutoplaySeconds = (value) => Math.min(Math.max(Number(Number(value).toFixed(1)) || 3, 1), 10);
     const filter = () => \`brightness(\${state.filters.brightness}%) contrast(\${state.filters.contrast}%) saturate(\${state.filters.saturate}%) hue-rotate(\${state.filters.hue}deg)\`;
     const imageFromUrl = (url) => new Promise((resolve,reject)=>{ const image = new Image(); image.onload=()=>resolve(image); image.onerror=reject; image.src=url; });
-    function syncInputs(){ const activeLayout = pageLayout(state.pageIndex); $("title").value=state.cover.title; $("subtitle").value=state.cover.subtitle; $("hospital").value=state.cover.hospitalName; $("presenter").value=state.cover.presenterName; $("layout").value=activeLayout.mode; $("showTitle").checked=state.coverVisibility.title; $("showSubtitle").checked=state.coverVisibility.subtitle; $("showHospital").checked=state.coverVisibility.hospitalName; $("showPresenter").checked=state.coverVisibility.presenterName; $("showDate").checked=state.coverVisibility.date; $("showLogo").checked=state.coverVisibility.logo; $("autoplaySeconds").value=String(normalizeAutoplaySeconds(state.autoplaySeconds)); $("autoplayValue").textContent=\`\${normalizeAutoplaySeconds(state.autoplaySeconds).toFixed(1)}초\`; for (const key of ["brightness","contrast","saturate","hue"]) $(key).value=state.filters[key]; }
+    function syncInputs(){ const activeLayout = pageLayout(state.pageIndex); $("title").value=state.cover.title; $("subtitle").value=state.cover.subtitle; $("hospital").value=state.cover.hospitalName; $("presenter").value=state.cover.presenterName; $("layout").value=activeLayout.mode; $("showTitle").checked=state.coverVisibility.title; $("showSubtitle").checked=state.coverVisibility.subtitle; $("showHospital").checked=state.coverVisibility.hospitalName; $("showPresenter").checked=state.coverVisibility.presenterName; $("showDate").checked=state.coverVisibility.date; $("showLogo").checked=state.coverVisibility.logo; $("autoplaySeconds").value=String(normalizeAutoplaySeconds(state.autoplaySeconds)); $("autoplayValue").textContent=\`\${normalizeAutoplaySeconds(state.autoplaySeconds).toFixed(1)}초\`; $("bgMusicName").value=state.cover.backgroundMusicName||"음악 없음"; if(state.cover.backgroundMusicUrl){ if($("bgMusic").src!==state.cover.backgroundMusicUrl) $("bgMusic").src=state.cover.backgroundMusicUrl; $("bgMusic").hidden=false; } else { $("bgMusic").hidden=true; } for (const key of ["brightness","contrast","saturate","hue"]) $(key).value=state.filters[key]; }
     function render(){ state.pageIndex=Math.min(Math.max(state.pageIndex,0),totalPages()-1); if(state.pageIndex===0) renderCover(); else renderSlide(); const modeText=document.body.classList.contains("presenting")?(playbackMode==="autoplay"?\`자동재생 \${normalizeAutoplaySeconds(state.autoplaySeconds).toFixed(1)}초\`:"일반 발표"):"편집 중"; $("status").textContent=state.pageIndex===0?\`Cover / \${totalPages()} · \${modeText}\`:\`\${state.pageIndex+1} / \${totalPages()} · \${modeText}\`; $("bg").textContent=state.backgroundEnabled?"배경 채우기 켜짐 Enter":"배경 채우기 꺼짐 Enter"; $("present").classList.toggle("is-active-mode",document.body.classList.contains("presenting")&&playbackMode==="manual"); $("autoplay").classList.toggle("is-active-mode",document.body.classList.contains("presenting")&&playbackMode==="autoplay"); $("autoplayValue").textContent=\`\${normalizeAutoplaySeconds(state.autoplaySeconds).toFixed(1)}초\`; }
     function renderCover(){ const meta=[state.coverVisibility.hospitalName?state.cover.hospitalName:"",state.coverVisibility.presenterName?state.cover.presenterName:"",state.coverVisibility.date?state.cover.date:""].filter(Boolean); $("stage").className="stage cover"; $("stage").innerHTML=\`<div class="cover-card">\${state.coverVisibility.logo&&state.cover.logoUrl?\`<img class="cover-logo" src="\${state.cover.logoUrl}" alt="logo">\`:""}\${state.coverVisibility.title?\`<h2 class="cover-title">\${esc(state.cover.title)}</h2>\`:""}\${state.coverVisibility.subtitle?\`<p class="cover-subtitle">\${esc(state.cover.subtitle)}</p>\`:""}\${meta.length?\`<p class="meta">\${meta.map(esc).join(" · ")}</p>\`:""}</div>\`; }
     function getImage(id){ return state.images.find((image)=>image.id===id); }
@@ -5062,8 +5142,8 @@ function createStandaloneHtml(data) {
     function go(n){ state.pageIndex=n; render(); if(playbackMode==="autoplay"&&document.body.classList.contains("presenting")) scheduleAutoplay(); }
     function updateZoom(delta){ state.zoom=Math.min(Math.max(Number((state.zoom+delta).toFixed(2)),.5),2.5); render(); }
     function resetZoom(){ state.zoom=1; render(); }
-    function startPresentation(autoplay=false){ playbackMode=autoplay?"autoplay":"manual"; document.body.classList.add("presenting"); if(autoplay) scheduleAutoplay(); else stopAutoplay(); $("stage").requestFullscreen?.().catch(()=>{}); render(); }
-    function stopPresentation(silent=false){ stopAutoplay(); playbackMode="manual"; document.body.classList.remove("presenting"); if(document.fullscreenElement) document.exitFullscreen?.().catch(()=>{}); render(); }
+    function startPresentation(autoplay=false){ playbackMode=autoplay?"autoplay":"manual"; document.body.classList.add("presenting"); if(autoplay) scheduleAutoplay(); else stopAutoplay(); if(state.cover.backgroundMusicUrl){ try{$("bgMusic").currentTime=0}catch{} $("bgMusic").play().catch(()=>{}); } $("stage").requestFullscreen?.().catch(()=>{}); render(); }
+    function stopPresentation(silent=false){ stopAutoplay(); playbackMode="manual"; document.body.classList.remove("presenting"); $("bgMusic").pause(); try{$("bgMusic").currentTime=0}catch{} if(document.fullscreenElement) document.exitFullscreen?.().catch(()=>{}); render(); }
     function toggleAutoplay(){ if(!document.body.classList.contains("presenting")) return; if(playbackMode==="autoplay"){ playbackMode="manual"; stopAutoplay(); } else { playbackMode="autoplay"; scheduleAutoplay(); } render(); }
     function showHelp(){ if(!$("shortcutDialog").open) $("shortcutDialog").showModal(); }
     function hideHelp(){ if($("shortcutDialog").open) $("shortcutDialog").close(); }
@@ -5085,6 +5165,7 @@ function createStandaloneHtml(data) {
 
 async function initializeDefaultLogo() {
   applyPersistedState();
+  syncBackgroundMusicUi();
 
   if (state.logoUrl) {
     isRestoring = false;

@@ -430,6 +430,24 @@
         </p>
         <button id="emptySlotToken" class="empty-token" type="button" draggable="true">빈칸</button>
         <div id="photoListPanel" class="photo-list-panel"></div>
+        <section class="music-panel" aria-label="배경 음악">
+          <div class="music-panel-head">
+            <div>
+              <p class="eyebrow">Background music</p>
+              <h3>배경 음악</h3>
+            </div>
+            <button id="clearBackgroundMusicButton" class="subtle" type="button">제거</button>
+          </div>
+          <label class="custom-file">
+            <span>음악 파일</span>
+            <input id="backgroundMusicInput" type="file" accept="audio/*" />
+            <span class="file-control" aria-hidden="true">
+              <span class="file-button">음악 선택</span>
+              <span id="backgroundMusicName" class="file-name">음악 없음</span>
+            </span>
+          </label>
+          <audio id="backgroundMusicAudio" class="music-audio" controls preload="metadata"></audio>
+        </section>
       </aside>
     </main>
 
