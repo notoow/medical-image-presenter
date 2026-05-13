@@ -563,6 +563,45 @@ body.is-file-dragging .drop-card {
   font-weight: 800;
 }
 
+.photo-filter-panel {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.photo-search-field {
+  display: grid;
+  gap: 0.32rem;
+}
+
+.photo-search-field span {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.photo-search-field input {
+  min-width: 0;
+}
+
+.photo-filter-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.45rem;
+}
+
+.photo-filter-row button {
+  min-width: 0;
+  padding-inline: 0.55rem;
+  background: rgba(255, 253, 247, 0.78);
+}
+
+.photo-filter-row button.is-active {
+  background: linear-gradient(135deg, rgba(138, 75, 45, 0.96), rgba(111, 57, 31, 0.94));
+  color: #fff9f2;
+  border-color: rgba(91, 47, 27, 0.62);
+  box-shadow: 0 10px 22px rgba(91, 47, 27, 0.18);
+}
+
 .photo-list-panel {
   display: grid;
   gap: 0.55rem;

@@ -19,6 +19,8 @@ const state = {
   gridRows: 1,
   gridCols: 2,
   sortMode: "name-asc",
+  photoSearchQuery: "",
+  photoFilterMode: "all",
   fitMode: "fit",
   backgroundEnabled: true,
   autoplaySeconds: 3,
@@ -261,6 +263,10 @@ const els = {
   resetFiltersButton: document.querySelector("#resetFiltersButton"),
   thumbnailRail: document.querySelector("#thumbnailRail"),
   photoListPanel: document.querySelector("#photoListPanel"),
+  photoSearchInput: document.querySelector("#photoSearchInput"),
+  photoFilterAllButton: document.querySelector("#photoFilterAllButton"),
+  photoFilterPlacedButton: document.querySelector("#photoFilterPlacedButton"),
+  photoFilterUnplacedButton: document.querySelector("#photoFilterUnplacedButton"),
   backgroundMusicInput: document.querySelector("#backgroundMusicInput"),
   backgroundMusicName: document.querySelector("#backgroundMusicName"),
   clearBackgroundMusicButton: document.querySelector("#clearBackgroundMusicButton"),
@@ -317,6 +323,8 @@ function captureEditHistorySnapshot() {
     gridRows: state.gridRows,
     gridCols: state.gridCols,
     sortMode: state.sortMode,
+    photoSearchQuery: state.photoSearchQuery,
+    photoFilterMode: state.photoFilterMode,
     fitMode: state.fitMode,
     backgroundEnabled: state.backgroundEnabled,
     autoplaySeconds: state.autoplaySeconds,
@@ -1151,6 +1159,49 @@ function syncPhotoListSelection() {
   nextCard.classList.add("is-active");
   activePhotoListCard = nextCard;
   revealPanelItem(nextCard);
+}
+
+function updatePhotoFilterUi() {
+  const buttons = [
+    [els.photoFilterAllButton, "all"],
+    [els.photoFilterPlacedButton, "placed"],
+    [els.photoFilterUnplacedButton, "unplaced"],
+  ];
+  buttons.forEach(([button, mode]) => {
+    if (!button) return;
+    button.classList.toggle("is-active", state.photoFilterMode === mode);
+  });
+  if (els.photoSearchInput && els.photoSearchInput.value !== state.photoSearchQuery) {
+    els.photoSearchInput.value = state.photoSearchQuery;
+  }
+}
+
+function setPhotoSearchQuery(nextQuery) {
+  const normalized = typeof nextQuery === "string" ? nextQuery : "";
+  if (state.photoSearchQuery === normalized) return;
+  state.photoSearchQuery = normalized;
+  render({ refreshGuidePanel: false, refreshThumbnails: false });
+}
+
+function setPhotoFilterMode(nextMode) {
+  const normalized =
+    nextMode === "placed" || nextMode === "unplaced"
+      ? nextMode
+      : "all";
+  if (state.photoFilterMode === normalized) return;
+  state.photoFilterMode = normalized;
+  render({ refreshGuidePanel: false, refreshThumbnails: false });
+}
+
+function getFilteredImages(usedCounts = getUsedCounts()) {
+  const query = state.photoSearchQuery.trim().toLocaleLowerCase("ko-KR");
+  return state.images.filter((image) => {
+    const usedCount = usedCounts.get(image.id) ?? 0;
+    if (state.photoFilterMode === "placed" && usedCount === 0) return false;
+    if (state.photoFilterMode === "unplaced" && usedCount > 0) return false;
+    if (!query) return true;
+    return image.name.toLocaleLowerCase("ko-KR").includes(query);
+  });
 }
 
 function getVisibleSlideSlotIndices() {
@@ -2923,6 +2974,8 @@ function resetAllPhotosAndSlides() {
   state.slotTransforms = {};
   state.selectedSlotIndex = null;
   state.pageIndex = 0;
+  state.photoSearchQuery = "";
+  state.photoFilterMode = "all";
 
   markImagesDirty();
   markSlideSlotsDirty();
@@ -3482,6 +3535,7 @@ function renderThumbnails() {
 
 function renderPhotoList() {
   if (!els.photoListPanel) return;
+  updatePhotoFilterUi();
 
   if (state.images.length === 0) {
     photoListRenderKey = "empty";
@@ -3494,12 +3548,15 @@ function renderPhotoList() {
 
   const usedCounts = getUsedCounts();
   const placements = getImagePlacements();
+  const filteredImages = getFilteredImages(usedCounts);
   const nextKey = [
     imagesVersion,
     slideSlotsVersion,
     layoutVersion,
     state.images.length,
     state.slideSlots.length,
+    state.photoSearchQuery,
+    state.photoFilterMode,
   ].join(":");
 
   if (photoListRenderKey === nextKey) return;
@@ -3509,12 +3566,23 @@ function renderPhotoList() {
   const renderToken = photoListRenderToken;
   unregisterRenderableImageNodesInRoot(els.photoListPanel);
   els.photoListPanel.innerHTML = "";
+  activePhotoListCard = null;
   const selectedSlotImageId =
     Number.isFinite(state.selectedSlotIndex) && state.selectedSlotIndex >= 0
       ? state.slideSlots[state.selectedSlotIndex]
       : null;
 
+  if (filteredImages.length === 0) {
+    const emptyLabel =
+      state.photoSearchQuery.trim() || state.photoFilterMode !== "all"
+        ? "조건에 맞는 사진이 없습니다."
+        : "사진을 업로드하면 전체 목록이 표시됩니다.";
+    els.photoListPanel.innerHTML = `<p class="photo-list-empty">${emptyLabel}</p>`;
+    return;
+  }
+
   const cardHtml = (image, index) => {
+    const originalIndex = state.images.indexOf(image);
     const usedCount = usedCounts.get(image.id) ?? 0;
     const placementList = placements.get(image.id) ?? [];
     const firstPlacement = placementList[0];
@@ -3529,12 +3597,12 @@ function renderPhotoList() {
         class="photo-list-card ${usedCount > 0 ? "is-in-slide" : "is-unused"} ${selectedSlotImageId === image.id ? "is-active" : ""}"
         draggable="true"
         data-image-id="${image.id}"
-        data-index="${index}"
+        data-index="${originalIndex}"
         title="${escapeHtml(image.name)}"
       >
         <img src="${getRenderableImageUrl(image)}" data-renderable-image-id="${image.id}" alt="" loading="lazy" decoding="async" />
         <div>
-          <strong>${index + 1}</strong>
+          <strong>${originalIndex + 1}</strong>
           <span>${escapeHtml(image.name)}</span>
           <em>${usedCount > 0 ? `슬라이드 포함 ${usedCount} · ${placementText}` : "미배치"}</em>
         </div>
@@ -3544,13 +3612,13 @@ function renderPhotoList() {
     `;
   };
 
-  const batchSize = state.images.length > 48 ? 24 : state.images.length;
+  const batchSize = filteredImages.length > 48 ? 24 : filteredImages.length;
   let startIndex = 0;
   const appendBatch = () => {
     if (renderToken !== photoListRenderToken) return;
 
-    const endIndex = Math.min(startIndex + batchSize, state.images.length);
-    const batchHtml = state.images
+    const endIndex = Math.min(startIndex + batchSize, filteredImages.length);
+    const batchHtml = filteredImages
       .slice(startIndex, endIndex)
       .map((image, offset) => cardHtml(image, startIndex + offset))
       .join("");
@@ -3560,7 +3628,7 @@ function renderPhotoList() {
     els.photoListPanel.append(fragment);
     startIndex = endIndex;
 
-    if (startIndex < state.images.length) {
+    if (startIndex < filteredImages.length) {
       window.requestAnimationFrame(appendBatch);
       return;
     }
@@ -4193,6 +4261,14 @@ els.sortMode.addEventListener("change", () => {
   imageSortDirty = true;
   render();
 });
+
+els.photoSearchInput?.addEventListener("input", () => {
+  setPhotoSearchQuery(els.photoSearchInput.value);
+});
+
+els.photoFilterAllButton?.addEventListener("click", () => setPhotoFilterMode("all"));
+els.photoFilterPlacedButton?.addEventListener("click", () => setPhotoFilterMode("placed"));
+els.photoFilterUnplacedButton?.addEventListener("click", () => setPhotoFilterMode("unplaced"));
 
 els.layoutMode.addEventListener("change", () => {
   if (els.layoutMode.value !== "custom") {
@@ -4869,6 +4945,9 @@ function applyPersistedState() {
     markLayoutDirty();
     normalizeSlidePageLayouts();
     state.sortMode = data.sortMode ?? state.sortMode;
+    state.photoSearchQuery = typeof data.photoSearchQuery === "string" ? data.photoSearchQuery : "";
+    state.photoFilterMode =
+      data.photoFilterMode === "placed" || data.photoFilterMode === "unplaced" ? data.photoFilterMode : "all";
     state.fitMode = data.fitMode ?? state.fitMode;
     state.backgroundEnabled = data.backgroundEnabled ?? state.backgroundEnabled;
     state.autoplaySeconds = normalizeAutoplaySeconds(data.autoplaySeconds ?? state.autoplaySeconds);
@@ -4884,6 +4963,7 @@ function applyPersistedState() {
     applyImageOrder(data.imageOrder);
 
     els.sortMode.value = state.sortMode;
+    updatePhotoFilterUi();
     els.layoutMode.value = state.layoutMode;
     els.gridRows.value = state.gridRows;
     els.gridCols.value = state.gridCols;
