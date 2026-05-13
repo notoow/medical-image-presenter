@@ -126,6 +126,7 @@ input[type="range"] {
 .shell {
   display: grid;
   grid-template-columns: minmax(19rem, 22rem) minmax(0, 1fr) minmax(16rem, 20rem);
+  grid-template-areas: "controls stage photos";
   gap: 1.25rem;
   min-height: 100vh;
   padding: 1.25rem;
@@ -460,6 +461,18 @@ body.is-file-dragging .drop-card {
   background: rgba(244, 239, 228, 0.86);
   box-shadow: var(--shadow);
   backdrop-filter: blur(18px);
+}
+
+.control-panel {
+  grid-area: controls;
+}
+
+.stage-wrap {
+  grid-area: stage;
+}
+
+.photo-panel {
+  grid-area: photos;
 }
 
 .control-panel,
@@ -2043,10 +2056,63 @@ body.presenting .stage {
 @media (max-width: 980px) {
   .shell {
     grid-template-columns: 1fr;
+    grid-template-areas:
+      "stage"
+      "controls"
+      "photos";
+    gap: 1rem;
+    padding: 1rem;
   }
 
   .control-panel {
     max-height: none;
+  }
+
+  .photo-panel {
+    max-height: none;
+  }
+
+  .stage-wrap {
+    order: -1;
+  }
+
+  .deck-toolbar {
+    flex-wrap: wrap;
+    justify-content: center;
+    border-radius: 1.25rem;
+    padding: 0.55rem;
+  }
+
+  #pageStatus {
+    order: -1;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .slide-quick-actions {
+    min-width: 0;
+    flex: 1 1 100%;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .slide-quick-actions button {
+    flex: 0 1 calc(20% - 0.35rem);
+    min-width: 2.55rem;
+  }
+
+  .deck-toolbar .icon-toolbar-button {
+    width: 2.75rem;
+    height: 2.75rem;
+  }
+
+  .thumbnail-rail {
+    gap: 0.6rem;
+    padding: 0.65rem;
+  }
+
+  .slide-thumb {
+    flex-basis: 7.6rem;
   }
 
   .photo-list-card {
@@ -2064,16 +2130,119 @@ body.presenting .stage {
 }
 
 @media (max-width: 680px) {
+  .shell {
+    padding: 0.7rem;
+    gap: 0.7rem;
+  }
+
+  .control-panel,
+  .photo-panel {
+    border-radius: 1.2rem;
+    padding: 0.82rem;
+  }
+
+  .brand-block h1 {
+    font-size: 2.2rem;
+  }
+
+  .panel-section {
+    gap: 0.62rem;
+    padding: 0.8rem;
+  }
+
+  .panel-section h2 {
+    font-size: 1rem;
+  }
+
+  .presentation-mode-row {
+    grid-template-columns: 1fr;
+  }
+
+  .photo-panel-head {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+  }
+
+  .deck-toolbar {
+    gap: 0.4rem;
+    border-radius: 1rem;
+    padding: 0.48rem;
+  }
+
+  .deck-toolbar .icon-toolbar-button {
+    width: 2.5rem;
+    height: 2.5rem;
+  }
+
+  .slide-quick-actions {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 0.4rem;
+  }
+
+  .slide-quick-actions button {
+    min-width: 0;
+    width: 100%;
+  }
+
+  #pageStatus .status-secondary {
+    max-width: 100%;
+    white-space: normal;
+    line-height: 1.35;
+  }
+
+  .thumbnail-rail {
+    gap: 0.5rem;
+    padding: 0.55rem;
+  }
+
+  .slide-thumb {
+    flex-basis: 6.5rem;
+    padding: 0.35rem;
+  }
+
+  .photo-list-card {
+    grid-template-columns: 3.6rem minmax(0, 1fr);
+    padding: 0.38rem;
+  }
+
   .layout-pair,
   .layout-triple {
     grid-template-columns: 1fr;
   }
 
   .stage {
+    width: 100%;
     aspect-ratio: 9 / 14;
+    border-radius: 1rem;
   }
 
   .shortcut-grid {
     grid-template-columns: 1fr;
+  }
+
+  .sidebar-footer-link {
+    position: static;
+    margin-top: 0.4rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .slide-quick-actions {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .zoom-row {
+    grid-template-columns: auto 1fr auto;
+  }
+
+  .photo-panel-head h2 {
+    font-size: 1.05rem;
+  }
+
+  .empty-token,
+  .photo-panel-head button {
+    padding-inline: 0.62rem;
   }
 }
