@@ -533,7 +533,8 @@ body.is-file-dragging .drop-card {
 
 .photo-panel {
   display: grid;
-  align-content: start;
+  grid-template-rows: auto auto auto auto auto minmax(0, 1fr) auto;
+  align-content: stretch;
   gap: 0.85rem;
 }
 
@@ -565,6 +566,9 @@ body.is-file-dragging .drop-card {
 .photo-list-panel {
   display: grid;
   gap: 0.55rem;
+  min-height: 0;
+  overflow: auto;
+  padding-right: 0.15rem;
   content-visibility: auto;
   contain-intrinsic-size: 960px;
 }
@@ -572,11 +576,16 @@ body.is-file-dragging .drop-card {
 .music-panel {
   display: grid;
   gap: 0.65rem;
-  margin-top: 0.3rem;
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  margin-top: 0;
   border: 1px solid rgba(138, 75, 45, 0.16);
   border-radius: 1rem;
   padding: 0.85rem;
-  background: rgba(255, 253, 247, 0.58);
+  background:
+    linear-gradient(180deg, rgba(255, 253, 247, 0.88), rgba(255, 253, 247, 0.97));
+  box-shadow: 0 -12px 28px rgba(18, 15, 10, 0.08);
 }
 
 .music-panel-head {
