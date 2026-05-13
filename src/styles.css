@@ -1003,6 +1003,7 @@ body.is-file-dragging .drop-card {
   align-items: center;
   gap: 0.35rem;
   flex: 1.6;
+  flex-wrap: wrap;
 }
 
 .slide-quick-actions.is-hidden {
@@ -1015,8 +1016,8 @@ body.is-file-dragging .drop-card {
 
 .deck-toolbar .icon-toolbar-button {
   flex: 0 0 auto;
-  width: 2.95rem;
-  height: 2.95rem;
+  width: 3.2rem;
+  height: 3.2rem;
   padding: 0;
   display: inline-grid;
   place-items: center;
@@ -1024,9 +1025,25 @@ body.is-file-dragging .drop-card {
 }
 
 .deck-toolbar .icon-toolbar-button svg {
-  width: 1.18rem;
-  height: 1.18rem;
+  width: 1.34rem;
+  height: 1.34rem;
   fill: currentColor;
+}
+
+.deck-toolbar .toolbar-text-button {
+  flex: 0 0 auto;
+  min-width: 4.9rem;
+  height: 3.2rem;
+  padding: 0 1rem;
+  border-radius: 999px;
+  font-size: 0.96rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  background: rgba(255, 253, 247, 0.9);
+}
+
+.slide-quick-actions .toolbar-text-button {
+  flex: 0 0 auto;
 }
 
 .grid-controls {
@@ -2233,6 +2250,13 @@ body.presenting .stage {
   .deck-toolbar .icon-toolbar-button {
     width: 2.5rem;
     height: 2.5rem;
+  }
+
+  .deck-toolbar .toolbar-text-button {
+    min-width: 4.2rem;
+    height: 2.5rem;
+    padding-inline: 0.82rem;
+    font-size: 0.88rem;
   }
 
   .slide-quick-actions {
