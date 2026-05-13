@@ -272,6 +272,7 @@ const els = {
   photoFilterSummary: document.querySelector("#photoFilterSummary"),
   photoSearchInput: document.querySelector("#photoSearchInput"),
   photoSearchClearButton: document.querySelector("#photoSearchClearButton"),
+  photoSearchStatus: document.querySelector("#photoSearchStatus"),
   photoFilterAllButton: document.querySelector("#photoFilterAllButton"),
   photoFilterCurrentButton: document.querySelector("#photoFilterCurrentButton"),
   photoFilterPlacedButton: document.querySelector("#photoFilterPlacedButton"),
@@ -1224,6 +1225,7 @@ function updatePhotoFilterSummary(filteredCount, totalCount) {
   if (els.photoFilterSummary) {
     els.photoFilterSummary.textContent = `${filteredCount} / ${totalCount}장`;
   }
+  updatePhotoSearchStatus(filteredCount);
 }
 
 function setPhotoSearchQuery(nextQuery) {
@@ -2100,10 +2102,34 @@ function focusPhotoSearch() {
   els.photoSearchInput.select();
 }
 
+function updatePhotoSearchStatus(resultCount) {
+  if (!(els.photoSearchStatus instanceof HTMLElement)) return;
+
+  const query = state.photoSearchQuery.trim();
+  if (!query) {
+    els.photoSearchStatus.textContent = "Ctrl+K로 검색, Enter/Shift+Enter로 결과 이동";
+    return;
+  }
+
+  if (resultCount <= 0) {
+    els.photoSearchStatus.textContent = "검색 결과가 없습니다.";
+    return;
+  }
+
+  const currentIndex =
+    photoSearchActivationQuery === query && photoSearchActivationIndex >= 0
+      ? photoSearchActivationIndex + 1
+      : 1;
+  els.photoSearchStatus.textContent = `검색 결과 ${currentIndex} / ${resultCount} · Enter 다음 · Shift+Enter 이전`;
+}
+
 function activateVisiblePhotoSearchResult(direction = 1) {
   if (!(els.photoListPanel instanceof HTMLElement)) return false;
   const cards = Array.from(els.photoListPanel.querySelectorAll(".photo-list-card"));
-  if (cards.length === 0) return false;
+  if (cards.length === 0) {
+    updatePhotoSearchStatus(0);
+    return false;
+  }
 
   const currentQuery = state.photoSearchQuery.trim();
   if (photoSearchActivationQuery !== currentQuery) {
@@ -2120,6 +2146,7 @@ function activateVisiblePhotoSearchResult(direction = 1) {
 
   const card = cards[photoSearchActivationIndex];
   if (!(card instanceof HTMLElement)) return false;
+  updatePhotoSearchStatus(cards.length);
   revealPanelItem(card);
   card.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
   return true;
@@ -2141,7 +2168,7 @@ function syncShortcutHelpContent() {
     <p><kbd>Home</kbd> / <kbd>End</kbd><span>커버 / 마지막 페이지</span></p>
     <p><kbd>Ctrl</kbd> + <kbd>J</kbd><span>페이지 바로가기 입력칸 포커스</span></p>
     <p><kbd>Ctrl</kbd> + <kbd>K</kbd><span>사진 검색창 포커스</span></p>
-    <p><kbd>Enter</kbd> / <kbd>Shift</kbd> + <kbd>Enter</kbd> / <kbd>Esc</kbd><span>검색 결과 순환 / 역순 순환 / 검색어 지우기</span></p>
+    <p><kbd>Enter</kbd> / <kbd>Shift</kbd> + <kbd>Enter</kbd> / <kbd>↑</kbd> <kbd>↓</kbd> / <kbd>Esc</kbd><span>검색 결과 순환 / 역순 순환 / 키보드 탐색 / 검색어 지우기</span></p>
     <p><kbd>Ctrl</kbd> + <kbd>M</kbd><span>현재 슬라이드 뒤에 빈 슬라이드 추가</span></p>
     <p><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>M</kbd><span>현재 슬라이드 앞에 빈 슬라이드 추가</span></p>
     <p><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>←</kbd> <kbd>→</kbd><span>현재 슬라이드 순서 이동</span></p>
@@ -4461,6 +4488,14 @@ els.photoSearchInput?.addEventListener("keydown", (event) => {
   if (event.key === "Enter") {
     event.preventDefault();
     if (!activateVisiblePhotoSearchResult(event.shiftKey ? -1 : 1)) {
+      showToast("검색 결과가 없습니다.");
+    }
+    return;
+  }
+
+  if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+    event.preventDefault();
+    if (!activateVisiblePhotoSearchResult(event.key === "ArrowUp" ? -1 : 1)) {
       showToast("검색 결과가 없습니다.");
     }
   }
