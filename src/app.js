@@ -74,6 +74,8 @@ let activePhotoListCard = null;
 let thumbnailPageButtonCache = new Map();
 let activeReorderTarget = null;
 let activeSlideReorderTarget = null;
+let activeThumbnailRailPan = null;
+let thumbnailRailSuppressClickUntil = 0;
 let activeStageSlotDropTarget = null;
 let activeGuideDrag = null;
 let activeSlotPan = null;
@@ -2267,6 +2269,32 @@ document.addEventListener("pointerdown", (event) => {
   closeSlideContextMenu();
 });
 
+document.addEventListener("pointermove", (event) => {
+  if (!activeThumbnailRailPan || event.pointerId !== activeThumbnailRailPan.pointerId) return;
+  const deltaX = event.clientX - activeThumbnailRailPan.startX;
+  if (!activeThumbnailRailPan.moved && Math.abs(deltaX) > 4) {
+    activeThumbnailRailPan.moved = true;
+  }
+  if (!activeThumbnailRailPan.moved) return;
+  activeThumbnailRailPan.row.scrollLeft = activeThumbnailRailPan.startScrollLeft - deltaX;
+  event.preventDefault();
+});
+
+document.addEventListener("pointerup", (event) => {
+  if (!activeThumbnailRailPan || event.pointerId !== activeThumbnailRailPan.pointerId) return;
+  activeThumbnailRailPan.row.classList.remove("is-grabbed");
+  if (activeThumbnailRailPan.moved) {
+    thumbnailRailSuppressClickUntil = performance.now() + 180;
+  }
+  activeThumbnailRailPan = null;
+});
+
+document.addEventListener("pointercancel", (event) => {
+  if (!activeThumbnailRailPan || event.pointerId !== activeThumbnailRailPan.pointerId) return;
+  activeThumbnailRailPan.row.classList.remove("is-grabbed");
+  activeThumbnailRailPan = null;
+});
+
 document.addEventListener("pointerdown", (event) => {
   if (els.slotContextMenu?.getAttribute("aria-hidden") !== "false") return;
   const target = event.target instanceof Element ? event.target : null;
@@ -4025,6 +4053,10 @@ els.stage?.addEventListener("dragend", () => {
 });
 
 els.thumbnailRail?.addEventListener("click", (event) => {
+  if (thumbnailRailSuppressClickUntil > performance.now()) {
+    event.preventDefault();
+    return;
+  }
   const target = event.target instanceof Element ? event.target : null;
   if (target?.closest("[data-slide-caption-input]")) return;
   const insertBeforeButton = target?.closest("[data-insert-slide-before]");
@@ -4083,6 +4115,34 @@ els.thumbnailRail?.addEventListener("click", (event) => {
     const slotIndex = page > 0 ? findFirstFilledSlotIndexForPage(page) : null;
     goToPageWithSelection(page, slotIndex);
   }
+});
+
+els.thumbnailRail?.addEventListener("wheel", (event) => {
+  const row = event.target instanceof Element ? event.target.closest(".slide-preview-row, .photo-order-row") : null;
+  if (!(row instanceof HTMLElement)) return;
+  if (row.scrollWidth <= row.clientWidth) return;
+
+  const delta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
+  if (!delta) return;
+  row.scrollLeft += delta;
+  event.preventDefault();
+}, { passive: false });
+
+els.thumbnailRail?.addEventListener("pointerdown", (event) => {
+  const row = event.target instanceof Element ? event.target.closest(".slide-preview-row, .photo-order-row") : null;
+  if (!(row instanceof HTMLElement) || event.button !== 0) return;
+  if (row.scrollWidth <= row.clientWidth) return;
+  if (event.target instanceof Element && event.target.closest("input, button, label")) return;
+
+  activeThumbnailRailPan = {
+    row,
+    pointerId: event.pointerId,
+    startX: event.clientX,
+    startScrollLeft: row.scrollLeft,
+    moved: false,
+  };
+  row.classList.add("is-grabbed");
+  event.preventDefault();
 });
 
 els.thumbnailRail?.addEventListener("input", (event) => {

@@ -1855,6 +1855,19 @@ body.presenting .guide-ruler {
   overflow-x: auto;
   padding-bottom: 0.42rem;
   scrollbar-color: rgba(138, 75, 45, 0.68) rgba(244, 239, 228, 0.62);
+  cursor: grab;
+  overscroll-behavior-x: contain;
+}
+
+.slide-preview-row.is-grabbed,
+.photo-order-row.is-grabbed {
+  cursor: grabbing;
+  user-select: none;
+}
+
+.slide-preview-row.is-grabbed *,
+.photo-order-row.is-grabbed * {
+  cursor: grabbing !important;
 }
 
 .slide-thumb {
