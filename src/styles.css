@@ -1893,11 +1893,13 @@ body.presenting .guide-ruler {
 
 .slide-thumb-label {
   border-radius: 999px;
-  padding: 0.2rem 0.52rem;
-  color: var(--white);
-  background: rgba(0, 0, 0, 0.58);
-  font-size: 0.72rem;
+  padding: 0.24rem 0.62rem;
+  color: #fff8f2;
+  background: linear-gradient(180deg, rgba(138, 75, 45, 0.96), rgba(91, 47, 27, 0.96));
+  font-size: 0.74rem;
   font-weight: 800;
+  letter-spacing: -0.02em;
+  box-shadow: 0 6px 14px rgba(18, 15, 10, 0.26);
 }
 
 .slide-layout-chip {

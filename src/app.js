@@ -2564,8 +2564,47 @@ function applyLayoutToPage(page, mode, rows, cols) {
   }
 
   beginEditHistoryAction();
-  normalizeSlidePageLayouts();
   const nextLayout = createLayoutConfig(mode, rows, cols);
+  const pages = getSlidePages().map((entry) => ({
+    layout: createLayoutConfig(entry.layout.mode, entry.layout.rows, entry.layout.cols),
+    caption: entry.caption,
+    slots: [...entry.slots],
+    transforms: Array.from({ length: entry.pageSize }, (_, offset) => {
+      const transform = state.slotTransforms[entry.start + offset];
+      return transform ? { ...transform } : null;
+    }),
+  }));
+  const targetPage = pages[page - 1];
+  if (!targetPage) return;
+
+  const nextPageSize = getPageSizeForLayout(nextLayout);
+  const currentPageSize = targetPage.slots.length;
+
+  if (nextPageSize > currentPageSize) {
+    targetPage.slots.push(...Array(nextPageSize - currentPageSize).fill(null));
+    targetPage.transforms.push(...Array(nextPageSize - currentPageSize).fill(null));
+    targetPage.layout = nextLayout;
+    state.slideSlots = pages.flatMap((entry) => entry.slots);
+    state.slideCaptions = pages.map((entry) => entry.caption);
+    state.slidePageLayouts = pages.map((entry) =>
+      createLayoutConfig(entry.layout.mode, entry.layout.rows, entry.layout.cols),
+    );
+    const nextTransforms = {};
+    let nextSlotIndex = 0;
+    pages.forEach((entry) => {
+      entry.transforms.forEach((transform) => {
+        if (transform) nextTransforms[nextSlotIndex] = transform;
+        nextSlotIndex += 1;
+      });
+    });
+    state.slotTransforms = nextTransforms;
+    markSlideSlotsDirty();
+    markLayoutDirty();
+    normalizeSlideCaptions();
+    render();
+    return;
+  }
+
   state.slidePageLayouts[page - 1] = nextLayout;
   markLayoutDirty();
   normalizeSlidePageLayouts(state.slideSlots.length);
@@ -3393,7 +3432,7 @@ function renderThumbnails() {
                     </div>
                   </div>
                   <div class="slide-thumb-meta">
-                    <span class="slide-thumb-label">${page.pageIndex}</span>
+                    <span class="slide-thumb-label">#${page.pageIndex}</span>
                     <div class="slide-thumb-actions">
                       <button class="slide-layout-chip ${page.layout.mode === "single" ? "is-active" : ""}" type="button" data-slide-layout="${page.pageIndex}:single">1</button>
                       <button class="slide-layout-chip ${page.layout.mode === "pair" ? "is-active" : ""}" type="button" data-slide-layout="${page.pageIndex}:pair">2</button>
