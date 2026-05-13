@@ -367,20 +367,42 @@
         <div class="deck-toolbar">
           <button id="undoButton" type="button">되돌리기</button>
           <button id="redoButton" type="button">다시하기</button>
-          <button id="prevButton" type="button">이전</button>
+          <button id="prevButton" class="icon-toolbar-button" type="button" aria-label="이전" title="이전">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.7 6.3a1 1 0 0 1 0 1.4L10.41 12l4.3 4.3a1 1 0 1 1-1.42 1.4l-5-5a1 1 0 0 1 0-1.4l5-5a1 1 0 0 1 1.41 0Z"/></svg>
+          </button>
           <span id="pageStatus">Cover</span>
           <div id="slideQuickActions" class="slide-quick-actions">
-            <button id="moveSlidePrevButton" type="button">← 이동</button>
-            <button id="moveSlideNextButton" type="button">이동 →</button>
-            <button id="copySlideButton" type="button">복사</button>
-            <button id="pasteSlideButton" type="button">붙여넣기</button>
-            <button id="clearSlideButton" type="button">비우기</button>
-            <button id="insertSlideBeforeButton" type="button">앞+</button>
-            <button id="insertSlideAfterButton" type="button">뒤+</button>
-            <button id="duplicateSlideButton" type="button">복제</button>
-            <button id="deleteSlideButton" type="button">삭제</button>
+            <button id="moveSlidePrevButton" class="icon-toolbar-button" type="button" aria-label="이전 위치로 이동" title="이전 위치로 이동">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6 3 12l6 6v-4h8a3 3 0 0 0 3-3v-2a3 3 0 0 0-3-3H9V6Z"/></svg>
+            </button>
+            <button id="moveSlideNextButton" class="icon-toolbar-button" type="button" aria-label="다음 위치로 이동" title="다음 위치로 이동">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 6 6 6-6 6v-4H7a3 3 0 0 1-3-3v-2a3 3 0 0 1 3-3h8V6Z"/></svg>
+            </button>
+            <button id="copySlideButton" class="icon-toolbar-button" type="button" aria-label="복사" title="복사">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2H9Zm-4 4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2v-1H9a4 4 0 0 1-4-4V7Z"/></svg>
+            </button>
+            <button id="pasteSlideButton" class="icon-toolbar-button" type="button" aria-label="붙여넣기" title="붙여넣기">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 2a2 2 0 0 0-2 2H6a2 2 0 0 0-2 2v12a3 3 0 0 0 3 3h10a3 3 0 0 0 3-3V8a2 2 0 0 0-2-2h-1a2 2 0 0 0-2-2H9Zm0 2h6v2H9V4Zm-2 6h10a1 1 0 1 1 0 2H7a1 1 0 1 1 0-2Zm0 4h7a1 1 0 1 1 0 2H7a1 1 0 1 1 0-2Z"/></svg>
+            </button>
+            <button id="clearSlideButton" class="icon-toolbar-button" type="button" aria-label="비우기" title="비우기">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4h10l1 2h4v2H2V6h4l1-2Zm1 6h2v8H8v-8Zm6 0h2v8h-2v-8ZM6 8h12l-1 11a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L6 8Z"/></svg>
+            </button>
+            <button id="insertSlideBeforeButton" class="icon-toolbar-button" type="button" aria-label="앞에 추가" title="앞에 추가">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h2v16H5V4Zm5 7V8h2v3h3v2h-3v3h-2v-3H7v-2h3Z"/></svg>
+            </button>
+            <button id="insertSlideAfterButton" class="icon-toolbar-button" type="button" aria-label="뒤에 추가" title="뒤에 추가">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17 4h2v16h-2V4Zm-5 7V8h2v3h3v2h-3v3h-2v-3H9v-2h3Z"/></svg>
+            </button>
+            <button id="duplicateSlideButton" class="icon-toolbar-button" type="button" aria-label="복제" title="복제">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2H8Zm-3 4a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h8v-2H5V8Z"/></svg>
+            </button>
+            <button id="deleteSlideButton" class="icon-toolbar-button" type="button" aria-label="삭제" title="삭제">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4h10l1 2h4v2H2V6h4l1-2Zm1 6h2v8H8v-8Zm6 0h2v8h-2v-8ZM6 8h12l-1 11a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L6 8Z"/></svg>
+            </button>
           </div>
-          <button id="nextButton" type="button">다음</button>
+          <button id="nextButton" class="icon-toolbar-button" type="button" aria-label="다음" title="다음">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.3 17.7a1 1 0 0 1 0-1.4L13.59 12l-4.3-4.3a1 1 0 1 1 1.42-1.4l5 5a1 1 0 0 1 0 1.4l-5 5a1 1 0 0 1-1.41 0Z"/></svg>
+          </button>
         </div>
         <article id="stage" class="stage stage-cover"></article>
         <div id="thumbnailRail" class="thumbnail-rail" aria-label="슬라이드 목록"></div>

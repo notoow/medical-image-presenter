@@ -1618,19 +1618,26 @@ async function loadImageFiles(fileList) {
     const wasEmpty = state.images.length === 0;
     state.images = [...state.images, ...addedImages];
     markImagesDirty();
-    state.slideSlots = [...state.slideSlots, ...addedImages.map((image) => image.id)];
-    markSlideSlotsDirty();
-    state.selectedSlotIndex = null;
+    const placement = autoPlaceUploadedImages(addedImages.map((image) => image.id));
+    const placedLocation = Number.isFinite(placement.firstSlotIndex)
+      ? getSlotLocation(placement.firstSlotIndex)
+      : null;
+    state.selectedSlotIndex = Number.isFinite(placement.firstSlotIndex) ? placement.firstSlotIndex : null;
 
     els.imageFileName.textContent =
       duplicateChoice === "skip" && duplicates.length > 0
         ? `${addedImages.length}장 추가됨, 중복 ${duplicates.length}장 건너뜀`
         : `${addedImages.length}장 추가됨`;
 
-    state.pageIndex = wasEmpty ? 1 : state.pageIndex;
+    state.pageIndex = wasEmpty ? 1 : placedLocation?.page ?? state.pageIndex;
     render();
     warmPreviewCache(addedImages);
     queuePersistAssets();
+    if (placement.filledEmptyCount > 0 && placement.appendedCount > 0) {
+      showToast(`빈칸 ${placement.filledEmptyCount}곳을 먼저 채우고 ${placement.appendedCount}장을 이어 배치했습니다.`);
+    } else {
+      showToast(`${addedImages.length}장을 자동으로 배치했습니다.`);
+    }
   } finally {
     hideLoading();
   }
@@ -2431,6 +2438,52 @@ function findNextEmptySlotIndex(fromSlotIndex = -1) {
     if (!state.slideSlots[slotIndex]) return slotIndex;
   }
   return null;
+}
+
+function autoPlaceUploadedImages(imageIds) {
+  if (!Array.isArray(imageIds) || imageIds.length === 0) {
+    return {
+      firstSlotIndex: null,
+      filledEmptyCount: 0,
+      appendedCount: 0,
+    };
+  }
+
+  normalizeSlidePageLayouts(state.slideSlots.length);
+  const emptySlotIndices = [];
+
+  for (let slotIndex = 0; slotIndex < state.slideSlots.length; slotIndex += 1) {
+    if (!state.slideSlots[slotIndex]) emptySlotIndices.push(slotIndex);
+  }
+
+  let firstSlotIndex = null;
+  let filledEmptyCount = 0;
+  const remainingImageIds = [...imageIds];
+
+  while (emptySlotIndices.length > 0 && remainingImageIds.length > 0) {
+    const slotIndex = emptySlotIndices.shift();
+    const imageId = remainingImageIds.shift();
+    state.slideSlots[slotIndex] = imageId;
+    if (!Number.isFinite(firstSlotIndex)) firstSlotIndex = slotIndex;
+    filledEmptyCount += 1;
+  }
+
+  const appendedCount = remainingImageIds.length;
+  if (appendedCount > 0) {
+    const appendStart = state.slideSlots.length;
+    state.slideSlots.push(...remainingImageIds);
+    if (!Number.isFinite(firstSlotIndex)) firstSlotIndex = appendStart;
+  }
+
+  normalizeSlidePageLayouts(state.slideSlots.length);
+  markSlideSlotsDirty();
+  markLayoutDirty();
+
+  return {
+    firstSlotIndex,
+    filledEmptyCount,
+    appendedCount,
+  };
 }
 
 function resolvePhotoListTargetSlotIndex() {
