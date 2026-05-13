@@ -135,6 +135,8 @@ const MOBILE_PANEL_MEDIA_QUERY = "(max-width: 680px)";
 const els = {
   stage: document.querySelector("#stage"),
   pageStatus: document.querySelector("#pageStatus"),
+  pageJumpInput: document.querySelector("#pageJumpInput"),
+  pageJumpButton: document.querySelector("#pageJumpButton"),
   coverTitle: document.querySelector("#coverTitle"),
   coverSubtitle: document.querySelector("#coverSubtitle"),
   hospitalName: document.querySelector("#hospitalName"),
@@ -1068,6 +1070,15 @@ function syncDeckStatus() {
       <span class="status-primary">${state.pageIndex + 1} / ${totalPages}</span>
       <span class="status-secondary">${playbackText} · ${captionText} · ${imageText}</span>
     `;
+  }
+
+  if (els.pageJumpInput) {
+    els.pageJumpInput.min = "1";
+    els.pageJumpInput.max = String(totalPages);
+    const nextValue = String(Math.min(totalPages, Math.max(1, state.pageIndex + 1)));
+    if (els.pageJumpInput.value !== nextValue) {
+      els.pageJumpInput.value = nextValue;
+    }
   }
 
   syncLayoutControls();
@@ -2011,6 +2022,14 @@ function hideShortcutHelp() {
   els.shortcutDialog.close();
 }
 
+function submitPageJump() {
+  if (!(els.pageJumpInput instanceof HTMLInputElement)) return;
+  const totalPages = getTotalPages();
+  const targetPage = Math.min(totalPages, Math.max(1, Number(els.pageJumpInput.value) || 1));
+  els.pageJumpInput.value = String(targetPage);
+  goToPage(targetPage - 1);
+}
+
 function syncShortcutHelpContent() {
   const shortcutGrid = els.shortcutDialog?.querySelector(".shortcut-grid");
   if (!(shortcutGrid instanceof HTMLElement)) return;
@@ -2025,6 +2044,7 @@ function syncShortcutHelpContent() {
     <p><kbd>←</kbd> <kbd>↑</kbd> <kbd>P</kbd><span>이전 페이지</span></p>
     <p><kbd>→</kbd> <kbd>↓</kbd> <kbd>Space</kbd> <kbd>N</kbd><span>다음 페이지</span></p>
     <p><kbd>Home</kbd> / <kbd>End</kbd><span>커버 / 마지막 페이지</span></p>
+    <p><kbd>Ctrl</kbd> + <kbd>J</kbd><span>페이지 바로가기 입력칸 포커스</span></p>
     <p><kbd>Ctrl</kbd> + <kbd>M</kbd><span>현재 슬라이드 뒤에 빈 슬라이드 추가</span></p>
     <p><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>M</kbd><span>현재 슬라이드 앞에 빈 슬라이드 추가</span></p>
     <p><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>←</kbd> <kbd>→</kbd><span>현재 슬라이드 순서 이동</span></p>
@@ -4289,6 +4309,12 @@ els.gridCols.addEventListener("input", () => setGrid(Number(els.gridRows.value),
 
 els.prevButton.addEventListener("click", () => goToPage(state.pageIndex - 1));
 els.nextButton.addEventListener("click", () => goToPage(state.pageIndex + 1));
+els.pageJumpButton?.addEventListener("click", submitPageJump);
+els.pageJumpInput?.addEventListener("keydown", (event) => {
+  if (event.key !== "Enter") return;
+  event.preventDefault();
+  submitPageJump();
+});
 els.moveSlidePrevButton?.addEventListener("click", () => {
   moveCurrentSlide(-1);
 });
@@ -4468,6 +4494,13 @@ document.addEventListener("keydown", (event) => {
     target instanceof HTMLInputElement ||
     target instanceof HTMLTextAreaElement ||
     target instanceof HTMLSelectElement;
+
+  if (hasSlideShortcutModifier(event) && !event.shiftKey && event.key.toLowerCase() === "j") {
+    event.preventDefault();
+    els.pageJumpInput?.focus();
+    els.pageJumpInput?.select?.();
+    return;
+  }
 
   if (isTyping) return;
 

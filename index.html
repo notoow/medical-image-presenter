@@ -378,6 +378,11 @@
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.7 6.3a1 1 0 0 1 0 1.4L10.41 12l4.3 4.3a1 1 0 1 1-1.42 1.4l-5-5a1 1 0 0 1 0-1.4l5-5a1 1 0 0 1 1.41 0Z"/></svg>
           </button>
           <span id="pageStatus">Cover</span>
+          <label class="page-jump-control" aria-label="페이지 바로가기">
+            <span>#</span>
+            <input id="pageJumpInput" type="number" min="1" step="1" inputmode="numeric" value="1" />
+            <button id="pageJumpButton" type="button">이동</button>
+          </label>
           <div id="slideQuickActions" class="slide-quick-actions">
             <button id="moveSlidePrevButton" class="icon-toolbar-button" type="button" aria-label="이전 위치로 이동" title="이전 위치로 이동">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6 3 12l6 6v-4h8a3 3 0 0 0 3-3v-2a3 3 0 0 0-3-3H9V6Z"/></svg>
