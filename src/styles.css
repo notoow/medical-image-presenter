@@ -568,6 +568,24 @@ body.is-file-dragging .drop-card {
   gap: 0.55rem;
 }
 
+.photo-filter-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.photo-filter-head strong {
+  color: var(--ink);
+  font-size: 0.9rem;
+}
+
+.photo-filter-head span {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
 .photo-search-field {
   display: grid;
   gap: 0.32rem;
@@ -581,6 +599,19 @@ body.is-file-dragging .drop-card {
 
 .photo-search-field input {
   min-width: 0;
+}
+
+.photo-search-input-wrap {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.45rem;
+  align-items: center;
+}
+
+.photo-search-clear {
+  min-width: 0;
+  padding-inline: 0.75rem;
+  white-space: nowrap;
 }
 
 .photo-filter-row {

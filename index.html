@@ -433,14 +433,21 @@
         </p>
         <button id="emptySlotToken" class="empty-token" type="button" draggable="true">빈칸</button>
                 <div class="photo-filter-panel" aria-label="사진 검색 및 필터">
+          <div class="photo-filter-head">
+            <strong>사진 찾기</strong>
+            <span id="photoFilterSummary">0 / 0장</span>
+          </div>
           <label class="photo-search-field">
-            <span>사진 찾기</span>
-            <input id="photoSearchInput" type="search" placeholder="파일명으로 검색" autocomplete="off" />
+            <span>파일명으로 빠르게 찾기</span>
+            <span class="photo-search-input-wrap">
+              <input id="photoSearchInput" type="search" placeholder="파일명으로 검색" autocomplete="off" />
+              <button id="photoSearchClearButton" class="subtle photo-search-clear" type="button" aria-label="검색 지우기">지우기</button>
+            </span>
           </label>
           <div class="photo-filter-row" role="group" aria-label="배치 상태 필터">
             <button id="photoFilterAllButton" class="is-active" type="button">전체</button>
-            <button id="photoFilterPlacedButton" type="button">배치됨</button>
-            <button id="photoFilterUnplacedButton" type="button">배치됨</button>
+            <button id="photoFilterPlacedButton" type="button">지우기</button>
+            <button id="photoFilterUnplacedButton" type="button">지우기</button>
           </div>
         </div>
         <div id="photoListPanel" class="photo-list-panel"></div>

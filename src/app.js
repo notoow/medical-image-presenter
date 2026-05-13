@@ -267,7 +267,9 @@ const els = {
   resetFiltersButton: document.querySelector("#resetFiltersButton"),
   thumbnailRail: document.querySelector("#thumbnailRail"),
   photoListPanel: document.querySelector("#photoListPanel"),
+  photoFilterSummary: document.querySelector("#photoFilterSummary"),
   photoSearchInput: document.querySelector("#photoSearchInput"),
+  photoSearchClearButton: document.querySelector("#photoSearchClearButton"),
   photoFilterAllButton: document.querySelector("#photoFilterAllButton"),
   photoFilterPlacedButton: document.querySelector("#photoFilterPlacedButton"),
   photoFilterUnplacedButton: document.querySelector("#photoFilterUnplacedButton"),
@@ -1186,6 +1188,17 @@ function updatePhotoFilterUi() {
   });
   if (els.photoSearchInput && els.photoSearchInput.value !== state.photoSearchQuery) {
     els.photoSearchInput.value = state.photoSearchQuery;
+  }
+  if (els.photoSearchClearButton) {
+    const hasQuery = state.photoSearchQuery.trim().length > 0;
+    els.photoSearchClearButton.disabled = !hasQuery;
+    els.photoSearchClearButton.hidden = !hasQuery;
+  }
+}
+
+function updatePhotoFilterSummary(filteredCount, totalCount) {
+  if (els.photoFilterSummary) {
+    els.photoFilterSummary.textContent = `${filteredCount} / ${totalCount}장`;
   }
 }
 
@@ -3589,6 +3602,7 @@ function renderPhotoList() {
     photoListRenderKey = "empty";
     photoListRenderToken += 1;
     activePhotoListCard = null;
+    updatePhotoFilterSummary(0, 0);
     els.photoListPanel.innerHTML = `<p class="photo-list-empty">사진을 업로드하면 전체 목록이 표시됩니다.</p>`;
     unregisterRenderableImageNodesInRoot(els.photoListPanel);
     return;
@@ -3597,6 +3611,7 @@ function renderPhotoList() {
   const usedCounts = getUsedCounts();
   const placements = getImagePlacements();
   const filteredImages = getFilteredImages(usedCounts);
+  updatePhotoFilterSummary(filteredImages.length, state.images.length);
   const nextKey = [
     imagesVersion,
     slideSlotsVersion,
@@ -4344,6 +4359,19 @@ els.sortMode.addEventListener("change", () => {
 
 els.photoSearchInput?.addEventListener("input", () => {
   setPhotoSearchQuery(els.photoSearchInput.value);
+});
+
+els.photoSearchInput?.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape") return;
+  if (!els.photoSearchInput.value) return;
+  event.preventDefault();
+  setPhotoSearchQuery("");
+  els.photoSearchInput.value = "";
+});
+
+els.photoSearchClearButton?.addEventListener("click", () => {
+  setPhotoSearchQuery("");
+  els.photoSearchInput?.focus();
 });
 
 els.photoFilterAllButton?.addEventListener("click", () => setPhotoFilterMode("all"));
