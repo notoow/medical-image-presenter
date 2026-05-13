@@ -271,6 +271,7 @@ const els = {
   photoSearchInput: document.querySelector("#photoSearchInput"),
   photoSearchClearButton: document.querySelector("#photoSearchClearButton"),
   photoFilterAllButton: document.querySelector("#photoFilterAllButton"),
+  photoFilterCurrentButton: document.querySelector("#photoFilterCurrentButton"),
   photoFilterPlacedButton: document.querySelector("#photoFilterPlacedButton"),
   photoFilterUnplacedButton: document.querySelector("#photoFilterUnplacedButton"),
   backgroundMusicInput: document.querySelector("#backgroundMusicInput"),
@@ -1179,6 +1180,7 @@ function syncPhotoListSelection() {
 function updatePhotoFilterUi() {
   const buttons = [
     [els.photoFilterAllButton, "all"],
+    [els.photoFilterCurrentButton, "current"],
     [els.photoFilterPlacedButton, "placed"],
     [els.photoFilterUnplacedButton, "unplaced"],
   ];
@@ -1211,7 +1213,7 @@ function setPhotoSearchQuery(nextQuery) {
 
 function setPhotoFilterMode(nextMode) {
   const normalized =
-    nextMode === "placed" || nextMode === "unplaced"
+    nextMode === "placed" || nextMode === "unplaced" || nextMode === "current"
       ? nextMode
       : "all";
   if (state.photoFilterMode === normalized) return;
@@ -1221,8 +1223,13 @@ function setPhotoFilterMode(nextMode) {
 
 function getFilteredImages(usedCounts = getUsedCounts()) {
   const query = state.photoSearchQuery.trim().toLocaleLowerCase("ko-KR");
+  const currentPageImageIds =
+    state.photoFilterMode === "current"
+      ? new Set(getCurrentPageSlotMeta().slots.filter(Boolean))
+      : null;
   return state.images.filter((image) => {
     const usedCount = usedCounts.get(image.id) ?? 0;
+    if (state.photoFilterMode === "current" && !currentPageImageIds?.has(image.id)) return false;
     if (state.photoFilterMode === "placed" && usedCount === 0) return false;
     if (state.photoFilterMode === "unplaced" && usedCount > 0) return false;
     if (!query) return true;
@@ -4375,6 +4382,7 @@ els.photoSearchClearButton?.addEventListener("click", () => {
 });
 
 els.photoFilterAllButton?.addEventListener("click", () => setPhotoFilterMode("all"));
+els.photoFilterCurrentButton?.addEventListener("click", () => setPhotoFilterMode("current"));
 els.photoFilterPlacedButton?.addEventListener("click", () => setPhotoFilterMode("placed"));
 els.photoFilterUnplacedButton?.addEventListener("click", () => setPhotoFilterMode("unplaced"));
 
@@ -5068,7 +5076,9 @@ function applyPersistedState() {
     state.sortMode = data.sortMode ?? state.sortMode;
     state.photoSearchQuery = typeof data.photoSearchQuery === "string" ? data.photoSearchQuery : "";
     state.photoFilterMode =
-      data.photoFilterMode === "placed" || data.photoFilterMode === "unplaced" ? data.photoFilterMode : "all";
+      data.photoFilterMode === "placed" || data.photoFilterMode === "unplaced" || data.photoFilterMode === "current"
+        ? data.photoFilterMode
+        : "all";
     state.fitMode = data.fitMode ?? state.fitMode;
     state.backgroundEnabled = data.backgroundEnabled ?? state.backgroundEnabled;
     state.autoplaySeconds = normalizeAutoplaySeconds(data.autoplaySeconds ?? state.autoplaySeconds);

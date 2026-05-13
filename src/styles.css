@@ -620,6 +620,10 @@ body.is-file-dragging .drop-card {
   gap: 0.45rem;
 }
 
+.photo-filter-row-four {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
 .photo-filter-row button {
   min-width: 0;
   padding-inline: 0.55rem;
