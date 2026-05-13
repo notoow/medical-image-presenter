@@ -767,6 +767,13 @@ body.is-file-dragging .drop-card {
   white-space: nowrap;
 }
 
+.photo-search-match {
+  border-radius: 0.32rem;
+  padding: 0 0.16rem;
+  color: #3b1f12;
+  background: rgba(255, 214, 119, 0.78);
+}
+
 .photo-list-card em {
   color: var(--muted);
   font-size: 0.72rem;

@@ -1396,6 +1396,24 @@ function escapeHtml(value) {
     .replaceAll("'", "&#039;");
 }
 
+function highlightSearchMatch(text, query) {
+  const source = String(text ?? "");
+  const normalizedQuery = String(query ?? "").trim();
+  if (!normalizedQuery) return escapeHtml(source);
+
+  const sourceLower = source.toLocaleLowerCase("ko-KR");
+  const queryLower = normalizedQuery.toLocaleLowerCase("ko-KR");
+  const matchIndex = sourceLower.indexOf(queryLower);
+  if (matchIndex < 0) return escapeHtml(source);
+
+  const matchEnd = matchIndex + normalizedQuery.length;
+  return [
+    escapeHtml(source.slice(0, matchIndex)),
+    `<mark class="photo-search-match">${escapeHtml(source.slice(matchIndex, matchEnd))}</mark>`,
+    escapeHtml(source.slice(matchEnd)),
+  ].join("");
+}
+
 function getControlPanelSections() {
   return Array.from(document.querySelectorAll(".control-panel .panel-section"));
 }
@@ -3698,7 +3716,7 @@ function renderPhotoList() {
         <img src="${getRenderableImageUrl(image)}" data-renderable-image-id="${image.id}" alt="" loading="lazy" decoding="async" />
         <div>
           <strong>${originalIndex + 1}</strong>
-          <span>${escapeHtml(image.name)}</span>
+          <span>${highlightSearchMatch(image.name, state.photoSearchQuery)}</span>
           <em>${usedCount > 0 ? `${isOnCurrentPage ? "현재 슬라이드 · " : ""}슬라이드 포함 ${usedCount} · ${placementText}` : "미배치"}</em>
         </div>
         <b>${usedCount > 0 ? "배치됨" : "미배치"}</b>
