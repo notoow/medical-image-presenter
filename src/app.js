@@ -3618,6 +3618,7 @@ function renderPhotoList() {
   const usedCounts = getUsedCounts();
   const placements = getImagePlacements();
   const filteredImages = getFilteredImages(usedCounts);
+  const currentPageImageIds = new Set(getCurrentPageSlotMeta().slots.filter(Boolean));
   updatePhotoFilterSummary(filteredImages.length, state.images.length);
   const nextKey = [
     imagesVersion,
@@ -3654,6 +3655,7 @@ function renderPhotoList() {
   const cardHtml = (image, index) => {
     const originalIndex = state.images.indexOf(image);
     const usedCount = usedCounts.get(image.id) ?? 0;
+    const isOnCurrentPage = currentPageImageIds.has(image.id);
     const placementList = placements.get(image.id) ?? [];
     const firstPlacement = placementList[0];
     const placementText =
@@ -3664,7 +3666,7 @@ function renderPhotoList() {
           : `${firstPlacement.page}페이지 ${firstPlacement.slot}칸 외 ${placementList.length - 1}곳`;
     return `
       <article
-        class="photo-list-card ${usedCount > 0 ? "is-in-slide" : "is-unused"} ${selectedSlotImageId === image.id ? "is-active" : ""}"
+        class="photo-list-card ${usedCount > 0 ? "is-in-slide" : "is-unused"} ${selectedSlotImageId === image.id ? "is-active" : ""} ${isOnCurrentPage ? "is-on-current-slide" : ""}"
         draggable="true"
         data-image-id="${image.id}"
         data-index="${originalIndex}"
@@ -3674,9 +3676,10 @@ function renderPhotoList() {
         <div>
           <strong>${originalIndex + 1}</strong>
           <span>${escapeHtml(image.name)}</span>
-          <em>${usedCount > 0 ? `슬라이드 포함 ${usedCount} · ${placementText}` : "미배치"}</em>
+          <em>${usedCount > 0 ? `${isOnCurrentPage ? "현재 슬라이드 · " : ""}슬라이드 포함 ${usedCount} · ${placementText}` : "미배치"}</em>
         </div>
         <b>${usedCount > 0 ? "배치됨" : "미배치"}</b>
+        ${isOnCurrentPage ? '<mark class="photo-list-current-badge">현재</mark>' : ""}
         <button class="photo-list-remove" type="button" data-remove-image-id="${image.id}" aria-label="${escapeHtml(image.name)} 삭제">X</button>
       </article>
     `;
