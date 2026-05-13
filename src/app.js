@@ -3295,7 +3295,7 @@ function renderThumbnails() {
       <div class="thumbnail-section">
         <div class="thumbnail-section-head">
           <strong>슬라이드 목록</strong>
-          <span>페이지별 1 / 2 / 3 / 4 분할 편집</span>
+          <span>선택 · 순서 변경 · 분할 편집</span>
         </div>
         <div class="slide-preview-row">
           <button class="slide-thumb slide-thumb-cover-card" type="button" data-page="0">
@@ -3331,14 +3331,10 @@ function renderThumbnails() {
                   <div class="slide-thumb-meta">
                     <span class="slide-thumb-label">${page.pageIndex}</span>
                     <div class="slide-thumb-actions">
-                      <button class="slide-action-chip" type="button" data-insert-slide-before="${page.pageIndex}" aria-label="${page.pageIndex}페이지 앞에 빈 슬라이드 추가">앞+</button>
-                      <button class="slide-action-chip" type="button" data-insert-slide-after="${page.pageIndex}" aria-label="${page.pageIndex}페이지 뒤에 빈 슬라이드 추가">뒤+</button>
-                      <button class="slide-action-chip" type="button" data-duplicate-slide="${page.pageIndex}" aria-label="${page.pageIndex}페이지 복제">복제</button>
                       <button class="slide-layout-chip ${page.layout.mode === "single" ? "is-active" : ""}" type="button" data-slide-layout="${page.pageIndex}:single">1</button>
                       <button class="slide-layout-chip ${page.layout.mode === "pair" ? "is-active" : ""}" type="button" data-slide-layout="${page.pageIndex}:pair">2</button>
                       <button class="slide-layout-chip ${page.layout.mode === "triple" ? "is-active" : ""}" type="button" data-slide-layout="${page.pageIndex}:triple">3</button>
                       <button class="slide-layout-chip ${page.layout.mode === "quad" ? "is-active" : ""}" type="button" data-slide-layout="${page.pageIndex}:quad">4</button>
-                      <button class="slide-thumb-delete" type="button" data-delete-slide="${page.pageIndex}" aria-label="${page.pageIndex}페이지 삭제">삭제</button>
                     </div>
                   </div>
                   <input
