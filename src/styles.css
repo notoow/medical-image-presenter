@@ -586,6 +586,12 @@ body.is-file-dragging .drop-card {
   font-weight: 700;
 }
 
+.photo-filter-reset {
+  min-width: 0;
+  padding-inline: 0.72rem;
+  white-space: nowrap;
+}
+
 .photo-search-field {
   display: grid;
   gap: 0.32rem;

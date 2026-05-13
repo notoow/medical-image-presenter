@@ -270,6 +270,7 @@ const els = {
   thumbnailRail: document.querySelector("#thumbnailRail"),
   photoListPanel: document.querySelector("#photoListPanel"),
   photoFilterSummary: document.querySelector("#photoFilterSummary"),
+  photoFilterResetButton: document.querySelector("#photoFilterResetButton"),
   photoSearchInput: document.querySelector("#photoSearchInput"),
   photoSearchClearButton: document.querySelector("#photoSearchClearButton"),
   photoSearchStatus: document.querySelector("#photoSearchStatus"),
@@ -1199,6 +1200,11 @@ function updatePhotoFilterUi() {
     els.photoSearchClearButton.disabled = !hasQuery;
     els.photoSearchClearButton.hidden = !hasQuery;
   }
+  if (els.photoFilterResetButton) {
+    const isDirty = state.photoSearchQuery.trim().length > 0 || state.photoFilterMode !== "all";
+    els.photoFilterResetButton.disabled = !isDirty;
+    els.photoFilterResetButton.hidden = !isDirty;
+  }
 }
 
 function updatePhotoFilterCounts(usedCounts = getUsedCounts()) {
@@ -1245,6 +1251,19 @@ function setPhotoFilterMode(nextMode) {
   if (state.photoFilterMode === normalized) return;
   state.photoFilterMode = normalized;
   render({ refreshGuidePanel: false, refreshThumbnails: false });
+}
+
+function resetPhotoFilters() {
+  const hadQuery = state.photoSearchQuery.trim().length > 0;
+  const hadFilter = state.photoFilterMode !== "all";
+  if (!hadQuery && !hadFilter) return;
+
+  state.photoSearchQuery = "";
+  state.photoFilterMode = "all";
+  photoSearchActivationQuery = "";
+  photoSearchActivationIndex = -1;
+  render({ refreshGuidePanel: false, refreshThumbnails: false });
+  showToast("사진 검색과 필터를 초기화했습니다.");
 }
 
 function getFilteredImages(usedCounts = getUsedCounts()) {
@@ -2168,6 +2187,7 @@ function syncShortcutHelpContent() {
     <p><kbd>Home</kbd> / <kbd>End</kbd><span>커버 / 마지막 페이지</span></p>
     <p><kbd>Ctrl</kbd> + <kbd>J</kbd><span>페이지 바로가기 입력칸 포커스</span></p>
     <p><kbd>Ctrl</kbd> + <kbd>K</kbd><span>사진 검색창 포커스</span></p>
+    <p><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>K</kbd><span>사진 검색과 필터 초기화</span></p>
     <p><kbd>Enter</kbd> / <kbd>Shift</kbd> + <kbd>Enter</kbd> / <kbd>↑</kbd> <kbd>↓</kbd> / <kbd>Esc</kbd><span>검색 결과 순환 / 역순 순환 / 키보드 탐색 / 검색어 지우기</span></p>
     <p><kbd>Ctrl</kbd> + <kbd>M</kbd><span>현재 슬라이드 뒤에 빈 슬라이드 추가</span></p>
     <p><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>M</kbd><span>현재 슬라이드 앞에 빈 슬라이드 추가</span></p>
@@ -4505,6 +4525,7 @@ els.photoSearchClearButton?.addEventListener("click", () => {
   setPhotoSearchQuery("");
   els.photoSearchInput?.focus();
 });
+els.photoFilterResetButton?.addEventListener("click", resetPhotoFilters);
 
 els.photoFilterAllButton?.addEventListener("click", () => setPhotoFilterMode("all"));
 els.photoFilterCurrentButton?.addEventListener("click", () => setPhotoFilterMode("current"));
@@ -4716,9 +4737,13 @@ document.addEventListener("keydown", (event) => {
     target instanceof HTMLTextAreaElement ||
     target instanceof HTMLSelectElement;
 
-  if (hasSlideShortcutModifier(event) && !event.shiftKey && event.key.toLowerCase() === "k") {
+  if (hasSlideShortcutModifier(event) && event.key.toLowerCase() === "k") {
     event.preventDefault();
-    focusPhotoSearch();
+    if (event.shiftKey) {
+      resetPhotoFilters();
+    } else {
+      focusPhotoSearch();
+    }
     return;
   }
 
