@@ -2090,6 +2090,12 @@ function submitPageJump() {
   goToPage(targetPage - 1);
 }
 
+function focusPhotoSearch() {
+  if (!(els.photoSearchInput instanceof HTMLInputElement)) return;
+  els.photoSearchInput.focus();
+  els.photoSearchInput.select();
+}
+
 function syncShortcutHelpContent() {
   const shortcutGrid = els.shortcutDialog?.querySelector(".shortcut-grid");
   if (!(shortcutGrid instanceof HTMLElement)) return;
@@ -2105,6 +2111,7 @@ function syncShortcutHelpContent() {
     <p><kbd>→</kbd> <kbd>↓</kbd> <kbd>Space</kbd> <kbd>N</kbd><span>다음 페이지</span></p>
     <p><kbd>Home</kbd> / <kbd>End</kbd><span>커버 / 마지막 페이지</span></p>
     <p><kbd>Ctrl</kbd> + <kbd>J</kbd><span>페이지 바로가기 입력칸 포커스</span></p>
+    <p><kbd>Ctrl</kbd> + <kbd>K</kbd><span>사진 검색창 포커스</span></p>
     <p><kbd>Ctrl</kbd> + <kbd>M</kbd><span>현재 슬라이드 뒤에 빈 슬라이드 추가</span></p>
     <p><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>M</kbd><span>현재 슬라이드 앞에 빈 슬라이드 추가</span></p>
     <p><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>←</kbd> <kbd>→</kbd><span>현재 슬라이드 순서 이동</span></p>
@@ -4634,6 +4641,12 @@ document.addEventListener("keydown", (event) => {
     target instanceof HTMLInputElement ||
     target instanceof HTMLTextAreaElement ||
     target instanceof HTMLSelectElement;
+
+  if (hasSlideShortcutModifier(event) && !event.shiftKey && event.key.toLowerCase() === "k") {
+    event.preventDefault();
+    focusPhotoSearch();
+    return;
+  }
 
   if (hasSlideShortcutModifier(event) && !event.shiftKey && event.key.toLowerCase() === "j") {
     event.preventDefault();
