@@ -3646,6 +3646,7 @@ function renderPhotoList() {
     imagesVersion,
     slideSlotsVersion,
     layoutVersion,
+    state.pageIndex,
     state.images.length,
     state.slideSlots.length,
     state.photoSearchQuery,
