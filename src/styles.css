@@ -452,6 +452,8 @@ body.is-file-dragging .drop-card {
 
 .control-panel,
 .photo-panel {
+  position: relative;
+  z-index: 3;
   overflow: auto;
   scrollbar-gutter: stable;
   max-height: calc(100vh - 2.5rem);
@@ -574,13 +576,14 @@ body.is-file-dragging .drop-card {
 }
 
 .photo-list-card {
+  position: relative;
   display: grid;
-  grid-template-columns: 4.4rem minmax(0, 1fr) auto;
+  grid-template-columns: 4.4rem minmax(0, 1fr);
   gap: 0.58rem;
   align-items: center;
   border: 1px solid rgba(138, 75, 45, 0.16);
   border-radius: 0.9rem;
-  padding: 0.45rem;
+  padding: 0.45rem 2.5rem 0.45rem 0.45rem;
   background: rgba(255, 253, 247, 0.54);
   cursor: grab;
   transition:
@@ -666,6 +669,9 @@ body.is-file-dragging .drop-card {
 }
 
 .photo-list-remove {
+  position: absolute;
+  top: 0.42rem;
+  right: 0.42rem;
   display: grid;
   place-items: center;
   width: 1.85rem;
@@ -1189,6 +1195,8 @@ kbd {
 }
 
 .stage-wrap {
+  position: relative;
+  z-index: 1;
   display: grid;
   grid-template-rows: auto 1fr auto;
   gap: 1rem;
@@ -1912,7 +1920,7 @@ body.presenting .guide-ruler {
 
 .slide-stage-caption-wrap {
   position: absolute;
-  z-index: 6;
+  z-index: 3;
   top: 1rem;
   left: 1rem;
   max-width: min(38rem, calc(100% - 3.2rem));
@@ -1976,7 +1984,7 @@ body.presenting .guide-ruler {
 
 .empty-slide-caption-wrap {
   position: absolute;
-  z-index: 6;
+  z-index: 3;
   top: 50%;
   left: 50%;
   max-width: min(72%, 30rem);
