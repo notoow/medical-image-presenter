@@ -1198,6 +1198,26 @@ function updatePhotoFilterUi() {
   }
 }
 
+function updatePhotoFilterCounts(usedCounts = getUsedCounts()) {
+  const currentCount = new Set(getCurrentPageSlotMeta().slots.filter(Boolean)).size;
+  const placedCount = state.images.reduce((count, image) => count + ((usedCounts.get(image.id) ?? 0) > 0 ? 1 : 0), 0);
+  const labels = {
+    all: `전체 ${state.images.length}`,
+    current: `현재 ${currentCount}`,
+    placed: `배치 ${placedCount}`,
+    unplaced: `미배치 ${Math.max(0, state.images.length - placedCount)}`,
+  };
+  [
+    [els.photoFilterAllButton, "all"],
+    [els.photoFilterCurrentButton, "current"],
+    [els.photoFilterPlacedButton, "placed"],
+    [els.photoFilterUnplacedButton, "unplaced"],
+  ].forEach(([button, key]) => {
+    if (!button) return;
+    button.textContent = labels[key];
+  });
+}
+
 function updatePhotoFilterSummary(filteredCount, totalCount) {
   if (els.photoFilterSummary) {
     els.photoFilterSummary.textContent = `${filteredCount} / ${totalCount}장`;
@@ -3609,6 +3629,7 @@ function renderPhotoList() {
     photoListRenderKey = "empty";
     photoListRenderToken += 1;
     activePhotoListCard = null;
+    updatePhotoFilterCounts(new Map());
     updatePhotoFilterSummary(0, 0);
     els.photoListPanel.innerHTML = `<p class="photo-list-empty">사진을 업로드하면 전체 목록이 표시됩니다.</p>`;
     unregisterRenderableImageNodesInRoot(els.photoListPanel);
@@ -3618,6 +3639,7 @@ function renderPhotoList() {
   const usedCounts = getUsedCounts();
   const placements = getImagePlacements();
   const filteredImages = getFilteredImages(usedCounts);
+  updatePhotoFilterCounts(usedCounts);
   const currentPageImageIds = new Set(getCurrentPageSlotMeta().slots.filter(Boolean));
   updatePhotoFilterSummary(filteredImages.length, state.images.length);
   const nextKey = [
