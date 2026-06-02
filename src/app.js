@@ -9,6 +9,8 @@ const SLIDE_EXPORT_SIZES = {
   "3840x2160": { width: 3840, height: 2160, label: "4K" },
 };
 const DEFAULT_SLIDE_EXPORT_SIZE = "1920x1080";
+const SLIDE_LAYER_COUNT = 3;
+const DEFAULT_SLIDE_LAYER = 2;
 
 const state = {
   images: [],
@@ -21,6 +23,7 @@ const state = {
   backgroundMusicUrl: "",
   backgroundMusicName: "",
   pageIndex: 0,
+  slideLayerAnchorPage: null,
   layoutMode: "pair",
   gridRows: 1,
   gridCols: 2,
@@ -342,6 +345,7 @@ function captureEditHistorySnapshot() {
     selectedSlotIndex: state.selectedSlotIndex,
     logoUrl: state.logoUrl,
     pageIndex: state.pageIndex,
+    slideLayerAnchorPage: state.slideLayerAnchorPage,
     layoutMode: state.layoutMode,
     gridRows: state.gridRows,
     gridCols: state.gridCols,
@@ -387,6 +391,7 @@ function restoreEditHistorySnapshot(snapshot) {
     state.selectedSlotIndex = snapshot.selectedSlotIndex;
     state.logoUrl = snapshot.logoUrl;
     state.pageIndex = snapshot.pageIndex;
+    state.slideLayerAnchorPage = snapshot.slideLayerAnchorPage ?? null;
     state.layoutMode = snapshot.layoutMode;
     state.gridRows = snapshot.gridRows;
     state.gridCols = snapshot.gridCols;
@@ -834,13 +839,60 @@ function getCropStyle() {
   return `inset(${state.crop.top}% ${state.crop.right}% ${state.crop.bottom}% ${state.crop.left}%)`;
 }
 
+function resetSlideLayerAnchor(page = state.pageIndex) {
+  const totalSlides = getSlidePageCount();
+  if (page <= 0 || totalSlides <= 0) {
+    state.slideLayerAnchorPage = null;
+    return;
+  }
+  state.slideLayerAnchorPage = clamp(Number(page) || 1, 1, totalSlides);
+}
+
+function ensureSlideLayerAnchor() {
+  const totalSlides = getSlidePageCount();
+  if (state.pageIndex <= 0 || totalSlides <= 0) {
+    state.slideLayerAnchorPage = null;
+    return null;
+  }
+
+  let anchorPage = Number(state.slideLayerAnchorPage);
+  if (!Number.isFinite(anchorPage) || anchorPage < 1 || anchorPage > totalSlides) {
+    anchorPage = state.pageIndex;
+  }
+
+  const currentLayer = state.pageIndex - anchorPage + DEFAULT_SLIDE_LAYER;
+  if (currentLayer < 1 || currentLayer > SLIDE_LAYER_COUNT) {
+    anchorPage = state.pageIndex;
+  }
+
+  state.slideLayerAnchorPage = clamp(anchorPage, 1, totalSlides);
+  return state.slideLayerAnchorPage;
+}
+
+function getCurrentSlideLayerStatus() {
+  const totalSlides = getSlidePageCount();
+  const anchorPage = ensureSlideLayerAnchor();
+  if (!anchorPage) return null;
+
+  const currentLayer = state.pageIndex - anchorPage + DEFAULT_SLIDE_LAYER;
+  const firstLayerPage = anchorPage - (DEFAULT_SLIDE_LAYER - 1);
+  const lastLayerPage = anchorPage + (SLIDE_LAYER_COUNT - DEFAULT_SLIDE_LAYER);
+
+  return {
+    anchorPage,
+    currentLayer,
+    totalLayers: SLIDE_LAYER_COUNT,
+    hasPrevious: currentLayer > 1 && state.pageIndex > 1 && firstLayerPage <= state.pageIndex - 1,
+    hasNext: currentLayer < SLIDE_LAYER_COUNT && state.pageIndex < totalSlides && lastLayerPage >= state.pageIndex + 1,
+  };
+}
+
 function getStageIndexBadgeHtml() {
-  const totalSlides = Math.max(getSlidePageCount(), 0);
-  const text = state.pageIndex === 0 ? "Cover" : `${state.pageIndex} / ${Math.max(totalSlides, 1)}`;
-  const label =
-    state.pageIndex === 0
-      ? `커버 슬라이드, 전체 슬라이드 ${totalSlides}장`
-      : `${state.pageIndex}번 슬라이드, 전체 ${totalSlides}장`;
+  const status = getCurrentSlideLayerStatus();
+  if (!status) return "";
+
+  const text = `${status.currentLayer} / ${status.totalLayers}`;
+  const label = `${status.currentLayer}번 슬라이드 레이어, 기본 레이어 ${DEFAULT_SLIDE_LAYER}번, 실제 ${state.pageIndex}번 슬라이드`;
   return `<div class="stage-index-badge" aria-label="${escapeHtml(label)}">${escapeHtml(text)}</div>`;
 }
 
@@ -855,9 +907,8 @@ function renderCover() {
     state.coverVisibility.date ? new Date().toLocaleDateString("ko-KR") : "",
   ].filter(Boolean);
 
-  els.stage.className = "stage stage-cover has-stage-index";
+  els.stage.className = "stage stage-cover";
   els.stage.innerHTML = `
-    ${getStageIndexBadgeHtml()}
     <div class="cover-card">
       ${
         state.coverVisibility.logo && state.logoUrl
@@ -1591,6 +1642,7 @@ function render({ refreshGuidePanel = true, refreshThumbnails = true, refreshPho
   sortImages();
   ensureSlideSlots();
   state.pageIndex = clamp(state.pageIndex, 0, Math.max(getTotalPages() - 1, 0));
+  ensureSlideLayerAnchor();
   syncShortcutHelpContent();
 
   if (state.pageIndex === 0) {
@@ -1737,12 +1789,32 @@ function stopAutoplayTimer() {
   autoplayTimer = null;
 }
 
-function goToPage(nextPage) {
+function goToPage(nextPage, { preserveSlideLayerAnchor = false } = {}) {
   state.pageIndex = clamp(nextPage, 0, Math.max(getTotalPages() - 1, 0));
+  if (preserveSlideLayerAnchor) {
+    ensureSlideLayerAnchor();
+  } else {
+    resetSlideLayerAnchor(state.pageIndex);
+  }
   render({ refreshPhotoList: false });
   if (presentationPlaybackMode === "autoplay" && isPresenting()) {
     scheduleAutoplayAdvance();
   }
+}
+
+function goToAdjacentSlideLayer(direction = 1) {
+  if (state.pageIndex <= 0 || !Number.isFinite(direction) || direction === 0) return false;
+
+  const status = getCurrentSlideLayerStatus();
+  if (!status) return false;
+
+  if ((direction < 0 && !status.hasPrevious) || (direction > 0 && !status.hasNext)) {
+    showToast(direction < 0 ? "위 레이어 슬라이드가 없습니다." : "아래 레이어 슬라이드가 없습니다.");
+    return true;
+  }
+
+  goToPage(state.pageIndex + (direction < 0 ? -1 : 1), { preserveSlideLayerAnchor: true });
+  return true;
 }
 
 function updateFitMode(mode) {
@@ -2153,6 +2225,7 @@ async function loadImageFiles(fileList) {
         : `${addedImages.length}장 추가됨`;
 
     state.pageIndex = wasEmpty ? 1 : placedLocation?.page ?? state.pageIndex;
+    resetSlideLayerAnchor(state.pageIndex);
     render();
     warmPreviewCache(addedImages);
     queuePersistAssets();
@@ -2379,8 +2452,9 @@ function syncShortcutHelpContent() {
     <p><kbd>Shift</kbd> + <kbd>F6</kbd><span>현재 페이지부터 자동재생 발표</span></p>
     <p><kbd>A</kbd><span>발표 중 일반 발표 / 자동재생 전환</span></p>
     <p><kbd>Esc</kbd><span>발표 모드 또는 도움말 닫기</span></p>
-    <p><kbd>←</kbd> <kbd>↑</kbd> <kbd>P</kbd><span>이전 페이지</span></p>
-    <p><kbd>→</kbd> <kbd>↓</kbd> <kbd>Space</kbd> <kbd>N</kbd><span>다음 페이지</span></p>
+    <p><kbd>←</kbd> <kbd>P</kbd><span>이전 페이지</span></p>
+    <p><kbd>→</kbd> <kbd>Space</kbd> <kbd>N</kbd><span>다음 페이지</span></p>
+    <p><kbd>↑</kbd> <kbd>↓</kbd><span>현재 프로젝트의 1 / 2 / 3번 슬라이드 레이어 이동</span></p>
     <p><kbd>Home</kbd> / <kbd>End</kbd><span>커버 / 마지막 페이지</span></p>
     <p><kbd>Ctrl</kbd> + <kbd>J</kbd><span>페이지 바로가기 입력칸 포커스</span></p>
     <p><kbd>Ctrl</kbd> + <kbd>K</kbd><span>사진 검색창 포커스</span></p>
@@ -3103,6 +3177,7 @@ function applyLayoutToPage(page, mode, rows, cols) {
   state.slotTransforms = nextTransforms;
   state.selectedSlotIndex = Number.isFinite(nextSelectedSlotIndex) ? nextSelectedSlotIndex : null;
   state.pageIndex = clamp(state.pageIndex, 0, Math.max(pages.length, 0));
+  resetSlideLayerAnchor(state.pageIndex);
 
   markSlideSlotsDirty();
   markLayoutDirty();
@@ -3332,6 +3407,7 @@ function assignImageToSlot(slotIndex, imageId, { advance = false } = {}) {
       const location = getSlotLocation(nextEmptySlotIndex);
       if (location) {
         state.pageIndex = location.page;
+        resetSlideLayerAnchor(state.pageIndex);
         state.selectedSlotIndex = nextEmptySlotIndex;
         render();
         return;
@@ -3349,6 +3425,7 @@ function assignImageToSlot(slotIndex, imageId, { advance = false } = {}) {
 
     const firstSlotIndexOfNextPage = state.slideSlots.length - pageSize;
     state.pageIndex = nextPageIndex;
+    resetSlideLayerAnchor(state.pageIndex);
     state.selectedSlotIndex = firstSlotIndexOfNextPage;
     render();
     return;
@@ -3379,6 +3456,7 @@ function clearSlideSlots() {
     markSlideSlotsDirty();
     markLayoutDirty();
     state.pageIndex = 0;
+    resetSlideLayerAnchor(state.pageIndex);
     render();
     showToast("슬라이드를 비웠습니다.");
     return;
@@ -3393,6 +3471,7 @@ function clearSlideSlots() {
   state.slotTransforms = {};
   state.selectedSlotIndex = null;
   state.pageIndex = 1;
+  resetSlideLayerAnchor(state.pageIndex);
   render();
   showToast("슬라이드 칸을 모두 비웠습니다.");
 }
@@ -3421,6 +3500,7 @@ function resetAllPhotosAndSlides() {
   state.slotTransforms = {};
   state.selectedSlotIndex = null;
   state.pageIndex = 0;
+  resetSlideLayerAnchor(state.pageIndex);
   state.photoSearchQuery = "";
   state.photoFilterMode = "all";
 
@@ -3484,6 +3564,7 @@ function findNextSlotIndexByImageId(imageId, currentSlotIndex = state.selectedSl
 
 function goToPageWithSelection(page, slotIndex = null) {
   state.pageIndex = clamp(page, 0, Math.max(getTotalPages() - 1, 0));
+  resetSlideLayerAnchor(state.pageIndex);
   state.selectedSlotIndex = Number.isFinite(slotIndex) && slotIndex >= 0 ? slotIndex : null;
   render({ refreshPhotoList: false });
 }
@@ -3557,6 +3638,7 @@ function reorderSlidePage(fromPage, toPage) {
       state.pageIndex += 1;
     }
   }
+  resetSlideLayerAnchor(state.pageIndex);
 
   if (selectedImageId) {
     const nextSelectedSlot = findFirstSlotIndexByImageId(selectedImageId);
@@ -3793,6 +3875,7 @@ function deleteSlidePage(page) {
   } else if (state.pageIndex > page) {
     state.pageIndex -= 1;
   }
+  resetSlideLayerAnchor(state.pageIndex);
 
   if (selectedImageId) {
     const nextSelectedSlot = findFirstSlotIndexByImageId(selectedImageId);
@@ -3858,6 +3941,7 @@ function removeImageFromLibrary(imageId) {
   }
 
   state.pageIndex = clamp(state.pageIndex, 0, Math.max(getTotalPages() - 1, 0));
+  resetSlideLayerAnchor(state.pageIndex);
   render();
   queuePersistAssets();
 }
@@ -5313,7 +5397,7 @@ document.addEventListener("keydown", (event) => {
     !event.shiftKey &&
     !hasSlideShortcutModifier(event) &&
     (event.key === "ArrowUp" || event.key === "ArrowDown") &&
-    scrollSlidePreviewLayer(event.key === "ArrowDown" ? 1 : -1)
+    goToAdjacentSlideLayer(event.key === "ArrowDown" ? 1 : -1)
   ) {
     event.preventDefault();
     return;
@@ -5468,6 +5552,7 @@ function getSettingsData() {
     guides: state.guides,
     filters: state.filters,
     pageIndex: state.pageIndex,
+    slideLayerAnchorPage: state.slideLayerAnchorPage,
     selectedSlotIndex: state.selectedSlotIndex,
     imageOrder: getImageOrder(),
   };
@@ -6037,6 +6122,7 @@ function applyPersistedState() {
     state.coverVisibility = { ...state.coverVisibility, ...(data.coverVisibility ?? {}) };
     state.filters = { ...state.filters, ...(data.filters ?? {}) };
     state.pageIndex = data.pageIndex ?? state.pageIndex;
+    state.slideLayerAnchorPage = data.slideLayerAnchorPage ?? null;
     applyImageOrder(data.imageOrder);
 
     els.sortMode.value = state.sortMode;
