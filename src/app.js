@@ -3,6 +3,12 @@ const LEGACY_STORAGE_KEY = "medical-image-presenter:v2";
 const SETTINGS_STORAGE_KEY = "medical-image-presenter:settings:v3";
 const ASSETS_STORAGE_KEY = "medical-image-presenter:assets:v3";
 const DEFAULT_LOGO_NAME = "하이스트비뇨의학과로고.jpg";
+const SLIDE_EXPORT_SIZES = {
+  "1920x1080": { width: 1920, height: 1080, label: "Full HD" },
+  "2560x1440": { width: 2560, height: 1440, label: "QHD" },
+  "3840x2160": { width: 3840, height: 2160, label: "4K" },
+};
+const DEFAULT_SLIDE_EXPORT_SIZE = "1920x1080";
 
 const state = {
   images: [],
@@ -21,6 +27,7 @@ const state = {
   sortMode: "name-asc",
   photoSearchQuery: "",
   photoFilterMode: "all",
+  slideExportSize: DEFAULT_SLIDE_EXPORT_SIZE,
   fitMode: "fit",
   backgroundEnabled: true,
   autoplaySeconds: 3,
@@ -208,6 +215,9 @@ const els = {
   exportButton: document.querySelector("#exportButton"),
   openPagesButton: document.querySelector("#openPagesButton"),
   downloadImagesButton: document.querySelector("#downloadImagesButton"),
+  slideExportSize: document.querySelector("#slideExportSize"),
+  downloadCurrentSlideButton: document.querySelector("#downloadCurrentSlideButton"),
+  downloadAllSlidesButton: document.querySelector("#downloadAllSlidesButton"),
   zoomOutButton: document.querySelector("#zoomOutButton"),
   zoomInButton: document.querySelector("#zoomInButton"),
   zoomOutput: document.querySelector("#zoomOutput"),
@@ -4941,6 +4951,9 @@ els.openPagesButton.addEventListener("click", () => {
   window.open("https://github.com/notoow/medical-image-presenter", "_blank", "noopener,noreferrer");
 });
 els.downloadImagesButton.addEventListener("click", downloadAdjustedImages);
+els.slideExportSize?.addEventListener("change", () => setSlideExportSize(els.slideExportSize.value));
+els.downloadCurrentSlideButton?.addEventListener("click", downloadCurrentSlidePng);
+els.downloadAllSlidesButton?.addEventListener("click", downloadAllSlidesPng);
 els.backgroundMusicInput?.addEventListener("change", async (event) => {
   const [file] = Array.from(event.target.files ?? []);
   if (!file) return;
@@ -5396,6 +5409,7 @@ function getPresentationData() {
     gridRows: state.gridRows,
     gridCols: state.gridCols,
     sortMode: state.sortMode,
+    slideExportSize: state.slideExportSize,
     fitMode: state.fitMode,
     backgroundEnabled: state.backgroundEnabled,
     autoplaySeconds: state.autoplaySeconds,
@@ -5430,6 +5444,7 @@ function getSettingsData() {
     gridRows: state.gridRows,
     gridCols: state.gridCols,
     sortMode: state.sortMode,
+    slideExportSize: state.slideExportSize,
     fitMode: state.fitMode,
     backgroundEnabled: state.backgroundEnabled,
     autoplaySeconds: state.autoplaySeconds,
@@ -5464,6 +5479,422 @@ function downloadTextFile(fileName, text) {
   link.click();
   link.remove();
   URL.revokeObjectURL(url);
+}
+
+function getSlideExportSize() {
+  const key = Object.hasOwn(SLIDE_EXPORT_SIZES, state.slideExportSize)
+    ? state.slideExportSize
+    : DEFAULT_SLIDE_EXPORT_SIZE;
+  return SLIDE_EXPORT_SIZES[key];
+}
+
+function setSlideExportSize(value) {
+  state.slideExportSize = Object.hasOwn(SLIDE_EXPORT_SIZES, value) ? value : DEFAULT_SLIDE_EXPORT_SIZE;
+  if (els.slideExportSize) els.slideExportSize.value = state.slideExportSize;
+  queuePersistSettings();
+}
+
+function safeFileNamePart(value, fallback = "slide") {
+  const normalized = String(value || fallback)
+    .trim()
+    .replace(/[\\/:*?"<>|]+/g, "-")
+    .replace(/\s+/g, " ")
+    .slice(0, 80);
+  return normalized || fallback;
+}
+
+function roundedRectPath(ctx, x, y, width, height, radius) {
+  const r = Math.min(radius, width / 2, height / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + width - r, y);
+  ctx.quadraticCurveTo(x + width, y, x + width, y + r);
+  ctx.lineTo(x + width, y + height - r);
+  ctx.quadraticCurveTo(x + width, y + height, x + width - r, y + height);
+  ctx.lineTo(x + r, y + height);
+  ctx.quadraticCurveTo(x, y + height, x, y + height - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}
+
+function fillRoundedRect(ctx, x, y, width, height, radius, fillStyle) {
+  roundedRectPath(ctx, x, y, width, height, radius);
+  ctx.fillStyle = fillStyle;
+  ctx.fill();
+}
+
+function strokeRoundedRect(ctx, x, y, width, height, radius, strokeStyle, lineWidth = 1) {
+  roundedRectPath(ctx, x, y, width, height, radius);
+  ctx.strokeStyle = strokeStyle;
+  ctx.lineWidth = lineWidth;
+  ctx.stroke();
+}
+
+function drawWrappedText(ctx, text, x, y, maxWidth, lineHeight, maxLines = Infinity) {
+  const paragraphs = String(text || "").split(/\r?\n/);
+  const lines = [];
+  paragraphs.forEach((paragraph) => {
+    const words = paragraph.trim().split(/\s+/).filter(Boolean);
+    if (words.length === 0) {
+      lines.push("");
+      return;
+    }
+    let line = "";
+    words.forEach((word) => {
+      const candidate = line ? `${line} ${word}` : word;
+      if (ctx.measureText(candidate).width <= maxWidth || !line) {
+        line = candidate;
+        return;
+      }
+      lines.push(line);
+      line = word;
+    });
+    if (line) lines.push(line);
+  });
+
+  const visibleLines = lines.slice(0, maxLines);
+  visibleLines.forEach((line, index) => {
+    ctx.fillText(line, x, y + index * lineHeight);
+  });
+  return visibleLines.length * lineHeight;
+}
+
+function setCanvasFont(ctx, weight, size, lineHeight = 1.1) {
+  ctx.font = `${weight} ${size}px Pretendard, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`;
+  ctx.textBaseline = "top";
+  return size * lineHeight;
+}
+
+function drawStageCanvasBackground(ctx, width, height) {
+  const base = ctx.createLinearGradient(0, 0, width, height);
+  base.addColorStop(0, "#22221e");
+  base.addColorStop(0.62, "#151512");
+  base.addColorStop(1, "#0a0a09");
+  ctx.fillStyle = base;
+  ctx.fillRect(0, 0, width, height);
+
+  const glow = ctx.createRadialGradient(width * 0.16, height * 0.12, 0, width * 0.16, height * 0.12, width * 0.58);
+  glow.addColorStop(0, "rgba(255,255,255,0.16)");
+  glow.addColorStop(1, "rgba(255,255,255,0)");
+  ctx.fillStyle = glow;
+  ctx.fillRect(0, 0, width, height);
+}
+
+function getImageDrawRect(sourceWidth, sourceHeight, targetWidth, targetHeight, mode = "contain") {
+  const sourceRatio = sourceWidth / sourceHeight;
+  const targetRatio = targetWidth / targetHeight;
+  const cover = mode === "cover";
+  const matchWidth = cover ? sourceRatio < targetRatio : sourceRatio > targetRatio;
+  const width = matchWidth ? targetWidth : targetHeight * sourceRatio;
+  const height = matchWidth ? targetWidth / sourceRatio : targetHeight;
+  return {
+    x: (targetWidth - width) / 2,
+    y: (targetHeight - height) / 2,
+    width,
+    height,
+  };
+}
+
+async function drawCoverToCanvas(ctx, width, height) {
+  drawStageCanvasBackground(ctx, width, height);
+
+  const cardWidth = width * 0.52;
+  const cardHeight = height * 0.5;
+  const cardX = (width - cardWidth) / 2;
+  const cardY = (height - cardHeight) / 2;
+  const cardRadius = width * 0.022;
+  fillRoundedRect(ctx, cardX, cardY, cardWidth, cardHeight, cardRadius, "rgba(255,253,247,0.08)");
+  strokeRoundedRect(ctx, cardX, cardY, cardWidth, cardHeight, cardRadius, "rgba(255,253,247,0.18)", Math.max(1, width * 0.001));
+
+  const pad = width * 0.034;
+  let cursorY = cardY + pad;
+  const contentX = cardX + pad;
+  const contentWidth = cardWidth - pad * 2;
+
+  if (state.coverVisibility.logo && state.logoUrl) {
+    try {
+      const logo = await imageFromDataUrl(state.logoUrl);
+      const logoMaxWidth = width * 0.09;
+      const logoMaxHeight = height * 0.12;
+      const rect = getImageDrawRect(logo.naturalWidth, logo.naturalHeight, logoMaxWidth, logoMaxHeight, "contain");
+      ctx.drawImage(logo, contentX + rect.x, cursorY + rect.y, rect.width, rect.height);
+      cursorY += logoMaxHeight + height * 0.03;
+    } catch {
+      cursorY += height * 0.03;
+    }
+  }
+
+  if (state.coverVisibility.title) {
+    ctx.fillStyle = "#fffdf7";
+    const titleLineHeight = setCanvasFont(ctx, 900, width * 0.042, 0.98);
+    cursorY += drawWrappedText(ctx, els.coverTitle.value, contentX, cursorY, contentWidth * 0.78, titleLineHeight, 3);
+    cursorY += height * 0.018;
+  }
+
+  if (state.coverVisibility.subtitle) {
+    ctx.fillStyle = "rgba(255,253,247,0.72)";
+    const subtitleLineHeight = setCanvasFont(ctx, 700, width * 0.015, 1.25);
+    cursorY += drawWrappedText(ctx, els.coverSubtitle.value, contentX, cursorY, contentWidth, subtitleLineHeight, 2);
+    cursorY += height * 0.028;
+  }
+
+  const meta = [
+    state.coverVisibility.hospitalName ? els.hospitalName.value : "",
+    state.coverVisibility.presenterName ? els.presenterName.value : "",
+    state.coverVisibility.date ? new Date().toLocaleDateString("ko-KR") : "",
+  ].filter(Boolean);
+  if (meta.length > 0) {
+    ctx.fillStyle = "rgba(255,253,247,0.82)";
+    const metaLineHeight = setCanvasFont(ctx, 700, width * 0.01, 1);
+    let cursorX = contentX;
+    meta.forEach((item) => {
+      const text = String(item);
+      const chipWidth = ctx.measureText(text).width + width * 0.018;
+      const chipHeight = metaLineHeight + height * 0.012;
+      fillRoundedRect(ctx, cursorX, cursorY, chipWidth, chipHeight, chipHeight / 2, "rgba(255,253,247,0.07)");
+      strokeRoundedRect(ctx, cursorX, cursorY, chipWidth, chipHeight, chipHeight / 2, "rgba(255,253,247,0.2)", Math.max(1, width * 0.0006));
+      ctx.fillText(text, cursorX + width * 0.009, cursorY + height * 0.006);
+      cursorX += chipWidth + width * 0.008;
+    });
+  }
+}
+
+async function drawImageSlotToCanvas(ctx, image, slotIndex, rect, stageWidth, stageHeight) {
+  const radius = stageWidth * 0.014;
+  fillRoundedRect(ctx, rect.x, rect.y, rect.width, rect.height, radius, "#111");
+
+  if (!image) {
+    strokeRoundedRect(ctx, rect.x, rect.y, rect.width, rect.height, radius, "rgba(255,253,247,0.22)", Math.max(1, stageWidth * 0.001));
+    ctx.fillStyle = "rgba(255,253,247,0.58)";
+    const lineHeight = setCanvasFont(ctx, 800, stageWidth * 0.014, 1.1);
+    ctx.textAlign = "center";
+    ctx.fillText("빈칸", rect.x + rect.width / 2, rect.y + rect.height / 2 - lineHeight / 2);
+    ctx.textAlign = "left";
+    return;
+  }
+
+  const loaded = await imageFromDataUrl(image.url);
+  const transform = getSlotTransform(slotIndex);
+  const fitMode = getEffectiveSlotFitMode(slotIndex, transform);
+  const cropLeft = clamp(state.crop.left + transform.cropLeft, 0, 95);
+  const cropRight = clamp(state.crop.right + transform.cropRight, 0, 95);
+  const cropTop = clamp(state.crop.top + transform.cropTop, 0, 95);
+  const cropBottom = clamp(state.crop.bottom + transform.cropBottom, 0, 95);
+  const cropLeftPx = Math.round(loaded.naturalWidth * (cropLeft / 100));
+  const cropRightPx = Math.round(loaded.naturalWidth * (cropRight / 100));
+  const cropTopPx = Math.round(loaded.naturalHeight * (cropTop / 100));
+  const cropBottomPx = Math.round(loaded.naturalHeight * (cropBottom / 100));
+  const sourceWidth = Math.max(1, loaded.naturalWidth - cropLeftPx - cropRightPx);
+  const sourceHeight = Math.max(1, loaded.naturalHeight - cropTopPx - cropBottomPx);
+
+  ctx.save();
+  roundedRectPath(ctx, rect.x, rect.y, rect.width, rect.height, radius);
+  ctx.clip();
+
+  if (state.backgroundEnabled) {
+    const bgScale = state.backgroundFilters.scale / 100;
+    const coverRect = getImageDrawRect(sourceWidth, sourceHeight, rect.width * bgScale, rect.height * bgScale, "cover");
+    ctx.save();
+    ctx.filter = getBackgroundFilterStyle();
+    ctx.globalAlpha = 0.88;
+    ctx.drawImage(
+      loaded,
+      cropLeftPx,
+      cropTopPx,
+      sourceWidth,
+      sourceHeight,
+      rect.x + (rect.width - rect.width * bgScale) / 2 + coverRect.x,
+      rect.y + (rect.height - rect.height * bgScale) * (state.backgroundFilters.y / 100) + coverRect.y,
+      coverRect.width,
+      coverRect.height,
+    );
+    ctx.restore();
+  }
+
+  const imageRect = getImageDrawRect(sourceWidth, sourceHeight, rect.width, rect.height, fitMode === "fill" ? "cover" : "contain");
+  const scale = state.zoom * (transform.scale / 100);
+  const scaleX = scale * (transform.flipX ? -1 : 1);
+  const scaleY = scale * (transform.flipY ? -1 : 1);
+  ctx.save();
+  ctx.translate(rect.x + rect.width / 2 + (transform.x / 100) * rect.width, rect.y + rect.height / 2 + (transform.y / 100) * rect.height);
+  ctx.rotate((transform.rotate * Math.PI) / 180);
+  ctx.scale(scaleX, scaleY);
+  ctx.filter = getFilterStyle();
+  ctx.drawImage(
+    loaded,
+    cropLeftPx,
+    cropTopPx,
+    sourceWidth,
+    sourceHeight,
+    -rect.width / 2 + imageRect.x,
+    -rect.height / 2 + imageRect.y,
+    imageRect.width,
+    imageRect.height,
+  );
+  ctx.restore();
+
+  ctx.restore();
+
+  const labelText = image.name || "";
+  if (labelText) {
+    const labelFontSize = stageWidth * 0.0088;
+    const labelPaddingX = stageWidth * 0.006;
+    const labelPaddingY = stageHeight * 0.005;
+    const lineHeight = setCanvasFont(ctx, 700, labelFontSize, 1);
+    const labelWidth = Math.min(rect.width - labelPaddingX * 2, ctx.measureText(labelText).width + labelPaddingX * 2);
+    const labelHeight = lineHeight + labelPaddingY * 2;
+    const x = rect.x + rect.width - labelWidth - stageWidth * 0.007;
+    const y = rect.y + rect.height - labelHeight - stageHeight * 0.01;
+    fillRoundedRect(ctx, x, y, labelWidth, labelHeight, labelHeight / 2, "rgba(10,10,10,0.56)");
+    ctx.fillStyle = "rgba(255,253,247,0.88)";
+    ctx.fillText(labelText, x + labelPaddingX, y + labelPaddingY);
+  }
+}
+
+async function drawSlidePageToCanvas(ctx, page, width, height) {
+  drawStageCanvasBackground(ctx, width, height);
+  const layout = page.layout;
+  const rows = layout.mode === "custom" ? layout.rows : layout.mode === "quad" ? 2 : 1;
+  const cols =
+    layout.mode === "custom"
+      ? layout.cols
+      : layout.mode === "single"
+        ? 1
+        : layout.mode === "quad"
+          ? 2
+          : getPageSizeForLayout(layout);
+  const gap = Math.max(12, width * 0.018);
+  const pad = Math.max(18, width * 0.022);
+  const gridWidth = width - pad * 2;
+  const gridHeight = height - pad * 2;
+  const cellWidth = (gridWidth - gap * (cols - 1)) / cols;
+  const cellHeight = (gridHeight - gap * (rows - 1)) / rows;
+
+  await Promise.all(
+    page.slots.map((imageId, offset) => {
+      const row = Math.floor(offset / cols);
+      const col = offset % cols;
+      const rect = {
+        x: pad + col * (cellWidth + gap),
+        y: pad + row * (cellHeight + gap),
+        width: cellWidth,
+        height: cellHeight,
+      };
+      return drawImageSlotToCanvas(ctx, getImageById(imageId), page.start + offset, rect, width, height);
+    }),
+  );
+
+  const caption = String(page.caption || "").trim();
+  const isEmptySlide = page.slots.length > 0 && page.slots.every((slot) => !slot);
+  if (!caption) return;
+
+  if (isEmptySlide) {
+    const boxWidth = Math.min(width * 0.72, width - pad * 2);
+    const boxX = (width - boxWidth) / 2;
+    const lineHeight = setCanvasFont(ctx, 900, width * 0.024, 1.18);
+    const boxHeight = lineHeight + height * 0.06;
+    const boxY = (height - boxHeight) / 2;
+    fillRoundedRect(ctx, boxX, boxY, boxWidth, boxHeight, width * 0.012, "rgba(10,10,10,0.56)");
+    strokeRoundedRect(ctx, boxX, boxY, boxWidth, boxHeight, width * 0.012, "rgba(255,253,247,0.16)", Math.max(1, width * 0.0008));
+    ctx.fillStyle = "rgba(255,253,247,0.9)";
+    ctx.textAlign = "center";
+    drawWrappedText(ctx, caption, width / 2, boxY + height * 0.03, boxWidth - width * 0.04, lineHeight, 2);
+    ctx.textAlign = "left";
+    return;
+  }
+
+  const fontSize = width * 0.016;
+  const lineHeight = setCanvasFont(ctx, 800, fontSize, 1.15);
+  const textWidth = Math.min(width * 0.44, ctx.measureText(caption).width + width * 0.026);
+  const textHeight = lineHeight + height * 0.026;
+  const textX = pad;
+  const textY = pad;
+  fillRoundedRect(ctx, textX, textY, textWidth, textHeight, textHeight / 2, "rgba(10,10,10,0.52)");
+  strokeRoundedRect(ctx, textX, textY, textWidth, textHeight, textHeight / 2, "rgba(255,253,247,0.16)", Math.max(1, width * 0.0008));
+  ctx.fillStyle = "rgba(255,253,247,0.94)";
+  drawWrappedText(ctx, caption, textX + width * 0.012, textY + height * 0.013, textWidth - width * 0.024, lineHeight, 1);
+}
+
+async function renderDeckPageToCanvas(pageIndex, size = getSlideExportSize()) {
+  const canvas = document.createElement("canvas");
+  canvas.width = size.width;
+  canvas.height = size.height;
+  const ctx = canvas.getContext("2d");
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+
+  if (pageIndex === 0) {
+    await drawCoverToCanvas(ctx, size.width, size.height);
+    return canvas;
+  }
+
+  const page = getSlidePages()[pageIndex - 1];
+  if (!page) {
+    drawStageCanvasBackground(ctx, size.width, size.height);
+    return canvas;
+  }
+  await drawSlidePageToCanvas(ctx, page, size.width, size.height);
+  return canvas;
+}
+
+function canvasToPngBlob(canvas) {
+  return new Promise((resolve) => {
+    canvas.toBlob((blob) => resolve(blob), "image/png");
+  });
+}
+
+function downloadBlob(fileName, blob) {
+  if (!blob) return;
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function getDeckFileStem() {
+  return safeFileNamePart(els.coverTitle.value || "medical-image-presentation", "medical-image-presentation");
+}
+
+async function downloadSlidePng(pageIndex = state.pageIndex, { silent = false, sequence = pageIndex + 1 } = {}) {
+  const size = getSlideExportSize();
+  const canvas = await renderDeckPageToCanvas(pageIndex, size);
+  const blob = await canvasToPngBlob(canvas);
+  const pageLabel = pageIndex === 0 ? "cover" : `slide-${String(pageIndex).padStart(2, "0")}`;
+  const fileName = `${String(sequence).padStart(3, "0")}-${getDeckFileStem()}-${pageLabel}-${size.width}x${size.height}.png`;
+  downloadBlob(fileName, blob);
+  if (!silent) showToast(`${size.width}×${size.height} PNG를 내려받았습니다.`);
+}
+
+async function downloadCurrentSlidePng() {
+  showLoading("현재 슬라이드를 PNG로 만드는 중입니다", 0.2);
+  try {
+    await downloadSlidePng(state.pageIndex, { silent: true, sequence: state.pageIndex + 1 });
+    const size = getSlideExportSize();
+    showToast(`현재 슬라이드를 ${size.width}×${size.height} PNG로 저장했습니다.`);
+  } finally {
+    hideLoading();
+  }
+}
+
+async function downloadAllSlidesPng() {
+  const total = getTotalPages();
+  const size = getSlideExportSize();
+  showLoading(`전체 ${total}장을 PNG로 만드는 중입니다`, 0);
+  try {
+    for (let page = 0; page < total; page += 1) {
+      updateLoading(`PNG 저장 중: ${page + 1} / ${total}`, page / total);
+      await downloadSlidePng(page, { silent: true, sequence: page + 1 });
+      await new Promise((resolve) => window.setTimeout(resolve, 120));
+    }
+    showToast(`전체 ${total}장을 ${size.width}×${size.height} PNG로 저장했습니다.`);
+  } finally {
+    hideLoading();
+  }
 }
 
 function clearScheduledIdle(handle) {
@@ -5573,6 +6004,9 @@ function applyPersistedState() {
     markLayoutDirty();
     normalizeSlidePageLayouts();
     state.sortMode = data.sortMode ?? state.sortMode;
+    state.slideExportSize = Object.hasOwn(SLIDE_EXPORT_SIZES, data.slideExportSize)
+      ? data.slideExportSize
+      : DEFAULT_SLIDE_EXPORT_SIZE;
     state.photoSearchQuery = typeof data.photoSearchQuery === "string" ? data.photoSearchQuery : "";
     state.photoFilterMode =
       data.photoFilterMode === "placed" || data.photoFilterMode === "unplaced" || data.photoFilterMode === "current"
@@ -5593,6 +6027,7 @@ function applyPersistedState() {
     applyImageOrder(data.imageOrder);
 
     els.sortMode.value = state.sortMode;
+    if (els.slideExportSize) els.slideExportSize.value = state.slideExportSize;
     updatePhotoFilterUi();
     els.layoutMode.value = state.layoutMode;
     els.gridRows.value = state.gridRows;
