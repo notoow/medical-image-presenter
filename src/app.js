@@ -834,6 +834,16 @@ function getCropStyle() {
   return `inset(${state.crop.top}% ${state.crop.right}% ${state.crop.bottom}% ${state.crop.left}%)`;
 }
 
+function getStageIndexBadgeHtml() {
+  const totalSlides = Math.max(getSlidePageCount(), 0);
+  const text = state.pageIndex === 0 ? "Cover" : `${state.pageIndex} / ${Math.max(totalSlides, 1)}`;
+  const label =
+    state.pageIndex === 0
+      ? `커버 슬라이드, 전체 슬라이드 ${totalSlides}장`
+      : `${state.pageIndex}번 슬라이드, 전체 ${totalSlides}장`;
+  return `<div class="stage-index-badge" aria-label="${escapeHtml(label)}">${escapeHtml(text)}</div>`;
+}
+
 function renderCover() {
   visibleSlideCardCache = new Map();
   visibleGuideCache = new Map();
@@ -845,8 +855,9 @@ function renderCover() {
     state.coverVisibility.date ? new Date().toLocaleDateString("ko-KR") : "",
   ].filter(Boolean);
 
-  els.stage.className = "stage stage-cover";
+  els.stage.className = "stage stage-cover has-stage-index";
   els.stage.innerHTML = `
+    ${getStageIndexBadgeHtml()}
     <div class="cover-card">
       ${
         state.coverVisibility.logo && state.logoUrl
@@ -976,13 +987,14 @@ function renderSlide() {
   const trimmedCaption = slideCaption.trim();
   const isEmptySlide = pageSlots.length > 0 && !pageSlots.some(Boolean);
 
-  els.stage.className = `stage layout-${layout.mode}`;
+  els.stage.className = `stage layout-${layout.mode} has-stage-index`;
 
   if (pageSlots.length === 0) {
     visibleSlideCardCache = new Map();
     visibleGuideCache = new Map();
     unregisterRenderableImageNodesInRoot(els.stage);
     els.stage.innerHTML = `
+      ${getStageIndexBadgeHtml()}
       <div class="empty-state">
         <div>
           <h2>사진을 선택하면 여기에 슬라이드가 만들어집니다.</h2>
@@ -999,6 +1011,7 @@ function renderSlide() {
   activeStageSlotDropTarget = null;
   unregisterRenderableImageNodesInRoot(els.stage);
   els.stage.innerHTML = `
+    ${getStageIndexBadgeHtml()}
     <div
       class="slide-grid ${layoutClass}"
       style="--grid-cols:${layout.cols}; --grid-rows:${layout.rows};"
