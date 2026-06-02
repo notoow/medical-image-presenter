@@ -1204,6 +1204,98 @@ function updateSlideLayerIndicators() {
   if (output) output.textContent = `${status.currentLayer} / ${status.totalLayers}`;
 }
 
+function getActiveSlideReorderRow() {
+  return activeSlideReorderSource?.closest(".slide-preview-row") ?? getSlidePreviewRow();
+}
+
+function clearSlideReorderClasses(row = getActiveSlideReorderRow()) {
+  if (!(row instanceof HTMLElement)) return;
+  row.classList.remove("is-slide-reordering");
+  row.querySelectorAll(".is-reorder-target, .is-reorder-shift-left, .is-reorder-shift-right").forEach((card) => {
+    card.classList.remove("is-reorder-target", "is-reorder-shift-left", "is-reorder-shift-right");
+  });
+}
+
+function updateSlideReorderShiftClasses() {
+  const row = getActiveSlideReorderRow();
+  if (!(row instanceof HTMLElement)) return;
+
+  const cards = Array.from(row.querySelectorAll(".slide-thumb-editor"));
+  cards.forEach((card) => card.classList.remove("is-reorder-shift-left", "is-reorder-shift-right"));
+  if (!(activeSlideReorderSource instanceof HTMLElement) || !(activeSlideReorderTarget instanceof HTMLElement)) return;
+
+  const fromIndex = cards.indexOf(activeSlideReorderSource);
+  const toIndex = cards.indexOf(activeSlideReorderTarget);
+  if (fromIndex < 0 || toIndex < 0 || fromIndex === toIndex) return;
+
+  if (fromIndex < toIndex) {
+    cards.slice(fromIndex + 1, toIndex + 1).forEach((card) => card.classList.add("is-reorder-shift-left"));
+    return;
+  }
+
+  cards.slice(toIndex, fromIndex).forEach((card) => card.classList.add("is-reorder-shift-right"));
+}
+
+function setSlideReorderTarget(card) {
+  const nextTarget = card instanceof HTMLElement && card !== activeSlideReorderSource ? card : null;
+  if (activeSlideReorderTarget === nextTarget) return;
+  activeSlideReorderTarget?.classList.remove("is-reorder-target");
+  activeSlideReorderTarget = nextTarget;
+  activeSlideReorderTarget?.classList.add("is-reorder-target");
+  updateSlideReorderShiftClasses();
+}
+
+function startSlideReorderVisuals(source) {
+  if (!(source instanceof HTMLElement)) return;
+  activeSlideReorderSource = source;
+  source.classList.add("is-reordering");
+  source.closest(".slide-preview-row")?.classList.add("is-slide-reordering");
+  document.body.classList.add("is-slide-dragging");
+}
+
+function removeSlideDragGhost() {
+  activeSlideHandleDrag?.ghost?.remove();
+  if (activeSlideHandleDrag) {
+    activeSlideHandleDrag.ghost = null;
+    activeSlideHandleDrag.ghostOffsetX = 0;
+    activeSlideHandleDrag.ghostOffsetY = 0;
+  }
+}
+
+function updateSlideDragGhostPosition(event) {
+  const ghost = activeSlideHandleDrag?.ghost;
+  if (!(ghost instanceof HTMLElement)) return;
+  const offsetX = activeSlideHandleDrag.ghostOffsetX ?? ghost.offsetWidth / 2;
+  const offsetY = activeSlideHandleDrag.ghostOffsetY ?? 24;
+  ghost.style.transform = `translate3d(${event.clientX - offsetX}px, ${event.clientY - offsetY}px, 0) scale(0.98)`;
+}
+
+function createSlideDragGhost(event) {
+  const drag = activeSlideHandleDrag;
+  if (!drag || !(drag.source instanceof HTMLElement) || drag.ghost) return;
+  const rect = drag.source.getBoundingClientRect();
+  const ghost = drag.source.cloneNode(true);
+  ghost.classList.remove("is-active", "is-reordering", "is-reorder-target", "is-reorder-shift-left", "is-reorder-shift-right");
+  ghost.classList.add("slide-drag-ghost");
+  ghost.style.width = `${rect.width}px`;
+  ghost.style.height = `${rect.height}px`;
+  drag.ghost = ghost;
+  drag.ghostOffsetX = event.clientX - rect.left;
+  drag.ghostOffsetY = event.clientY - rect.top;
+  document.body.append(ghost);
+  updateSlideDragGhostPosition(event);
+}
+
+function cleanupSlideReorderVisuals() {
+  clearSlideReorderClasses();
+  removeSlideDragGhost();
+  activeSlideReorderSource?.classList.remove("is-reordering");
+  activeSlideReorderTarget?.classList.remove("is-reorder-target");
+  activeSlideReorderTarget = null;
+  activeSlideReorderSource = null;
+  document.body.classList.remove("is-slide-dragging");
+}
+
 function syncThumbnailSlotSelection() {
   if (!els.thumbnailRail) return;
 
@@ -2499,19 +2591,15 @@ document.addEventListener("pointermove", (event) => {
     const deltaY = event.clientY - activeSlideHandleDrag.startY;
     if (!activeSlideHandleDrag.moved && Math.hypot(deltaX, deltaY) > 5) {
       activeSlideHandleDrag.moved = true;
-      activeSlideHandleDrag.source.classList.add("is-reordering");
+      startSlideReorderVisuals(activeSlideHandleDrag.source);
+      createSlideDragGhost(event);
     }
     if (!activeSlideHandleDrag.moved) return;
 
+    updateSlideDragGhostPosition(event);
     const target = document.elementFromPoint(event.clientX, event.clientY);
     const card = target instanceof Element ? target.closest(".slide-thumb-editor") : null;
-    if (card instanceof HTMLElement && card !== activeSlideHandleDrag.source) {
-      if (activeSlideReorderTarget !== card) {
-        activeSlideReorderTarget?.classList.remove("is-reorder-target");
-        activeSlideReorderTarget = card;
-        activeSlideReorderTarget.classList.add("is-reorder-target");
-      }
-    }
+    setSlideReorderTarget(card);
     event.preventDefault();
     return;
   }
@@ -2537,11 +2625,8 @@ document.addEventListener("pointerup", (event) => {
       Number.isFinite(toPage) &&
       fromPage !== toPage;
 
-    activeSlideHandleDrag.source.classList.remove("is-reordering");
-    activeSlideReorderTarget?.classList.remove("is-reorder-target");
+    cleanupSlideReorderVisuals();
     activeSlideHandleDrag = null;
-    activeSlideReorderSource = null;
-    activeSlideReorderTarget = null;
     thumbnailRailSuppressClickUntil = performance.now() + 180;
 
     if (shouldReorder) reorderSlidePage(fromPage, toPage);
@@ -2559,11 +2644,8 @@ document.addEventListener("pointerup", (event) => {
 
 document.addEventListener("pointercancel", (event) => {
   if (activeSlideHandleDrag && event.pointerId === activeSlideHandleDrag.pointerId) {
-    activeSlideHandleDrag.source.classList.remove("is-reordering");
-    activeSlideReorderTarget?.classList.remove("is-reorder-target");
+    cleanupSlideReorderVisuals();
     activeSlideHandleDrag = null;
-    activeSlideReorderSource = null;
-    activeSlideReorderTarget = null;
     return;
   }
 
@@ -4520,6 +4602,7 @@ els.thumbnailRail?.addEventListener("pointerdown", (event) => {
       moved: false,
     };
     activeSlideReorderSource = card;
+    dragHandle.setPointerCapture?.(event.pointerId);
     event.preventDefault();
     return;
   }
@@ -4556,8 +4639,7 @@ els.thumbnailRail?.addEventListener("dragstart", (event) => {
   event.dataTransfer.effectAllowed = "move";
   event.dataTransfer.dropEffect = "move";
   event.dataTransfer.setDragImage(card, card.offsetWidth / 2, Math.min(card.offsetHeight / 2, 96));
-  activeSlideReorderSource = card;
-  card.classList.add("is-reordering");
+  startSlideReorderVisuals(card);
 });
 
 els.thumbnailRail?.addEventListener("dragover", (event) => {
@@ -4566,10 +4648,7 @@ els.thumbnailRail?.addEventListener("dragover", (event) => {
   if (activeSlideReorderSource === card) return;
   event.preventDefault();
   if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
-  if (activeSlideReorderTarget === card) return;
-  activeSlideReorderTarget?.classList.remove("is-reorder-target");
-  activeSlideReorderTarget = card;
-  activeSlideReorderTarget.classList.add("is-reorder-target");
+  setSlideReorderTarget(card);
 });
 
 els.thumbnailRail?.addEventListener("dragleave", (event) => {
@@ -4577,8 +4656,7 @@ els.thumbnailRail?.addEventListener("dragleave", (event) => {
   if (!(card instanceof HTMLElement)) return;
   const nextTarget = event.relatedTarget instanceof Element ? event.relatedTarget.closest(".slide-thumb-editor") : null;
   if (nextTarget === card) return;
-  card.classList.remove("is-reorder-target");
-  if (activeSlideReorderTarget === card) activeSlideReorderTarget = null;
+  if (activeSlideReorderTarget === card) setSlideReorderTarget(null);
 });
 
 els.thumbnailRail?.addEventListener("drop", (event) => {
@@ -4586,20 +4664,16 @@ els.thumbnailRail?.addEventListener("drop", (event) => {
   if (!(card instanceof HTMLElement)) return;
   if (activeSlideReorderSource === card) return;
   event.preventDefault();
-  card.classList.remove("is-reorder-target");
-  if (activeSlideReorderTarget === card) activeSlideReorderTarget = null;
 
   const fromPage = Number(event.dataTransfer?.getData("application/x-medical-slide-page"));
   const toPage = Number(card.dataset.page);
+  cleanupSlideReorderVisuals();
   if (!Number.isFinite(fromPage) || !Number.isFinite(toPage) || fromPage === toPage) return;
   reorderSlidePage(fromPage, toPage);
 });
 
 els.thumbnailRail?.addEventListener("dragend", () => {
-  activeSlideReorderTarget?.classList.remove("is-reorder-target");
-  activeSlideReorderSource?.classList.remove("is-reordering");
-  activeSlideReorderTarget = null;
-  activeSlideReorderSource = null;
+  cleanupSlideReorderVisuals();
   thumbnailRailSuppressClickUntil = performance.now() + 180;
 });
 
