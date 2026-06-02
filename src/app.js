@@ -74,6 +74,8 @@ let activePhotoListCard = null;
 let thumbnailPageButtonCache = new Map();
 let activeReorderTarget = null;
 let activeSlideReorderTarget = null;
+let activeSlideReorderSource = null;
+let activeSlideHandleDrag = null;
 let activeThumbnailRailPan = null;
 let thumbnailRailSuppressClickUntil = 0;
 let photoSearchActivationQuery = "";
@@ -618,12 +620,16 @@ function normalizeSlideCaptions(pageCount = getSlidePageCount()) {
   }
 }
 
+function hasSlidePageContent(page) {
+  return Boolean(page?.slots?.some(Boolean) || page?.caption?.trim());
+}
+
 function trimTrailingEmptySlidePages() {
   const pages = getSlidePages();
 
   while (pages.length > 0) {
     const lastPage = pages[pages.length - 1];
-    if (lastPage.slots.some(Boolean)) break;
+    if (hasSlidePageContent(lastPage)) break;
     pages.pop();
   }
 
@@ -634,6 +640,8 @@ function trimTrailingEmptySlidePages() {
     : 0;
   state.slideSlots = state.slideSlots.slice(0, nextSlotLength);
   normalizeSlideCaptions(pages.length);
+  rebuildSlotTransformsFromPages(pages);
+  markSlideSlotsDirty();
   markLayoutDirty();
 }
 
@@ -1129,6 +1137,73 @@ function revealPanelItem(element) {
   });
 }
 
+function getSlidePreviewRow() {
+  return els.thumbnailRail?.querySelector(".slide-preview-row") ?? null;
+}
+
+function scrollSlidePreviewLayer(direction = 1) {
+  const row = getSlidePreviewRow();
+  if (!(row instanceof HTMLElement)) return false;
+
+  const maxScrollLeft = Math.max(0, row.scrollWidth - row.clientWidth);
+  if (maxScrollLeft <= 0) return true;
+  const status = getSlideLayerStatus(row);
+  if (status && ((direction < 0 && !status.hasPrevious) || (direction > 0 && !status.hasNext))) {
+    updateSlideLayerIndicators();
+    return true;
+  }
+
+  const card = row.querySelector(".slide-thumb-editor") ?? row.querySelector(".slide-thumb");
+  const cardWidth = card instanceof HTMLElement ? card.getBoundingClientRect().width : row.clientWidth / 3;
+  const gap = Number.parseFloat(window.getComputedStyle(row).columnGap || window.getComputedStyle(row).gap) || 0;
+  const step = Math.max(1, cardWidth + gap);
+  const nextLeft = clamp(row.scrollLeft + direction * step * 3, 0, maxScrollLeft);
+  row.scrollTo({ left: nextLeft, behavior: "smooth" });
+  row.focus({ preventScroll: true });
+  window.setTimeout(updateSlideLayerIndicators, 180);
+  return true;
+}
+
+function getSlideLayerStatus(row = getSlidePreviewRow()) {
+  if (!(row instanceof HTMLElement)) return null;
+  const cards = Array.from(row.querySelectorAll(".slide-thumb-editor"));
+  const totalLayers = Math.max(1, Math.ceil(cards.length / 3));
+  if (cards.length === 0) {
+    return { currentLayer: 1, totalLayers, hasPrevious: false, hasNext: false };
+  }
+
+  const rowRect = row.getBoundingClientRect();
+  const firstVisibleCard = cards.find((card) => {
+    const rect = card.getBoundingClientRect();
+    return rect.right > rowRect.left + 4 && rect.left < rowRect.right - 4;
+  });
+  const firstVisiblePage = Number(firstVisibleCard?.getAttribute("data-page")) || 1;
+  const currentLayer = clamp(Math.ceil(firstVisiblePage / 3), 1, totalLayers);
+  return {
+    currentLayer,
+    totalLayers,
+    hasPrevious: currentLayer > 1,
+    hasNext: currentLayer < totalLayers,
+  };
+}
+
+function updateSlideLayerIndicators() {
+  const status = getSlideLayerStatus();
+  const previousButton = els.thumbnailRail?.querySelector("[data-slide-layer-prev]");
+  const nextButton = els.thumbnailRail?.querySelector("[data-slide-layer-next]");
+  const output = els.thumbnailRail?.querySelector("[data-slide-layer-status]");
+  const indicator = els.thumbnailRail?.querySelector(".slide-layer-indicator");
+
+  if (!(previousButton instanceof HTMLButtonElement) || !(nextButton instanceof HTMLButtonElement) || !status) return;
+  previousButton.disabled = !status.hasPrevious;
+  nextButton.disabled = !status.hasNext;
+  previousButton.classList.toggle("is-available", status.hasPrevious);
+  nextButton.classList.toggle("is-available", status.hasNext);
+  indicator?.classList.toggle("has-previous-layer", status.hasPrevious);
+  indicator?.classList.toggle("has-next-layer", status.hasNext);
+  if (output) output.textContent = `${status.currentLayer} / ${status.totalLayers}`;
+}
+
 function syncThumbnailSlotSelection() {
   if (!els.thumbnailRail) return;
 
@@ -1182,6 +1257,11 @@ function syncPhotoListSelection() {
 }
 
 function updatePhotoFilterUi() {
+  const filterPanel = document.querySelector(".photo-filter-panel");
+  const filterTitle = document.querySelector(".photo-filter-head strong");
+  if (filterPanel) filterPanel.setAttribute("aria-label", "사진 검색 및 필터");
+  if (filterTitle) filterTitle.textContent = "사진 필터";
+
   const buttons = [
     [els.photoFilterAllButton, "all"],
     [els.photoFilterCurrentButton, "current"],
@@ -1202,6 +1282,8 @@ function updatePhotoFilterUi() {
   }
   if (els.photoFilterResetButton) {
     const isDirty = state.photoSearchQuery.trim().length > 0 || state.photoFilterMode !== "all";
+    els.photoFilterResetButton.textContent = "초기화";
+    els.photoFilterResetButton.setAttribute("aria-label", "검색과 필터 초기화");
     els.photoFilterResetButton.disabled = !isDirty;
     els.photoFilterResetButton.hidden = !isDirty;
   }
@@ -2412,6 +2494,28 @@ document.addEventListener("pointerdown", (event) => {
 });
 
 document.addEventListener("pointermove", (event) => {
+  if (activeSlideHandleDrag && event.pointerId === activeSlideHandleDrag.pointerId) {
+    const deltaX = event.clientX - activeSlideHandleDrag.startX;
+    const deltaY = event.clientY - activeSlideHandleDrag.startY;
+    if (!activeSlideHandleDrag.moved && Math.hypot(deltaX, deltaY) > 5) {
+      activeSlideHandleDrag.moved = true;
+      activeSlideHandleDrag.source.classList.add("is-reordering");
+    }
+    if (!activeSlideHandleDrag.moved) return;
+
+    const target = document.elementFromPoint(event.clientX, event.clientY);
+    const card = target instanceof Element ? target.closest(".slide-thumb-editor") : null;
+    if (card instanceof HTMLElement && card !== activeSlideHandleDrag.source) {
+      if (activeSlideReorderTarget !== card) {
+        activeSlideReorderTarget?.classList.remove("is-reorder-target");
+        activeSlideReorderTarget = card;
+        activeSlideReorderTarget.classList.add("is-reorder-target");
+      }
+    }
+    event.preventDefault();
+    return;
+  }
+
   if (!activeThumbnailRailPan || event.pointerId !== activeThumbnailRailPan.pointerId) return;
   const deltaX = event.clientX - activeThumbnailRailPan.startX;
   if (!activeThumbnailRailPan.moved && Math.abs(deltaX) > 4) {
@@ -2423,6 +2527,28 @@ document.addEventListener("pointermove", (event) => {
 });
 
 document.addEventListener("pointerup", (event) => {
+  if (activeSlideHandleDrag && event.pointerId === activeSlideHandleDrag.pointerId) {
+    const fromPage = activeSlideHandleDrag.page;
+    const target = activeSlideReorderTarget;
+    const toPage = target instanceof HTMLElement ? Number(target.dataset.page) : null;
+    const shouldReorder =
+      activeSlideHandleDrag.moved &&
+      Number.isFinite(fromPage) &&
+      Number.isFinite(toPage) &&
+      fromPage !== toPage;
+
+    activeSlideHandleDrag.source.classList.remove("is-reordering");
+    activeSlideReorderTarget?.classList.remove("is-reorder-target");
+    activeSlideHandleDrag = null;
+    activeSlideReorderSource = null;
+    activeSlideReorderTarget = null;
+    thumbnailRailSuppressClickUntil = performance.now() + 180;
+
+    if (shouldReorder) reorderSlidePage(fromPage, toPage);
+    event.preventDefault();
+    return;
+  }
+
   if (!activeThumbnailRailPan || event.pointerId !== activeThumbnailRailPan.pointerId) return;
   activeThumbnailRailPan.row.classList.remove("is-grabbed");
   if (activeThumbnailRailPan.moved) {
@@ -2432,6 +2558,15 @@ document.addEventListener("pointerup", (event) => {
 });
 
 document.addEventListener("pointercancel", (event) => {
+  if (activeSlideHandleDrag && event.pointerId === activeSlideHandleDrag.pointerId) {
+    activeSlideHandleDrag.source.classList.remove("is-reordering");
+    activeSlideReorderTarget?.classList.remove("is-reorder-target");
+    activeSlideHandleDrag = null;
+    activeSlideReorderSource = null;
+    activeSlideReorderTarget = null;
+    return;
+  }
+
   if (!activeThumbnailRailPan || event.pointerId !== activeThumbnailRailPan.pointerId) return;
   activeThumbnailRailPan.row.classList.remove("is-grabbed");
   activeThumbnailRailPan = null;
@@ -2804,9 +2939,11 @@ function applyLayoutToPage(page, mode, rows, cols) {
     return;
   }
 
-  beginEditHistoryAction();
   const nextLayout = createLayoutConfig(mode, rows, cols);
   const pages = getSlidePages().map((entry) => ({
+    pageIndex: entry.pageIndex,
+    start: entry.start,
+    pageSize: entry.pageSize,
     layout: createLayoutConfig(entry.layout.mode, entry.layout.rows, entry.layout.cols),
     caption: entry.caption,
     slots: [...entry.slots],
@@ -2818,37 +2955,52 @@ function applyLayoutToPage(page, mode, rows, cols) {
   const targetPage = pages[page - 1];
   if (!targetPage) return;
 
+  beginEditHistoryAction();
+  const selectedLocation =
+    Number.isFinite(state.selectedSlotIndex) && state.selectedSlotIndex >= 0
+      ? getSlotLocation(Number(state.selectedSlotIndex))
+      : null;
   const nextPageSize = getPageSizeForLayout(nextLayout);
   const currentPageSize = targetPage.slots.length;
 
   if (nextPageSize > currentPageSize) {
     targetPage.slots.push(...Array(nextPageSize - currentPageSize).fill(null));
     targetPage.transforms.push(...Array(nextPageSize - currentPageSize).fill(null));
-    targetPage.layout = nextLayout;
-    state.slideSlots = pages.flatMap((entry) => entry.slots);
-    state.slideCaptions = pages.map((entry) => entry.caption);
-    state.slidePageLayouts = pages.map((entry) =>
-      createLayoutConfig(entry.layout.mode, entry.layout.rows, entry.layout.cols),
-    );
-    const nextTransforms = {};
-    let nextSlotIndex = 0;
-    pages.forEach((entry) => {
-      entry.transforms.forEach((transform) => {
-        if (transform) nextTransforms[nextSlotIndex] = transform;
-        nextSlotIndex += 1;
-      });
-    });
-    state.slotTransforms = nextTransforms;
-    markSlideSlotsDirty();
-    markLayoutDirty();
-    normalizeSlideCaptions();
-    render();
-    return;
+  } else if (nextPageSize < currentPageSize) {
+    targetPage.slots = targetPage.slots.slice(0, nextPageSize);
+    targetPage.transforms = targetPage.transforms.slice(0, nextPageSize);
+    while (pages.length > page && !hasSlidePageContent(pages[pages.length - 1])) {
+      pages.pop();
+    }
   }
 
-  state.slidePageLayouts[page - 1] = nextLayout;
+  targetPage.layout = nextLayout;
+  targetPage.pageSize = nextPageSize;
+  state.slideSlots = pages.flatMap((entry) => entry.slots);
+  state.slideCaptions = pages.map((entry) => entry.caption);
+  state.slidePageLayouts = pages.map((entry) =>
+    createLayoutConfig(entry.layout.mode, entry.layout.rows, entry.layout.cols),
+  );
+
+  const nextTransforms = {};
+  let nextSlotIndex = 0;
+  let nextSelectedSlotIndex = null;
+  pages.forEach((entry) => {
+    const isSelectedPage = selectedLocation?.page === entry.pageIndex;
+    entry.transforms.forEach((transform, offset) => {
+      if (isSelectedPage && selectedLocation.offset === offset) {
+        nextSelectedSlotIndex = nextSlotIndex;
+      }
+      if (transform) nextTransforms[nextSlotIndex] = transform;
+      nextSlotIndex += 1;
+    });
+  });
+  state.slotTransforms = nextTransforms;
+  state.selectedSlotIndex = Number.isFinite(nextSelectedSlotIndex) ? nextSelectedSlotIndex : null;
+  state.pageIndex = clamp(state.pageIndex, 0, Math.max(pages.length, 0));
+
+  markSlideSlotsDirty();
   markLayoutDirty();
-  normalizeSlidePageLayouts(state.slideSlots.length);
   normalizeSlideCaptions();
   render();
 }
@@ -3408,7 +3560,7 @@ function clearSlidePage(page = state.pageIndex) {
   showToast("현재 슬라이드의 사진을 비웠습니다.");
 }
 
-function insertSlidePage(referencePage, position = "after") {
+function insertSlidePage(referencePage, position = "after", { announce = true } = {}) {
   const pages = getSlidePages();
   const referenceIndex = Number(referencePage) - 1;
   if (!Number.isFinite(referenceIndex) || referenceIndex < 0 || referenceIndex >= pages.length) return;
@@ -3443,7 +3595,30 @@ function insertSlidePage(referencePage, position = "after") {
 
   state.selectedSlotIndex = null;
   goToPage(position === "before" ? referencePage : referencePage + 1);
-  showToast(position === "before" ? "현재 슬라이드 앞에 빈 슬라이드를 추가했습니다." : "현재 슬라이드 뒤에 빈 슬라이드를 추가했습니다.");
+  if (announce) {
+    showToast(position === "before" ? "현재 슬라이드 앞에 빈 슬라이드를 추가했습니다." : "현재 슬라이드 뒤에 빈 슬라이드를 추가했습니다.");
+  }
+}
+
+function addSlidePageAtEnd() {
+  const pages = getSlidePages();
+  if (pages.length === 0) {
+    beginEditHistoryAction();
+    const layout = getDefaultLayoutConfig();
+    const pageSize = getPageSizeForLayout(layout);
+    state.slidePageLayouts.push(createLayoutConfig(layout.mode, layout.rows, layout.cols));
+    state.slideSlots.push(...Array(pageSize).fill(null));
+    markSlideSlotsDirty();
+    markLayoutDirty();
+    normalizeSlideCaptions();
+    state.selectedSlotIndex = null;
+    goToPage(1);
+    showToast("빈 슬라이드를 추가했습니다.");
+    return;
+  }
+
+  insertSlidePage(pages[pages.length - 1].pageIndex, "after", { announce: false });
+  showToast("슬라이드 끝에 빈 슬라이드를 추가했습니다.");
 }
 
 function duplicateSlidePage(page) {
@@ -3609,7 +3784,9 @@ function updateGuide(index, percent) {
 function renderThumbnails() {
   if (!els.thumbnailRail) return;
 
-  if (state.images.length === 0) {
+  const slidePages = getSlidePages();
+
+  if (state.images.length === 0 && slidePages.length === 0) {
     thumbnailRenderKey = "empty";
     activeThumbnailButton = null;
     thumbnailPageButtonCache = new Map();
@@ -3622,7 +3799,6 @@ function renderThumbnails() {
     return;
   }
 
-  const slidePages = getSlidePages();
   const nextKey = [
     imagesVersion,
     slideSlotsVersion,
@@ -3641,9 +3817,14 @@ function renderThumbnails() {
       <div class="thumbnail-section">
         <div class="thumbnail-section-head">
           <strong>슬라이드 목록</strong>
-          <span>선택 · 순서 변경 · 분할 편집</span>
+          <span class="thumbnail-section-hint">선택 · 순서 변경 · 분할 편집</span>
+          <div class="slide-layer-indicator" aria-label="슬라이드 묶음 이동">
+            <button type="button" data-slide-layer-prev aria-label="이전 슬라이드 묶음" title="이전 슬라이드 묶음">▲</button>
+            <output data-slide-layer-status aria-live="polite">1 / 1</output>
+            <button type="button" data-slide-layer-next aria-label="다음 슬라이드 묶음" title="다음 슬라이드 묶음">▼</button>
+          </div>
         </div>
-        <div class="slide-preview-row">
+        <div class="slide-preview-row" tabindex="0" aria-label="슬라이드 목록 3장 묶음">
           <button class="slide-thumb slide-thumb-cover-card" type="button" data-page="0">
             <div class="slide-thumb-cover">
               <span>Cover</span>
@@ -3654,10 +3835,17 @@ function renderThumbnails() {
               (page) => `
                 <article
                   class="slide-thumb slide-thumb-editor"
-                  draggable="true"
                   data-page="${page.pageIndex}"
                   title="${page.pageIndex}페이지"
                 >
+                  <button
+                    class="slide-drag-handle"
+                    type="button"
+                    draggable="true"
+                    data-slide-drag-handle
+                    aria-label="${page.pageIndex}페이지 순서 변경"
+                    title="드래그해서 순서 변경"
+                  >...</button>
                   <div class="slide-thumb-open" data-page="${page.pageIndex}">
                     <div
                       class="slide-thumb-grid ${page.layout.mode === "custom" ? "layout-custom" : `layout-${page.layout.mode}`}"
@@ -3694,6 +3882,18 @@ function renderThumbnails() {
               `,
             )
             .join("")}
+          <button
+            class="slide-thumb slide-thumb-add-card"
+            type="button"
+            data-add-slide-end
+            aria-label="빈 슬라이드 추가"
+            title="빈 슬라이드 추가"
+          >
+            <span class="slide-thumb-add-preview" aria-hidden="true">
+              <span class="slide-thumb-add-icon">+</span>
+            </span>
+            <span class="slide-thumb-add-label">빈 슬라이드</span>
+          </button>
         </div>
       </div>
     `;
@@ -3706,6 +3906,9 @@ function renderThumbnails() {
       const owner = button.closest(".slide-thumb") ?? button;
       thumbnailPageButtonCache.set(page, owner);
     });
+    els.thumbnailRail.querySelector(".slide-preview-row")?.addEventListener("scroll", () => {
+      window.requestAnimationFrame(updateSlideLayerIndicators);
+    }, { passive: true });
   }
 
   if (activeThumbnailButton && !els.thumbnailRail.contains(activeThumbnailButton)) {
@@ -3721,6 +3924,7 @@ function renderThumbnails() {
   activeThumbnailButton?.classList.add("is-active");
   revealPanelItem(activeThumbnailButton);
   syncThumbnailSlotSelection();
+  window.requestAnimationFrame(updateSlideLayerIndicators);
 }
 
 function renderPhotoList() {
@@ -4209,6 +4413,27 @@ els.thumbnailRail?.addEventListener("click", (event) => {
   }
   const target = event.target instanceof Element ? event.target : null;
   if (target?.closest("[data-slide-caption-input]")) return;
+  const addSlideEndButton = target?.closest("[data-add-slide-end]");
+  if (addSlideEndButton instanceof HTMLButtonElement) {
+    event.preventDefault();
+    event.stopPropagation();
+    addSlidePageAtEnd();
+    return;
+  }
+  const slideLayerPrevButton = target?.closest("[data-slide-layer-prev]");
+  if (slideLayerPrevButton instanceof HTMLButtonElement) {
+    event.preventDefault();
+    event.stopPropagation();
+    scrollSlidePreviewLayer(-1);
+    return;
+  }
+  const slideLayerNextButton = target?.closest("[data-slide-layer-next]");
+  if (slideLayerNextButton instanceof HTMLButtonElement) {
+    event.preventDefault();
+    event.stopPropagation();
+    scrollSlidePreviewLayer(1);
+    return;
+  }
   const insertBeforeButton = target?.closest("[data-insert-slide-before]");
   if (insertBeforeButton instanceof HTMLButtonElement) {
     event.preventDefault();
@@ -4249,7 +4474,7 @@ els.thumbnailRail?.addEventListener("click", (event) => {
   }
 
   const slotThumb = target?.closest("[data-slot-thumb-index]");
-  if (slotThumb instanceof HTMLElement) {
+  if (slotThumb instanceof HTMLElement && event.altKey) {
     const slotIndex = Number(slotThumb.getAttribute("data-slot-thumb-index"));
     if (!Number.isFinite(slotIndex)) return;
     const location = getSlotLocation(slotIndex);
@@ -4258,12 +4483,14 @@ els.thumbnailRail?.addEventListener("click", (event) => {
     return;
   }
 
+  if (target?.closest("[data-slide-drag-handle]")) return;
+
   const slideThumb = target?.closest("[data-page]");
   if (slideThumb instanceof HTMLElement) {
     const page = Number(slideThumb.dataset.page);
     if (!Number.isFinite(page)) return;
-    const slotIndex = page > 0 ? findFirstFilledSlotIndexForPage(page) : null;
-    goToPageWithSelection(page, slotIndex);
+    goToPageWithSelection(page, null);
+    return;
   }
 });
 
@@ -4279,6 +4506,24 @@ els.thumbnailRail?.addEventListener("wheel", (event) => {
 }, { passive: false });
 
 els.thumbnailRail?.addEventListener("pointerdown", (event) => {
+  const dragHandle = event.target instanceof Element ? event.target.closest("[data-slide-drag-handle]") : null;
+  if (dragHandle instanceof HTMLElement && event.button === 0) {
+    const card = dragHandle.closest(".slide-thumb-editor");
+    const page = Number(card?.getAttribute("data-page"));
+    if (!(card instanceof HTMLElement) || !Number.isFinite(page)) return;
+    activeSlideHandleDrag = {
+      pointerId: event.pointerId,
+      source: card,
+      page,
+      startX: event.clientX,
+      startY: event.clientY,
+      moved: false,
+    };
+    activeSlideReorderSource = card;
+    event.preventDefault();
+    return;
+  }
+
   const row = event.target instanceof Element ? event.target.closest(".slide-preview-row, .photo-order-row") : null;
   if (!(row instanceof HTMLElement) || event.button !== 0) return;
   if (row.scrollWidth <= row.clientWidth) return;
@@ -4302,16 +4547,25 @@ els.thumbnailRail?.addEventListener("input", (event) => {
 });
 
 els.thumbnailRail?.addEventListener("dragstart", (event) => {
-  const card = event.target instanceof Element ? event.target.closest(".slide-thumb-editor") : null;
+  const target = event.target instanceof Element ? event.target : null;
+  const handle = target?.closest("[data-slide-drag-handle]");
+  const card = handle?.closest(".slide-thumb-editor");
   if (!(card instanceof HTMLElement) || !event.dataTransfer) return;
   event.dataTransfer.setData("application/x-medical-slide-page", card.dataset.page);
+  event.dataTransfer.setData("text/plain", card.dataset.page || "");
   event.dataTransfer.effectAllowed = "move";
+  event.dataTransfer.dropEffect = "move";
+  event.dataTransfer.setDragImage(card, card.offsetWidth / 2, Math.min(card.offsetHeight / 2, 96));
+  activeSlideReorderSource = card;
+  card.classList.add("is-reordering");
 });
 
 els.thumbnailRail?.addEventListener("dragover", (event) => {
   const card = event.target instanceof Element ? event.target.closest(".slide-thumb-editor") : null;
   if (!(card instanceof HTMLElement)) return;
+  if (activeSlideReorderSource === card) return;
   event.preventDefault();
+  if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
   if (activeSlideReorderTarget === card) return;
   activeSlideReorderTarget?.classList.remove("is-reorder-target");
   activeSlideReorderTarget = card;
@@ -4330,6 +4584,7 @@ els.thumbnailRail?.addEventListener("dragleave", (event) => {
 els.thumbnailRail?.addEventListener("drop", (event) => {
   const card = event.target instanceof Element ? event.target.closest(".slide-thumb-editor") : null;
   if (!(card instanceof HTMLElement)) return;
+  if (activeSlideReorderSource === card) return;
   event.preventDefault();
   card.classList.remove("is-reorder-target");
   if (activeSlideReorderTarget === card) activeSlideReorderTarget = null;
@@ -4342,7 +4597,10 @@ els.thumbnailRail?.addEventListener("drop", (event) => {
 
 els.thumbnailRail?.addEventListener("dragend", () => {
   activeSlideReorderTarget?.classList.remove("is-reorder-target");
+  activeSlideReorderSource?.classList.remove("is-reordering");
   activeSlideReorderTarget = null;
+  activeSlideReorderSource = null;
+  thumbnailRailSuppressClickUntil = performance.now() + 180;
 });
 
 els.thumbnailRail?.addEventListener("contextmenu", (event) => {
@@ -4949,14 +5207,25 @@ document.addEventListener("keydown", (event) => {
     return;
   }
 
-  if (event.key === "ArrowLeft" || event.key === "ArrowUp" || event.key.toLowerCase() === "p") {
+  if (
+    state.pageIndex > 0 &&
+    !isPresenting() &&
+    !event.shiftKey &&
+    !hasSlideShortcutModifier(event) &&
+    (event.key === "ArrowUp" || event.key === "ArrowDown") &&
+    scrollSlidePreviewLayer(event.key === "ArrowDown" ? 1 : -1)
+  ) {
+    event.preventDefault();
+    return;
+  }
+
+  if (event.key === "ArrowLeft" || event.key.toLowerCase() === "p") {
     event.preventDefault();
     goToPage(state.pageIndex - 1);
   }
 
   if (
     event.key === "ArrowRight" ||
-    event.key === "ArrowDown" ||
     event.key === "PageDown" ||
     event.key === " " ||
     event.key.toLowerCase() === "n"
@@ -5525,6 +5794,7 @@ function createStandaloneHtml(data) {
     };
     const pageLayout = (page = state.pageIndex) => page > 0 ? (slidePages()[page - 1]?.layout || defaultLayout()) : defaultLayout();
     const currentPageMeta = () => state.pageIndex > 0 ? (slidePages()[state.pageIndex - 1] || { start:0, pageSize: layoutSize(defaultLayout()), layout: defaultLayout(), slots: [] }) : { start:0, pageSize: layoutSize(defaultLayout()), layout: defaultLayout(), slots: [] };
+    function setPageLayout(mode){ const next=normalizeLayout({ mode, rows: mode==="custom" ? (pageLayout().rows||1) : undefined, cols: mode==="custom" ? (pageLayout().cols||1) : undefined }); if(state.pageIndex>0){ const pages=slidePages().map((page)=>({ pageIndex:page.pageIndex,start:page.start,pageSize:page.pageSize,layout:normalizeLayout(page.layout),caption:page.caption,slots:[...page.slots],transforms:Array.from({length:page.pageSize},(_,offset)=>{ const transform=state.slotTransforms?.[page.start+offset]; return transform ? {...transform} : null; }) })); const target=pages[state.pageIndex-1]; if(!target) return; const nextSize=layoutSize(next); if(nextSize>target.slots.length){ target.slots.push(...Array(nextSize-target.slots.length).fill(null)); target.transforms.push(...Array(nextSize-target.transforms.length).fill(null)); } else if(nextSize<target.slots.length){ target.slots=target.slots.slice(0,nextSize); target.transforms=target.transforms.slice(0,nextSize); } target.layout=next; target.pageSize=nextSize; state.slideSlots=pages.flatMap((page)=>page.slots); state.slideCaptions=pages.map((page)=>page.caption); state.slidePageLayouts=pages.map((page)=>normalizeLayout(page.layout)); const nextTransforms={}; let nextSlotIndex=0; pages.forEach((page)=>{ page.transforms.forEach((transform,offset)=>{ if(transform) nextTransforms[nextSlotIndex+offset]=transform; }); nextSlotIndex+=page.pageSize; }); state.slotTransforms=nextTransforms; } else { state.layoutMode=next.mode; state.gridRows=next.rows; state.gridCols=next.cols; } render(); }
     const totalPages = () => 1 + slidePages().length;
     const $ = (id) => document.getElementById(id);
     const esc = (v) => String(v).replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#039;");
@@ -5561,7 +5831,7 @@ function createStandaloneHtml(data) {
     document.addEventListener("wheel", onWheelZoom, { passive:false });
     for (const id of ["title","subtitle","hospital","presenter"]) $(id).oninput=()=>{ const map={title:"title",subtitle:"subtitle",hospital:"hospitalName",presenter:"presenterName"}; state.cover[map[id]]=$(id).value; render(); };
     for (const [id,key] of [["showTitle","title"],["showSubtitle","subtitle"],["showHospital","hospitalName"],["showPresenter","presenterName"],["showDate","date"],["showLogo","logo"]]) $(id).onchange=()=>{state.coverVisibility[key]=$(id).checked;render()};
-    $("layout").onchange=()=>{ const mode=$("layout").value; if(state.pageIndex>0){ ensureLayouts(); state.slidePageLayouts[state.pageIndex-1]=normalizeLayout({ mode, rows: mode==="custom" ? (pageLayout().rows||1) : undefined, cols: mode==="custom" ? (pageLayout().cols||1) : undefined }); } else { const next=normalizeLayout({ mode, rows: state.gridRows, cols: state.gridCols }); state.layoutMode=next.mode; state.gridRows=next.rows; state.gridCols=next.cols; } render() }; for (const key of ["brightness","contrast","saturate","hue"]) $(key).oninput=()=>{state.filters[key]=Number($(key).value);render()};
+    $("layout").onchange=()=>setPageLayout($("layout").value); for (const key of ["brightness","contrast","saturate","hue"]) $(key).oninput=()=>{state.filters[key]=Number($(key).value);render()};
     document.onkeydown=(e)=>{ if(["INPUT","TEXTAREA","SELECT"].includes(e.target.tagName)) return; if(e.key==="?"||(e.shiftKey&&e.key==="/")){e.preventDefault();showHelp();return} if(e.key==="Escape"){ if($("shortcutDialog").open){hideHelp();return} if(document.body.classList.contains("presenting")) stopPresentation(); } if(e.key==="F5"){e.preventDefault(); if(!e.shiftKey)go(0); startPresentation(false)} if(e.key==="F6"){e.preventDefault(); if(!e.shiftKey)go(0); startPresentation(true)} if(e.key.toLowerCase()==="a"&&document.body.classList.contains("presenting")){e.preventDefault();toggleAutoplay()} if(e.key==="ArrowLeft"||e.key==="ArrowUp"||e.key==="PageUp"||e.key.toLowerCase()==="p")go(state.pageIndex-1); if(e.key==="ArrowRight"||e.key==="ArrowDown"||e.key==="PageDown"||e.key===" "||e.key.toLowerCase()==="n")go(state.pageIndex+1); if(e.key==="Home")go(0); if(e.key==="End")go(totalPages()-1); if(e.key==="Enter"){state.backgroundEnabled=!state.backgroundEnabled;render()} if(e.key.toLowerCase()==="f"){state.fitMode=e.shiftKey?"fill":"fit";render()} if(isZoomInKey(e)) {e.preventDefault(); updateZoom(.1)} if(isZoomOutKey(e)) {e.preventDefault(); updateZoom(-.1)} if(e.key==="0"){resetZoom()} if(e.key.toLowerCase()==="c")go(0); };
     syncInputs(); render();
   </script>

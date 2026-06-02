@@ -128,6 +128,7 @@ input[type="range"] {
   grid-template-columns: minmax(19rem, 22rem) minmax(0, 1fr) minmax(16rem, 20rem);
   grid-template-areas: "controls stage photos";
   gap: 1.25rem;
+  isolation: isolate;
   min-height: 100vh;
   padding: 1.25rem;
 }
@@ -453,8 +454,10 @@ body.is-file-dragging .drop-card {
 .control-panel,
 .photo-panel {
   position: relative;
-  z-index: 3;
-  overflow: auto;
+  z-index: 5;
+  isolation: isolate;
+  min-width: 0;
+  overflow: hidden auto;
   scrollbar-gutter: stable;
   max-height: calc(100vh - 2.5rem);
   border: 1px solid var(--line);
@@ -532,10 +535,10 @@ body.is-file-dragging .drop-card {
 }
 
 .photo-panel {
-  display: grid;
-  grid-template-rows: auto auto auto auto auto minmax(0, 1fr) auto;
-  align-content: stretch;
+  display: flex;
+  flex-direction: column;
   gap: 0.85rem;
+  min-height: 0;
 }
 
 .photo-panel-head {
@@ -631,6 +634,7 @@ body.is-file-dragging .drop-card {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.45rem;
+  align-items: center;
 }
 
 .photo-filter-row-four {
@@ -638,10 +642,18 @@ body.is-file-dragging .drop-card {
 }
 
 .photo-filter-row button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 2.15rem;
+  min-height: 2.15rem;
+  max-height: 2.15rem;
   min-width: 0;
-  padding-inline: 0.55rem;
+  padding-block: 0;
+  padding-inline: 0.36rem;
   background: rgba(255, 253, 247, 0.78);
-  font-size: 0.76rem;
+  font-size: 0.72rem;
+  line-height: 1.1;
   white-space: nowrap;
 }
 
@@ -655,20 +667,21 @@ body.is-file-dragging .drop-card {
 .photo-list-panel {
   display: grid;
   gap: 0.55rem;
-  min-height: 0;
-  overflow: auto;
+  flex: 1 1 clamp(12rem, 28vh, 24rem);
+  min-height: min(12rem, 28vh);
+  overflow: hidden auto;
   padding-right: 0.15rem;
-  content-visibility: auto;
-  contain-intrinsic-size: 960px;
+  overscroll-behavior: contain;
 }
 
 .music-panel {
   display: grid;
+  flex: 0 0 auto;
   gap: 0.65rem;
-  position: sticky;
-  bottom: 0;
-  z-index: 2;
-  margin-top: 0;
+  position: relative;
+  bottom: auto;
+  z-index: 1;
+  margin-top: auto;
   border: 1px solid rgba(138, 75, 45, 0.16);
   border-radius: 1rem;
   padding: 0.85rem;
@@ -706,12 +719,15 @@ body.is-file-dragging .drop-card {
 .photo-list-card {
   position: relative;
   display: grid;
-  grid-template-columns: 4.4rem minmax(0, 1fr);
+  grid-template-columns: 4.4rem minmax(0, 1fr) auto;
+  grid-template-areas:
+    "thumb body remove"
+    "thumb badge current";
   gap: 0.58rem;
-  align-items: center;
+  align-items: start;
   border: 1px solid rgba(138, 75, 45, 0.16);
   border-radius: 0.9rem;
-  padding: 0.45rem 2.5rem 0.45rem 0.45rem;
+  padding: 0.45rem;
   background: rgba(255, 253, 247, 0.54);
   cursor: grab;
   transition:
@@ -719,8 +735,6 @@ body.is-file-dragging .drop-card {
     transform 160ms ease,
     box-shadow 160ms ease;
   contain: layout paint style;
-  content-visibility: auto;
-  contain-intrinsic-size: 74px;
 }
 
 .photo-list-card.is-in-slide {
@@ -754,6 +768,7 @@ body.is-file-dragging .drop-card {
 }
 
 .photo-list-card img {
+  grid-area: thumb;
   width: 4.4rem;
   height: 3.1rem;
   border-radius: 0.58rem;
@@ -762,6 +777,7 @@ body.is-file-dragging .drop-card {
 }
 
 .photo-list-card div {
+  grid-area: body;
   display: grid;
   min-width: 0;
   gap: 0.15rem;
@@ -794,6 +810,9 @@ body.is-file-dragging .drop-card {
 }
 
 .photo-list-card b {
+  grid-area: badge;
+  justify-self: start;
+  align-self: end;
   border: 1px solid rgba(138, 75, 45, 0.14);
   border-radius: 999px;
   padding: 0.2rem 0.46rem;
@@ -809,9 +828,9 @@ body.is-file-dragging .drop-card {
 }
 
 .photo-list-current-badge {
-  position: absolute;
-  right: 2.52rem;
-  top: 0.44rem;
+  grid-area: current;
+  justify-self: end;
+  align-self: end;
   border-radius: 999px;
   padding: 0.18rem 0.46rem;
   color: #08393c;
@@ -821,9 +840,9 @@ body.is-file-dragging .drop-card {
 }
 
 .photo-list-remove {
-  position: absolute;
-  top: 0.42rem;
-  right: 0.42rem;
+  grid-area: remove;
+  align-self: start;
+  justify-self: end;
   display: grid;
   place-items: center;
   width: 1.85rem;
@@ -1106,8 +1125,7 @@ body.is-file-dragging .drop-card {
 
 .segmented button,
 .layout-preset-row button,
-.zoom-row button,
-.deck-toolbar button {
+.zoom-row button {
   flex: 1;
 }
 
@@ -1115,8 +1133,10 @@ body.is-file-dragging .drop-card {
   display: flex;
   align-items: center;
   gap: 0.35rem;
-  flex: 1.6;
+  flex: 0 1 auto;
+  min-width: 0;
   flex-wrap: wrap;
+  max-width: 100%;
 }
 
 .slide-quick-actions.is-hidden {
@@ -1124,7 +1144,7 @@ body.is-file-dragging .drop-card {
 }
 
 .slide-quick-actions button {
-  flex: 1;
+  flex: 0 0 auto;
 }
 
 .deck-toolbar .icon-toolbar-button {
@@ -1366,13 +1386,19 @@ kbd {
 .stage-wrap {
   position: relative;
   z-index: 1;
+  isolation: isolate;
   display: grid;
   grid-template-rows: auto 1fr auto;
   gap: 1rem;
   min-width: 0;
+  min-height: 0;
 }
 
 .deck-toolbar {
+  min-width: 0;
+  max-width: 100%;
+  flex-wrap: wrap;
+  align-content: center;
   justify-content: flex-end;
   border: 1px solid var(--line);
   border-radius: 999px;
@@ -1381,13 +1407,30 @@ kbd {
   box-shadow: 0 16px 50px rgba(18, 15, 10, 0.12);
 }
 
+.deck-toolbar button {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+#undoButton,
+#redoButton {
+  min-width: 4.8rem;
+  height: 3.2rem;
+  padding: 0 0.9rem;
+  border-radius: 999px;
+  font-size: 0.86rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
 .deck-toolbar button:disabled {
   opacity: 0.45;
   cursor: not-allowed;
 }
 
 #pageStatus {
-  min-width: 16rem;
+  flex: 1 1 14rem;
+  min-width: min(16rem, 100%);
   display: grid;
   justify-items: center;
   gap: 0.1rem;
@@ -1414,6 +1457,8 @@ kbd {
 }
 
 .page-jump-control {
+  flex: 0 0 auto;
+  min-width: 0;
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
@@ -1886,8 +1931,12 @@ body.presenting .guide-ruler {
 }
 
 .thumbnail-rail {
+  position: relative;
+  z-index: 0;
   display: grid;
   gap: 0.72rem;
+  min-width: 0;
+  overflow: hidden;
   border: 1px solid var(--line);
   border-radius: 1.1rem;
   padding: 0.72rem;
@@ -1904,15 +1953,13 @@ body.presenting .guide-ruler {
   display: grid;
   gap: 0.5rem;
   min-width: 0;
-  content-visibility: auto;
-  contain-intrinsic-size: 220px;
 }
 
 .thumbnail-section-head {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
+  gap: 0.55rem;
   color: var(--muted);
   font-size: 0.82rem;
 }
@@ -1920,6 +1967,58 @@ body.presenting .guide-ruler {
 .thumbnail-section-head strong {
   color: var(--ink);
   font-size: 0.9rem;
+}
+
+.thumbnail-section-hint {
+  min-width: 0;
+  overflow: hidden;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.slide-layer-indicator {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.28rem;
+  min-width: 0;
+}
+
+.slide-layer-indicator button {
+  display: inline-grid;
+  place-items: center;
+  width: 1.65rem;
+  height: 1.65rem;
+  min-width: 1.65rem;
+  border-radius: 999px;
+  padding: 0;
+  color: rgba(111, 116, 107, 0.58);
+  background: rgba(255, 253, 247, 0.62);
+  font-size: 0.72rem;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.slide-layer-indicator button.is-available {
+  border-color: rgba(138, 75, 45, 0.42);
+  color: #fff8f2;
+  background: linear-gradient(180deg, rgba(138, 75, 45, 0.94), rgba(91, 47, 27, 0.9));
+  box-shadow: 0 6px 14px rgba(91, 47, 27, 0.18);
+}
+
+.slide-layer-indicator button:disabled {
+  cursor: default;
+  opacity: 0.48;
+}
+
+.slide-layer-indicator output {
+  min-width: 2.9rem;
+  color: rgba(58, 48, 36, 0.78);
+  text-align: center;
+  font-size: 0.74rem;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
 }
 
 .slide-preview-row,
@@ -1931,6 +2030,14 @@ body.presenting .guide-ruler {
   scrollbar-color: rgba(138, 75, 45, 0.68) rgba(244, 239, 228, 0.62);
   cursor: grab;
   overscroll-behavior-x: contain;
+  scroll-snap-type: x proximity;
+  scroll-padding-inline: 0.2rem;
+}
+
+.slide-preview-row:focus-visible {
+  outline: 3px solid rgba(64, 210, 255, 0.72);
+  outline-offset: 3px;
+  border-radius: 0.8rem;
 }
 
 .slide-preview-row.is-grabbed,
@@ -1966,6 +2073,66 @@ body.presenting .guide-ruler {
   box-shadow: 0 0 0 3px rgba(64, 210, 255, 0.14);
 }
 
+.slide-thumb.is-reordering {
+  opacity: 0.62;
+  transform: scale(0.98);
+}
+
+.slide-thumb-add-card {
+  border-style: dashed;
+  border-color: rgba(138, 75, 45, 0.36);
+  color: rgba(58, 48, 36, 0.78);
+  background: rgba(255, 253, 247, 0.74);
+  cursor: pointer;
+}
+
+.slide-thumb-add-card:hover,
+.slide-thumb-add-card:focus-visible {
+  border-color: var(--accent);
+  color: var(--ink);
+  background: rgba(255, 253, 247, 0.94);
+  box-shadow: 0 0 0 3px rgba(138, 75, 45, 0.14);
+}
+
+.slide-thumb-add-preview {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border: 1px dashed rgba(138, 75, 45, 0.32);
+  border-radius: 0.7rem;
+  background:
+    linear-gradient(90deg, rgba(138, 75, 45, 0.08) 1px, transparent 1px),
+    linear-gradient(180deg, rgba(138, 75, 45, 0.08) 1px, transparent 1px),
+    rgba(244, 239, 228, 0.72);
+  background-size: 18px 18px;
+}
+
+.slide-thumb-add-icon {
+  display: grid;
+  place-items: center;
+  width: 2.55rem;
+  height: 2.55rem;
+  border-radius: 999px;
+  color: #fff8f2;
+  background: linear-gradient(180deg, rgba(138, 75, 45, 0.96), rgba(91, 47, 27, 0.96));
+  font-size: 1.75rem;
+  font-weight: 800;
+  line-height: 1;
+  box-shadow: 0 10px 18px rgba(18, 15, 10, 0.2);
+}
+
+.slide-thumb-add-label {
+  min-height: 1.58rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  color: rgba(58, 48, 36, 0.78);
+  font-size: 0.74rem;
+  font-weight: 800;
+}
+
 .slide-thumb-cover-card {
   aspect-ratio: 16 / 9;
   overflow: hidden;
@@ -1974,7 +2141,42 @@ body.presenting .guide-ruler {
 }
 
 .slide-thumb-editor {
+  cursor: pointer;
+}
+
+.slide-drag-handle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 1.55rem;
+  min-height: 1.55rem;
+  border: 1px solid rgba(255, 253, 247, 0.14);
+  border-radius: 0.62rem;
+  padding: 0 0.5rem 0.18rem;
+  color: rgba(255, 253, 247, 0.82);
+  background: rgba(255, 253, 247, 0.1);
   cursor: grab;
+  font-size: 1.16rem;
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: 0;
+  touch-action: none;
+  user-select: none;
+}
+
+.slide-drag-handle:hover,
+.slide-drag-handle:focus-visible {
+  border-color: rgba(211, 138, 93, 0.72);
+  color: #fff8f2;
+  background: rgba(138, 75, 45, 0.68);
+}
+
+.slide-drag-handle:active,
+.slide-thumb.is-reordering .slide-drag-handle {
+  cursor: grabbing;
+  border-color: rgba(64, 210, 255, 0.7);
+  background: rgba(64, 210, 255, 0.18);
 }
 
 .slide-thumb-open {
@@ -2274,6 +2476,60 @@ body.presenting .stage {
   aspect-ratio: auto;
 }
 
+@media (max-width: 1440px) and (min-width: 1181px) {
+  .shell {
+    grid-template-columns: minmax(17rem, 19.25rem) minmax(0, 1fr) minmax(15rem, 18.25rem);
+    gap: 1rem;
+  }
+
+  .control-panel,
+  .photo-panel {
+    max-height: calc(100vh - 2.5rem);
+  }
+
+  .deck-toolbar {
+    border-radius: 1.25rem;
+  }
+
+  .music-panel {
+    position: relative;
+    bottom: auto;
+  }
+}
+
+@media (max-width: 1180px) and (min-width: 981px) {
+  .shell {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-areas:
+      "stage stage"
+      "controls photos";
+    align-items: start;
+  }
+
+  .control-panel,
+  .photo-panel {
+    max-height: none;
+  }
+
+  .stage-wrap {
+    order: -1;
+  }
+
+  .deck-toolbar {
+    justify-content: center;
+    border-radius: 1.25rem;
+  }
+
+  .stage {
+    width: min(100%, 72rem);
+  }
+
+  .music-panel {
+    position: relative;
+    bottom: auto;
+  }
+}
+
 @media (max-width: 980px) {
   .shell {
     grid-template-columns: 1fr;
@@ -2295,6 +2551,11 @@ body.presenting .stage {
 
   .stage-wrap {
     order: -1;
+  }
+
+  .music-panel {
+    position: relative;
+    bottom: auto;
   }
 
   .deck-toolbar {
@@ -2331,6 +2592,14 @@ body.presenting .stage {
     height: 2.75rem;
   }
 
+  #undoButton,
+  #redoButton {
+    min-width: 4.45rem;
+    height: 2.75rem;
+    padding-inline: 0.78rem;
+    font-size: 0.82rem;
+  }
+
   .thumbnail-rail {
     gap: 0.6rem;
     padding: 0.65rem;
@@ -2341,12 +2610,7 @@ body.presenting .stage {
   }
 
   .photo-list-card {
-    grid-template-columns: 4.4rem minmax(0, 1fr);
-  }
-
-  .photo-list-card b {
-    justify-self: start;
-    grid-column: 2;
+    grid-template-columns: 4.2rem minmax(0, 1fr) auto;
   }
 
   .stage {
@@ -2405,6 +2669,10 @@ body.presenting .stage {
   }
 
   .deck-toolbar {
+    display: grid;
+    grid-template-columns: auto auto minmax(0, 1fr) auto auto;
+    align-items: center;
+    justify-content: stretch;
     gap: 0.4rem;
     border-radius: 1rem;
     padding: 0.48rem;
@@ -2413,9 +2681,55 @@ body.presenting .stage {
     z-index: 8;
   }
 
+  #pageStatus {
+    grid-column: 1 / -1;
+    grid-row: 1;
+    order: initial;
+  }
+
+  #undoButton {
+    grid-column: 1;
+    grid-row: 2;
+    order: initial;
+  }
+
+  #prevButton {
+    grid-column: 2;
+    grid-row: 2;
+    order: initial;
+  }
+
+  .page-jump-control {
+    grid-column: 3;
+    grid-row: 2;
+    justify-self: stretch;
+    order: initial;
+    width: 100%;
+  }
+
+  #nextButton {
+    grid-column: 4;
+    grid-row: 2;
+    order: initial;
+  }
+
+  #redoButton {
+    grid-column: 5;
+    grid-row: 2;
+    order: initial;
+  }
+
   .deck-toolbar .icon-toolbar-button {
     width: 2.5rem;
     height: 2.5rem;
+  }
+
+  #undoButton,
+  #redoButton {
+    min-width: 4.1rem;
+    height: 2.5rem;
+    padding-inline: 0.68rem;
+    font-size: 0.78rem;
   }
 
   .deck-toolbar .toolbar-text-button {
@@ -2430,7 +2744,7 @@ body.presenting .stage {
   }
 
   .page-jump-control input {
-    width: 3.2rem;
+    width: 100%;
     padding-block: 0.38rem;
     font-size: 0.82rem;
   }
@@ -2441,14 +2755,22 @@ body.presenting .stage {
   }
 
   .slide-quick-actions {
-    display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-column: 1 / -1;
+    grid-row: 3;
+    width: 100%;
+    order: initial;
+    display: flex;
+    flex: 1 1 100%;
+    flex-wrap: nowrap;
     gap: 0.4rem;
+    justify-content: flex-start;
+    overflow-x: auto;
+    padding-bottom: 0.08rem;
+    scrollbar-width: thin;
   }
 
   .slide-quick-actions button {
-    min-width: 0;
-    width: 100%;
+    flex: 0 0 auto;
   }
 
   #pageStatus .status-secondary {
@@ -2463,13 +2785,20 @@ body.presenting .stage {
   }
 
   .slide-thumb {
-    flex-basis: 6.5rem;
+    flex: 0 0 calc((100% - 1rem) / 3);
+    min-width: 0;
     padding: 0.35rem;
+    scroll-snap-align: start;
   }
 
   .photo-list-card {
-    grid-template-columns: 3.6rem minmax(0, 1fr);
+    grid-template-columns: 3.6rem minmax(0, 1fr) auto;
     padding: 0.38rem;
+  }
+
+  .photo-list-card img {
+    width: 3.6rem;
+    height: 2.7rem;
   }
 
   .layout-pair,
@@ -2494,8 +2823,68 @@ body.presenting .stage {
 }
 
 @media (max-width: 480px) {
+  .thumbnail-section-head {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .thumbnail-section-hint {
+    display: none;
+  }
+
+  .slide-layer-indicator {
+    justify-self: end;
+  }
+
+  .deck-toolbar {
+    gap: 0.32rem;
+    padding: 0.38rem;
+  }
+
+  #pageStatus {
+    gap: 0;
+  }
+
+  #pageStatus .status-secondary {
+    display: none;
+  }
+
+  .deck-toolbar .icon-toolbar-button {
+    width: 2.25rem;
+    height: 2.25rem;
+  }
+
+  #undoButton,
+  #redoButton {
+    min-width: 3.85rem;
+    height: 2.25rem;
+    padding-inline: 0.48rem;
+    font-size: 0.72rem;
+  }
+
+  .deck-toolbar .toolbar-text-button {
+    min-width: 3.7rem;
+    height: 2.25rem;
+    padding-inline: 0.62rem;
+    font-size: 0.78rem;
+  }
+
+  .page-jump-control {
+    gap: 0.28rem;
+    padding: 0.22rem 0.28rem 0.22rem 0.52rem;
+  }
+
+  .page-jump-control input {
+    padding-block: 0.28rem;
+    font-size: 0.78rem;
+  }
+
+  .page-jump-control button {
+    padding: 0.34rem 0.5rem;
+    font-size: 0.72rem;
+  }
+
   .slide-quick-actions {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.32rem;
   }
 
   .zoom-row {
