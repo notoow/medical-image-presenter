@@ -11,12 +11,16 @@ const SLIDE_EXPORT_SIZES = {
 const DEFAULT_SLIDE_EXPORT_SIZE = "1920x1080";
 const SLIDE_LAYER_COUNT = 3;
 const DEFAULT_SLIDE_LAYER = 2;
+const LAYER_SLOT_BASE = 1_000_000;
+const LAYER_SLOT_PAGE_FACTOR = 10_000;
+const LAYER_SLOT_LAYER_FACTOR = 100;
 
 const state = {
   images: [],
   slideSlots: [],
   slideCaptions: [],
   slidePageLayouts: [],
+  slideLayerPages: {},
   slotTransforms: {},
   selectedSlotIndex: null,
   logoUrl: "",
@@ -335,12 +339,26 @@ function cloneSlotTransforms(source = state.slotTransforms) {
   );
 }
 
+function cloneSlideLayerPages(source = state.slideLayerPages) {
+  return Object.fromEntries(
+    Object.entries(source ?? {}).map(([key, value]) => [
+      key,
+      {
+        caption: value?.caption ?? "",
+        layout: createLayoutConfig(value?.layout?.mode, value?.layout?.rows, value?.layout?.cols),
+        slots: Array.isArray(value?.slots) ? [...value.slots] : [],
+      },
+    ]),
+  );
+}
+
 function captureEditHistorySnapshot() {
   return {
     images: state.images.map((image) => ({ ...image })),
     slideSlots: [...state.slideSlots],
     slideCaptions: [...state.slideCaptions],
     slidePageLayouts: state.slidePageLayouts.map((layout) => createLayoutConfig(layout.mode, layout.rows, layout.cols)),
+    slideLayerPages: cloneSlideLayerPages(),
     slotTransforms: cloneSlotTransforms(),
     selectedSlotIndex: state.selectedSlotIndex,
     logoUrl: state.logoUrl,
@@ -387,6 +405,7 @@ function restoreEditHistorySnapshot(snapshot) {
     state.slidePageLayouts = snapshot.slidePageLayouts.map((layout) =>
       createLayoutConfig(layout.mode, layout.rows, layout.cols),
     );
+    state.slideLayerPages = cloneSlideLayerPages(snapshot.slideLayerPages);
     state.slotTransforms = cloneSlotTransforms(snapshot.slotTransforms);
     state.selectedSlotIndex = snapshot.selectedSlotIndex;
     state.logoUrl = snapshot.logoUrl;
@@ -504,6 +523,197 @@ function getDefaultLayoutConfig() {
   return createLayoutConfig(state.layoutMode, state.gridRows, state.gridCols);
 }
 
+function getSlideLayerKey(page, layer) {
+  return `${Number(page)}:${Number(layer)}`;
+}
+
+function parseSlideLayerKey(key) {
+  const [pageText, layerText] = String(key).split(":");
+  const page = Number(pageText);
+  const layer = Number(layerText);
+  if (!Number.isInteger(page) || page <= 0) return null;
+  if (!Number.isInteger(layer) || layer < 1 || layer > SLIDE_LAYER_COUNT || layer === DEFAULT_SLIDE_LAYER) return null;
+  return { page, layer };
+}
+
+function getLayerSlotIndex(page, layer, offset) {
+  return LAYER_SLOT_BASE + Number(page) * LAYER_SLOT_PAGE_FACTOR + Number(layer) * LAYER_SLOT_LAYER_FACTOR + Number(offset);
+}
+
+function parseLayerSlotIndex(slotIndex) {
+  const value = Number(slotIndex);
+  if (!Number.isInteger(value) || value < LAYER_SLOT_BASE) return null;
+  const raw = value - LAYER_SLOT_BASE;
+  const page = Math.floor(raw / LAYER_SLOT_PAGE_FACTOR);
+  const layer = Math.floor((raw % LAYER_SLOT_PAGE_FACTOR) / LAYER_SLOT_LAYER_FACTOR);
+  const offset = raw % LAYER_SLOT_LAYER_FACTOR;
+  if (page <= 0 || layer < 1 || layer > SLIDE_LAYER_COUNT || layer === DEFAULT_SLIDE_LAYER || offset < 0) return null;
+  return { page, layer, offset };
+}
+
+function normalizeSlotIndex(value) {
+  const slotIndex = Number(value);
+  return Number.isFinite(slotIndex) && slotIndex >= 0 ? slotIndex : null;
+}
+
+function ensureSlideLayerPagesStore() {
+  if (!state.slideLayerPages || typeof state.slideLayerPages !== "object" || Array.isArray(state.slideLayerPages)) {
+    state.slideLayerPages = {};
+  }
+  return state.slideLayerPages;
+}
+
+function normalizeLayerSlideRecord(record, fallbackLayout = getDefaultLayoutConfig()) {
+  const layout = createLayoutConfig(
+    record?.layout?.mode ?? fallbackLayout.mode,
+    record?.layout?.rows ?? fallbackLayout.rows,
+    record?.layout?.cols ?? fallbackLayout.cols,
+  );
+  const pageSize = getPageSizeForLayout(layout);
+  const sourceSlots = Array.isArray(record?.slots) ? record.slots : [];
+  return {
+    layout,
+    pageSize,
+    slots: Array.from({ length: pageSize }, (_, offset) => sourceSlots[offset] ?? null),
+    caption: typeof record?.caption === "string" ? record.caption : "",
+  };
+}
+
+function getLayerSlidePage(page, layer, { create = false } = {}) {
+  const pageNumber = Number(page);
+  const layerNumber = Number(layer);
+  if (!Number.isInteger(pageNumber) || pageNumber <= 0) return null;
+  if (!Number.isInteger(layerNumber) || layerNumber < 1 || layerNumber > SLIDE_LAYER_COUNT || layerNumber === DEFAULT_SLIDE_LAYER) {
+    return null;
+  }
+
+  const store = ensureSlideLayerPagesStore();
+  const key = getSlideLayerKey(pageNumber, layerNumber);
+  const fallbackLayout = getPageLayout(pageNumber);
+  let record = store[key];
+
+  if (!record && !create) {
+    const empty = normalizeLayerSlideRecord(null, fallbackLayout);
+    return {
+      pageIndex: pageNumber,
+      layer: layerNumber,
+      ...empty,
+    };
+  }
+
+  if (!record) {
+    record = normalizeLayerSlideRecord(null, fallbackLayout);
+    store[key] = record;
+  } else {
+    record = normalizeLayerSlideRecord(record, fallbackLayout);
+    store[key] = record;
+  }
+
+  return {
+    pageIndex: pageNumber,
+    layer: layerNumber,
+    ...record,
+  };
+}
+
+function getCurrentSlideLayerPage({ create = false } = {}) {
+  const layer = getCurrentSlideLayerStatus()?.currentLayer ?? DEFAULT_SLIDE_LAYER;
+  if (layer === DEFAULT_SLIDE_LAYER || state.pageIndex <= 0) return null;
+  return getLayerSlidePage(state.pageIndex, layer, { create });
+}
+
+function getSlotImageId(slotIndex) {
+  const normalizedSlotIndex = normalizeSlotIndex(slotIndex);
+  if (normalizedSlotIndex === null) return null;
+  const layerSlot = parseLayerSlotIndex(normalizedSlotIndex);
+  if (layerSlot) {
+    const layerPage = getLayerSlidePage(layerSlot.page, layerSlot.layer);
+    return layerPage?.slots?.[layerSlot.offset] ?? null;
+  }
+  return state.slideSlots[normalizedSlotIndex] ?? null;
+}
+
+function writeSlotImageId(slotIndex, imageId) {
+  const normalizedSlotIndex = normalizeSlotIndex(slotIndex);
+  if (normalizedSlotIndex === null) return false;
+  const layerSlot = parseLayerSlotIndex(normalizedSlotIndex);
+  if (layerSlot) {
+    const layerPage = getLayerSlidePage(layerSlot.page, layerSlot.layer, { create: true });
+    if (!layerPage || layerSlot.offset >= layerPage.pageSize) return false;
+    layerPage.slots[layerSlot.offset] = imageId ?? null;
+    state.slideLayerPages[getSlideLayerKey(layerSlot.page, layerSlot.layer)] = {
+      layout: createLayoutConfig(layerPage.layout.mode, layerPage.layout.rows, layerPage.layout.cols),
+      slots: [...layerPage.slots],
+      caption: layerPage.caption,
+    };
+    return true;
+  }
+
+  normalizeSlidePageLayouts(normalizedSlotIndex + 1);
+  while (state.slideSlots.length <= normalizedSlotIndex) {
+    state.slideSlots.push(null);
+  }
+  state.slideSlots[normalizedSlotIndex] = imageId ?? null;
+  return true;
+}
+
+function getSlotDisplayLabel(slotIndex) {
+  const layerSlot = parseLayerSlotIndex(slotIndex);
+  if (layerSlot) {
+    return `${layerSlot.page}페이지 ${layerSlot.layer}번 레이어 ${layerSlot.offset + 1}칸`;
+  }
+  return `${Number(slotIndex) + 1}번 슬롯`;
+}
+
+function remapSlideLayerPages(mapper) {
+  const nextLayerPages = {};
+  Object.entries(ensureSlideLayerPagesStore()).forEach(([key, record]) => {
+    const parsed = parseSlideLayerKey(key);
+    if (!parsed) return;
+    const next = mapper(parsed.page, parsed.layer);
+    if (!next || !Number.isInteger(next.page) || next.page <= 0) return;
+    nextLayerPages[getSlideLayerKey(next.page, parsed.layer)] = {
+      caption: record?.caption ?? "",
+      layout: createLayoutConfig(record?.layout?.mode, record?.layout?.rows, record?.layout?.cols),
+      slots: Array.isArray(record?.slots) ? [...record.slots] : [],
+    };
+  });
+
+  const nextTransforms = {};
+  Object.entries(state.slotTransforms).forEach(([key, transform]) => {
+    const slotIndex = Number(key);
+    const layerSlot = parseLayerSlotIndex(slotIndex);
+    if (!layerSlot) {
+      nextTransforms[key] = transform;
+      return;
+    }
+    const next = mapper(layerSlot.page, layerSlot.layer);
+    if (!next || !Number.isInteger(next.page) || next.page <= 0) return;
+    nextTransforms[getLayerSlotIndex(next.page, layerSlot.layer, layerSlot.offset)] = transform;
+  });
+
+  state.slideLayerPages = nextLayerPages;
+  state.slotTransforms = nextTransforms;
+}
+
+function copySlideLayerPages(sourcePage, targetPage) {
+  Object.entries(ensureSlideLayerPagesStore()).forEach(([key, record]) => {
+    const parsed = parseSlideLayerKey(key);
+    if (!parsed || parsed.page !== sourcePage) return;
+    state.slideLayerPages[getSlideLayerKey(targetPage, parsed.layer)] = {
+      caption: record?.caption ?? "",
+      layout: createLayoutConfig(record?.layout?.mode, record?.layout?.rows, record?.layout?.cols),
+      slots: Array.isArray(record?.slots) ? [...record.slots] : [],
+    };
+  });
+
+  Object.entries(state.slotTransforms).forEach(([key, transform]) => {
+    const layerSlot = parseLayerSlotIndex(Number(key));
+    if (!layerSlot || layerSlot.page !== sourcePage) return;
+    state.slotTransforms[getLayerSlotIndex(targetPage, layerSlot.layer, layerSlot.offset)] = { ...transform };
+  });
+}
+
 function getPageSize() {
   if (pageSizeCacheVersion === layoutVersion) return cachedPageSize;
 
@@ -567,16 +777,32 @@ function getPageLayout(page = state.pageIndex) {
 }
 
 function getSlotLocation(slotIndex) {
-  if (!Number.isFinite(slotIndex) || slotIndex < 0) return null;
+  const normalizedSlotIndex = normalizeSlotIndex(slotIndex);
+  if (normalizedSlotIndex === null) return null;
+
+  const layerSlot = parseLayerSlotIndex(normalizedSlotIndex);
+  if (layerSlot) {
+    const layerPage = getLayerSlidePage(layerSlot.page, layerSlot.layer);
+    if (!layerPage || layerSlot.offset >= layerPage.pageSize) return null;
+    return {
+      page: layerSlot.page,
+      layer: layerSlot.layer,
+      pageStart: null,
+      pageSize: layerPage.pageSize,
+      layout: layerPage.layout,
+      offset: layerSlot.offset,
+    };
+  }
 
   for (const page of getSlidePages()) {
-    if (slotIndex >= page.start && slotIndex < page.start + page.pageSize) {
+    if (normalizedSlotIndex >= page.start && normalizedSlotIndex < page.start + page.pageSize) {
       return {
         page: page.pageIndex,
+        layer: DEFAULT_SLIDE_LAYER,
         pageStart: page.start,
         pageSize: page.pageSize,
         layout: page.layout,
-        offset: slotIndex - page.start,
+        offset: normalizedSlotIndex - page.start,
       };
     }
   }
@@ -597,8 +823,26 @@ function getCurrentPageSlotMeta() {
 
   const page = getPageLayout(state.pageIndex);
   const pageSize = getPageSizeForLayout(page);
-  const nextKey = `${slideSlotsVersion}:${layoutVersion}:${state.pageIndex}:${state.slideSlots.length}:${pageSize}`;
+  const currentLayer = getCurrentSlideLayerStatus()?.currentLayer ?? DEFAULT_SLIDE_LAYER;
+  const nextKey = `${slideSlotsVersion}:${layoutVersion}:${state.pageIndex}:${currentLayer}:${state.slideSlots.length}:${pageSize}`;
   if (currentPageSlotMetaCacheKey === nextKey && currentPageSlotMetaCache) {
+    return currentPageSlotMetaCache;
+  }
+
+  if (currentLayer !== DEFAULT_SLIDE_LAYER) {
+    const layerPage = getLayerSlidePage(state.pageIndex, currentLayer);
+    currentPageSlotMetaCache = {
+      pageSize: layerPage?.pageSize ?? pageSize,
+      start: null,
+      layout: layerPage?.layout ?? page,
+      slotIndices: Array.from({ length: layerPage?.pageSize ?? pageSize }, (_, offset) =>
+        getLayerSlotIndex(state.pageIndex, currentLayer, offset),
+      ),
+      slots: layerPage?.slots ?? Array(pageSize).fill(null),
+      caption: layerPage?.caption ?? "",
+      layer: currentLayer,
+    };
+    currentPageSlotMetaCacheKey = nextKey;
     return currentPageSlotMetaCache;
   }
 
@@ -611,6 +855,8 @@ function getCurrentPageSlotMeta() {
       ? Array.from({ length: pageMeta.pageSize }, (_, offset) => pageMeta.start + offset)
       : [],
     slots: pageMeta?.slots ?? [],
+    caption: pageMeta?.caption ?? "",
+    layer: DEFAULT_SLIDE_LAYER,
   };
   currentPageSlotMetaCacheKey = nextKey;
   return currentPageSlotMetaCache;
@@ -697,6 +943,13 @@ function getUsedCounts() {
     counts.set(imageId, (counts.get(imageId) ?? 0) + 1);
     return counts;
   }, new Map());
+  Object.values(ensureSlideLayerPagesStore()).forEach((record) => {
+    if (!record || !Array.isArray(record.slots)) return;
+    record.slots.forEach((imageId) => {
+      if (!imageId) return;
+      usedCountsCache.set(imageId, (usedCountsCache.get(imageId) ?? 0) + 1);
+    });
+  });
   usedCountsCacheVersion = slideSlotsVersion;
   return usedCountsCache;
 }
@@ -712,6 +965,21 @@ function getImagePlacements() {
       const list = placements.get(imageId) ?? [];
       list.push({
         page: page.pageIndex,
+        layer: DEFAULT_SLIDE_LAYER,
+        slot: offset + 1,
+      });
+      placements.set(imageId, list);
+    });
+  });
+  Object.entries(ensureSlideLayerPagesStore()).forEach(([key, record]) => {
+    const parsed = parseSlideLayerKey(key);
+    if (!parsed || !record || !Array.isArray(record.slots)) return;
+    record.slots.forEach((imageId, offset) => {
+      if (!imageId) return;
+      const list = placements.get(imageId) ?? [];
+      list.push({
+        page: parsed.page,
+        layer: parsed.layer,
         slot: offset + 1,
       });
       placements.set(imageId, list);
@@ -728,12 +996,13 @@ function getDefaultSlotTransform() {
 }
 
 function getSlotTransform(slotIndex) {
-  if (!Number.isFinite(slotIndex) || slotIndex < 0) return getDefaultSlotTransform();
+  const normalizedSlotIndex = normalizeSlotIndex(slotIndex);
+  if (normalizedSlotIndex === null) return getDefaultSlotTransform();
 
-  const existing = state.slotTransforms[slotIndex];
+  const existing = state.slotTransforms[normalizedSlotIndex];
   if (!existing) {
     const next = getDefaultSlotTransform();
-    state.slotTransforms[slotIndex] = next;
+    state.slotTransforms[normalizedSlotIndex] = next;
     return next;
   }
 
@@ -774,6 +1043,25 @@ function ensureSlideSlots() {
       return;
     }
     changed = true;
+  });
+  Object.entries(ensureSlideLayerPagesStore()).forEach(([key, record]) => {
+    const parsed = parseSlideLayerKey(key);
+    if (!parsed) {
+      delete state.slideLayerPages[key];
+      changed = true;
+      return;
+    }
+    const normalized = normalizeLayerSlideRecord(record, getPageLayout(parsed.page));
+    normalized.slots = normalized.slots.map((slot) => {
+      if (slot === null || imageByIdIndex.has(slot)) return slot;
+      changed = true;
+      return null;
+    });
+    state.slideLayerPages[key] = {
+      layout: normalized.layout,
+      slots: normalized.slots,
+      caption: normalized.caption,
+    };
   });
 
   if (changed) {
@@ -901,14 +1189,26 @@ function renderSlideThumbGrid(page) {
   `;
 }
 
-function renderSlideThumbBlankLayerGrid(page, layer) {
+function renderSlideThumbLayerGrid(page, layer) {
+  const layerPage = getLayerSlidePage(page.pageIndex, layer);
+  const layout = layerPage?.layout ?? page.layout;
+  const slots = layerPage?.slots ?? Array(getPageSizeForLayout(layout)).fill(null);
+  const isEmpty = !slots.some(Boolean);
   return `
     <div
-      class="slide-thumb-grid ${page.layout.mode === "custom" ? "layout-custom" : `layout-${page.layout.mode}`} is-layer-empty"
-      style="--grid-cols:${page.layout.cols}; --grid-rows:${page.layout.rows};"
-      aria-label="${layer}번 빈 레이어"
+      class="slide-thumb-grid ${layout.mode === "custom" ? "layout-custom" : `layout-${layout.mode}`} ${isEmpty ? "is-layer-empty" : ""}"
+      style="--grid-cols:${layout.cols}; --grid-rows:${layout.rows};"
+      aria-label="${layer}번 레이어"
     >
-      ${Array.from({ length: page.pageSize }, () => `<span class="slide-thumb-empty layer-thumb-empty">빈칸</span>`).join("")}
+      ${slots
+        .map((imageId, offset) => {
+          const slotIndex = getLayerSlotIndex(page.pageIndex, layer, offset);
+          const image = getImageById(imageId);
+          return image
+            ? `<img src="${getRenderableImageUrl(image)}" data-renderable-image-id="${image.id}" data-slot-thumb-index="${slotIndex}" alt="" loading="lazy" decoding="async" />`
+            : `<button class="slide-thumb-empty layer-thumb-empty" type="button" data-slot-thumb-index="${slotIndex}">빈칸</button>`;
+        })
+        .join("")}
     </div>
   `;
 }
@@ -923,7 +1223,7 @@ function renderSlideThumbLayerStack(page) {
         return `
           <div class="slide-thumb-layer-frame ${layer === currentLayer ? "is-current-layer" : ""} ${isDefaultLayer ? "has-content-layer" : "is-empty-layer"}">
             <span class="slide-thumb-layer-tag">${layer}</span>
-            ${isDefaultLayer ? renderSlideThumbGrid(page) : renderSlideThumbBlankLayerGrid(page, layer)}
+            ${isDefaultLayer ? renderSlideThumbGrid(page) : renderSlideThumbLayerGrid(page, layer)}
           </div>
         `;
       }).join("")}
@@ -970,12 +1270,7 @@ function renderCover() {
 function renderImageCard(image, slotIndex) {
   const filter = getFilterStyle();
   const backgroundFilter = getBackgroundFilterStyle();
-  const transform = getSlotTransform(slotIndex);
-  const fitMode = getEffectiveSlotFitMode(slotIndex, transform);
-  const imageTransform = getSlotTransformStyle(slotIndex, transform);
-  const cropStyle = getSlotCropStyle(slotIndex, transform);
   const selectedClass = state.selectedSlotIndex === slotIndex ? "is-selected" : "";
-  const displayUrl = getRenderableImageUrl(image);
 
   if (!image) {
     return `
@@ -992,6 +1287,12 @@ function renderImageCard(image, slotIndex) {
       </figure>
     `;
   }
+
+  const transform = getSlotTransform(slotIndex);
+  const fitMode = getEffectiveSlotFitMode(slotIndex, transform);
+  const imageTransform = getSlotTransformStyle(slotIndex, transform);
+  const cropStyle = getSlotCropStyle(slotIndex, transform);
+  const displayUrl = getRenderableImageUrl(image);
 
   return `
     <figure class="image-card ${state.backgroundEnabled ? "background-enabled" : ""} ${
@@ -1068,37 +1369,14 @@ function renderGuides() {
 }
 
 function renderSlide() {
-  const { start, slots: pageSlots, layout } = getCurrentPageSlotMeta();
-  const slideCaption = state.slideCaptions[state.pageIndex - 1] ?? "";
+  const { start, slots: pageSlots, layout, slotIndices, caption: slideCaption = "" } = getCurrentPageSlotMeta();
   const trimmedCaption = slideCaption.trim();
   const isEmptySlide = pageSlots.length > 0 && !pageSlots.some(Boolean);
   const layerStatus = getCurrentSlideLayerStatus();
-  const isBlankLayer = layerStatus && layerStatus.currentLayer !== DEFAULT_SLIDE_LAYER;
+  const isLayerSlide = layerStatus && layerStatus.currentLayer !== DEFAULT_SLIDE_LAYER;
   const layoutClass = layout.mode === "custom" ? "layout-custom" : `layout-${layout.mode}`;
 
   els.stage.className = `stage layout-${layout.mode} has-stage-index`;
-
-  if (isBlankLayer) {
-    visibleSlideCardCache = new Map();
-    visibleGuideCache = new Map();
-    activeStageSlotDropTarget = null;
-    unregisterRenderableImageNodesInRoot(els.stage);
-    els.stage.innerHTML = `
-      ${getStageIndexBadgeHtml()}
-      <div
-        class="slide-grid ${layoutClass} is-layer-empty"
-        style="--grid-cols:${layout.cols}; --grid-rows:${layout.rows};"
-      >
-        ${renderBlankLayerSlots(layout)}
-      </div>
-      <div class="layer-empty-note">
-        <strong>${layerStatus.currentLayer}번 레이어</strong>
-        <span>빈 슬라이드</span>
-      </div>
-      ${renderGuides()}
-    `;
-    return;
-  }
 
   if (pageSlots.length === 0) {
     visibleSlideCardCache = new Map();
@@ -1126,8 +1404,23 @@ function renderSlide() {
       class="slide-grid ${layoutClass}"
       style="--grid-cols:${layout.cols}; --grid-rows:${layout.rows};"
     >
-      ${pageSlots.map((imageId, offset) => renderImageCard(getImageById(imageId), start + offset)).join("")}
+      ${pageSlots
+        .map((imageId, offset) => {
+          const slotIndex = slotIndices?.[offset] ?? start + offset;
+          return renderImageCard(getImageById(imageId), slotIndex);
+        })
+        .join("")}
     </div>
+    ${
+      isLayerSlide && isEmptySlide
+        ? `
+          <div class="layer-empty-note">
+            <strong>${layerStatus.currentLayer}번 레이어</strong>
+            <span>빈 슬라이드</span>
+          </div>
+        `
+        : ""
+    }
     ${
       !isEmptySlide
         ? `
@@ -1169,7 +1462,7 @@ function renderSlide() {
     ${renderGuides()}
   `;
 
-  const slideGrid = els.stage.firstElementChild;
+  const slideGrid = els.stage.querySelector(".slide-grid");
   slideGrid?.querySelectorAll("[data-slot-index]").forEach((card) => {
     const slotIndex = Number(card.getAttribute("data-slot-index"));
     if (!Number.isFinite(slotIndex)) return;
@@ -1187,7 +1480,7 @@ function renderSlide() {
     if (mainImageId && mainImage) registerRenderableImageNode(mainImageId, mainImage, els.stage);
   });
 
-  const guideLayer = slideGrid?.nextElementSibling;
+  const guideLayer = els.stage.querySelector(".guide-layer");
   guideLayer?.querySelectorAll("[data-guide-index]").forEach((guideEl) => {
     const index = Number(guideEl.getAttribute("data-guide-index"));
     if (!Number.isFinite(index)) return;
@@ -1199,7 +1492,7 @@ function syncDeckStatus() {
   const totalPages = getTotalPages();
   const selectedImage =
     Number.isFinite(state.selectedSlotIndex) && state.selectedSlotIndex >= 0
-      ? getImageById(state.slideSlots[state.selectedSlotIndex])
+      ? getImageById(getSlotImageId(state.selectedSlotIndex))
       : null;
   const playbackText = isPresenting()
     ? presentationPlaybackMode === "autoplay"
@@ -1213,7 +1506,7 @@ function syncDeckStatus() {
       <span class="status-secondary">${playbackText} · 커버 편집</span>
     `;
   } else {
-    const pageCaption = (state.slideCaptions[state.pageIndex - 1] || "").trim();
+    const pageCaption = (getCurrentPageSlotMeta().caption || "").trim();
     const captionText = pageCaption ? `소제목: ${escapeHtml(pageCaption)}` : "소제목 없음";
     const imageText = selectedImage ? `선택 사진: ${escapeHtml(selectedImage.name)}` : "선택 사진 없음";
     els.pageStatus.innerHTML = `
@@ -1457,7 +1750,7 @@ function syncPhotoListSelection() {
 
   const selectedImageId =
     Number.isFinite(state.selectedSlotIndex) && state.selectedSlotIndex >= 0
-      ? state.slideSlots[state.selectedSlotIndex]
+      ? getSlotImageId(state.selectedSlotIndex)
       : null;
 
   if (
@@ -1576,7 +1869,7 @@ function getFilteredImages(usedCounts = getUsedCounts()) {
   const query = state.photoSearchQuery.trim().toLocaleLowerCase("ko-KR");
   const currentPageImageIds =
     state.photoFilterMode === "current"
-      ? new Set(isDefaultSlideLayer() ? getCurrentPageSlotMeta().slots.filter(Boolean) : [])
+      ? new Set(getCurrentPageSlotMeta().slots.filter(Boolean))
       : null;
   return state.images.filter((image) => {
     const usedCount = usedCounts.get(image.id) ?? 0;
@@ -1589,7 +1882,6 @@ function getFilteredImages(usedCounts = getUsedCounts()) {
 }
 
 function getVisibleSlideSlotIndices() {
-  if (!isDefaultSlideLayer()) return [];
   return getCurrentPageSlotMeta().slotIndices;
 }
 
@@ -1606,7 +1898,7 @@ function refreshVisibleSlideCards(slotIndices = getVisibleSlideSlotIndices()) {
 
     card.classList.toggle("is-selected", state.selectedSlotIndex === slotIndex);
 
-    const imageId = state.slideSlots[slotIndex];
+    const imageId = getSlotImageId(slotIndex);
     if (!imageId) return;
 
     const image = getImageById(imageId);
@@ -1872,7 +2164,7 @@ function goToAdjacentSlideLayer(direction = 1) {
 
   state.slideLayerIndex = nextLayer;
   state.selectedSlotIndex = null;
-  render({ refreshPhotoList: false, persist: false });
+  render({ persist: false });
   return true;
 }
 
@@ -2605,7 +2897,7 @@ function showToast(message = "") {
 }
 
 function syncSlotContextMenuState(slotIndex = activeSlotContextIndex) {
-  if (!els.slotContextMenu || !Number.isFinite(slotIndex) || slotIndex < 0 || !state.slideSlots[slotIndex]) return;
+  if (!els.slotContextMenu || !Number.isFinite(slotIndex) || slotIndex < 0 || !getSlotImageId(slotIndex)) return;
 
   const transform = getSlotTransform(slotIndex);
   const buttons = els.slotContextMenu.querySelectorAll("[data-slot-context-action]");
@@ -2636,10 +2928,10 @@ function syncSlotContextMenuState(slotIndex = activeSlotContextIndex) {
 function openSlotContextMenu(slotIndex, clientX, clientY) {
   closeSlideContextMenu();
   if (!els.slotContextMenu || !els.slotContextLabel) return;
-  if (!Number.isFinite(slotIndex) || slotIndex < 0 || !state.slideSlots[slotIndex]) return;
+  if (!Number.isFinite(slotIndex) || slotIndex < 0 || !getSlotImageId(slotIndex)) return;
 
   activeSlotContextIndex = slotIndex;
-  els.slotContextLabel.textContent = `${slotIndex + 1}번 사진 편집`;
+  els.slotContextLabel.textContent = `${getSlotDisplayLabel(slotIndex)} 사진 편집`;
   syncSlotContextMenuState(slotIndex);
   els.slotContextMenu.setAttribute("aria-hidden", "false");
 
@@ -2695,7 +2987,7 @@ function runSlideContextAction(action, page = activeSlideContextPage) {
 }
 
 function runSlotContextAction(action, slotIndex = activeSlotContextIndex) {
-  if (!Number.isFinite(slotIndex) || slotIndex < 0 || !state.slideSlots[slotIndex]) return;
+  if (!Number.isFinite(slotIndex) || slotIndex < 0 || !getSlotImageId(slotIndex)) return;
 
   if (state.selectedSlotIndex !== slotIndex) selectSlot(slotIndex);
 
@@ -2871,7 +3163,8 @@ function bindCrop(input, output, key) {
 function syncSelectedSlotControls() {
   const slotIndex = Number(state.selectedSlotIndex);
   const hasSelectedSlot = Number.isFinite(slotIndex) && slotIndex >= 0;
-  const hasSlot = hasSelectedSlot && state.slideSlots[slotIndex] && Boolean(getImageById(state.slideSlots[slotIndex]));
+  const selectedImageId = hasSelectedSlot ? getSlotImageId(slotIndex) : null;
+  const hasSlot = Boolean(selectedImageId && getImageById(selectedImageId));
   const isEmptySelectedSlot = hasSelectedSlot && !hasSlot;
 
   if (!els.selectedSlotLabel) return;
@@ -2922,7 +3215,7 @@ function syncSelectedSlotControls() {
     const nextKey = isEmptySelectedSlot ? `disabled|empty-slot|${slotIndex}` : "disabled|empty";
   if (selectedSlotUiKey !== nextKey) {
     els.selectedSlotLabel.textContent = isEmptySelectedSlot
-        ? `${slotIndex + 1}번 빈 슬롯 선택됨. Tab/Shift+방향키로 칸 이동, 클릭은 현재 칸 배치, 더블클릭은 다음 슬라이드까지 연속 배치합니다.`
+        ? `${getSlotDisplayLabel(slotIndex)} 빈 슬롯 선택됨. Tab/Shift+방향키로 칸 이동, 클릭은 현재 칸 배치, 더블클릭은 다음 빈칸까지 연속 배치합니다.`
         : "슬라이드 사진이나 빈칸을 클릭하세요.";
       selectedSlotUiKey = nextKey;
     }
@@ -2948,7 +3241,7 @@ function syncSelectedSlotControls() {
 
   if (selectedSlotUiKey === nextKey) return;
 
-  const nextLabel = `${slotIndex + 1}번 슬롯 선택됨. Tab/Shift+방향키로 칸 이동, Alt+방향키/대괄호/쉼표/마침표/H/J/F/G로 미세 편집, Alt+C/Alt+V로 값 복사 붙여넣기, Alt+Shift+V/A로 페이지/전체 일괄 적용, 우클릭으로 빠른 편집, 좌상단 이동 핸들 드래그로 자리 이동, Alt+드래그로 복제, Backspace로 비우기, 클릭은 교체, 더블클릭은 다음 슬라이드까지 연속 이동합니다.`;
+  const nextLabel = `${getSlotDisplayLabel(slotIndex)} 선택됨. Tab/Shift+방향키로 칸 이동, Alt+방향키/대괄호/쉼표/마침표/H/J/F/G로 미세 편집, Alt+C/Alt+V로 값 복사 붙여넣기, Alt+Shift+V/A로 페이지/전체 일괄 적용, 우클릭으로 빠른 편집, 좌상단 이동 핸들 드래그로 자리 이동, Alt+드래그로 복제, Backspace로 비우기, 클릭은 교체, 더블클릭은 다음 빈칸까지 연속 이동합니다.`;
   if (els.selectedSlotLabel.textContent !== nextLabel) {
     els.selectedSlotLabel.textContent = nextLabel;
   }
@@ -3042,7 +3335,7 @@ function selectDirectionalSlot(direction) {
 
 function updateSelectedSlotTransform(key, value, { recordHistory = false } = {}) {
   const slotIndex = Number(state.selectedSlotIndex);
-  if (!Number.isFinite(slotIndex) || slotIndex < 0 || !state.slideSlots[slotIndex]) return;
+  if (!Number.isFinite(slotIndex) || slotIndex < 0 || !getSlotImageId(slotIndex)) return;
   if (recordHistory) beginEditHistoryAction();
   getSlotTransform(slotIndex)[key] = typeof value === "number" ? value : value;
   scheduleLightweightRefresh([slotIndex]);
@@ -3051,7 +3344,7 @@ function updateSelectedSlotTransform(key, value, { recordHistory = false } = {})
 
 function nudgeSelectedSlotPosition(direction, amount = 1) {
   const slotIndex = Number(state.selectedSlotIndex);
-  if (!Number.isFinite(slotIndex) || slotIndex < 0 || !state.slideSlots[slotIndex]) return;
+  if (!Number.isFinite(slotIndex) || slotIndex < 0 || !getSlotImageId(slotIndex)) return;
 
   const transform = getSlotTransform(slotIndex);
   if (direction === "left") updateSelectedSlotTransform("x", clamp(transform.x - amount, -100, 100), { recordHistory: true });
@@ -3062,7 +3355,7 @@ function nudgeSelectedSlotPosition(direction, amount = 1) {
 
 function nudgeSelectedSlotScale(amount = 1) {
   const slotIndex = Number(state.selectedSlotIndex);
-  if (!Number.isFinite(slotIndex) || slotIndex < 0 || !state.slideSlots[slotIndex]) return;
+  if (!Number.isFinite(slotIndex) || slotIndex < 0 || !getSlotImageId(slotIndex)) return;
 
   const transform = getSlotTransform(slotIndex);
   updateSelectedSlotTransform("scale", clamp(transform.scale + amount, 40, 240), { recordHistory: true });
@@ -3070,7 +3363,7 @@ function nudgeSelectedSlotScale(amount = 1) {
 
 function nudgeSelectedSlotRotate(amount = 1) {
   const slotIndex = Number(state.selectedSlotIndex);
-  if (!Number.isFinite(slotIndex) || slotIndex < 0 || !state.slideSlots[slotIndex]) return;
+  if (!Number.isFinite(slotIndex) || slotIndex < 0 || !getSlotImageId(slotIndex)) return;
 
   const transform = getSlotTransform(slotIndex);
   updateSelectedSlotTransform("rotate", clamp(transform.rotate + amount, -45, 45), { recordHistory: true });
@@ -3078,7 +3371,7 @@ function nudgeSelectedSlotRotate(amount = 1) {
 
 function toggleSelectedSlotFlip(axis = "x") {
   const slotIndex = Number(state.selectedSlotIndex);
-  if (!Number.isFinite(slotIndex) || slotIndex < 0 || !state.slideSlots[slotIndex]) return;
+  if (!Number.isFinite(slotIndex) || slotIndex < 0 || !getSlotImageId(slotIndex)) return;
 
   const transform = getSlotTransform(slotIndex);
   if (axis === "x") {
@@ -3092,13 +3385,13 @@ function toggleSelectedSlotFlip(axis = "x") {
 
 function setSelectedSlotFitMode(mode = "inherit") {
   const slotIndex = Number(state.selectedSlotIndex);
-  if (!Number.isFinite(slotIndex) || slotIndex < 0 || !state.slideSlots[slotIndex]) return;
+  if (!Number.isFinite(slotIndex) || slotIndex < 0 || !getSlotImageId(slotIndex)) return;
   updateSelectedSlotTransform("fitMode", mode, { recordHistory: true });
 }
 
 function copySelectedSlotTransform() {
   const slotIndex = Number(state.selectedSlotIndex);
-  if (!Number.isFinite(slotIndex) || slotIndex < 0 || !state.slideSlots[slotIndex]) return;
+  if (!Number.isFinite(slotIndex) || slotIndex < 0 || !getSlotImageId(slotIndex)) return;
   slotTransformClipboard = { ...getSlotTransform(slotIndex) };
   syncSelectedSlotControls();
   showToast("현재 사진 값을 복사했습니다.");
@@ -3106,7 +3399,7 @@ function copySelectedSlotTransform() {
 
 function pasteSelectedSlotTransform() {
   const slotIndex = Number(state.selectedSlotIndex);
-  if (!slotTransformClipboard || !Number.isFinite(slotIndex) || slotIndex < 0 || !state.slideSlots[slotIndex]) return;
+  if (!slotTransformClipboard || !Number.isFinite(slotIndex) || slotIndex < 0 || !getSlotImageId(slotIndex)) return;
   beginEditHistoryAction();
   state.slotTransforms[slotIndex] = { ...slotTransformClipboard };
   scheduleLightweightRefresh([slotIndex]);
@@ -3116,11 +3409,11 @@ function pasteSelectedSlotTransform() {
 
 function applySelectedSlotTransformToCurrentPage() {
   const slotIndex = Number(state.selectedSlotIndex);
-  if (!Number.isFinite(slotIndex) || slotIndex < 0 || !state.slideSlots[slotIndex]) return;
+  if (!Number.isFinite(slotIndex) || slotIndex < 0 || !getSlotImageId(slotIndex)) return;
 
   const sourceTransform = { ...getSlotTransform(slotIndex) };
   const { slotIndices } = getCurrentPageSlotMeta();
-  const targetSlotIndices = slotIndices.filter((candidate) => candidate !== slotIndex && state.slideSlots[candidate]);
+  const targetSlotIndices = slotIndices.filter((candidate) => candidate !== slotIndex && getSlotImageId(candidate));
   if (targetSlotIndices.length === 0) return;
 
   beginEditHistoryAction();
@@ -3134,12 +3427,24 @@ function applySelectedSlotTransformToCurrentPage() {
 
 function applySelectedSlotTransformToAllSlides() {
   const slotIndex = Number(state.selectedSlotIndex);
-  if (!Number.isFinite(slotIndex) || slotIndex < 0 || !state.slideSlots[slotIndex]) return;
+  if (!Number.isFinite(slotIndex) || slotIndex < 0 || !getSlotImageId(slotIndex)) return;
 
   const sourceTransform = { ...getSlotTransform(slotIndex) };
-  const targetSlotIndices = state.slideSlots
-    .map((imageId, index) => (imageId && index !== slotIndex ? index : null))
-    .filter((value) => Number.isFinite(value));
+  const targetSlotIndices = [
+    ...state.slideSlots
+      .map((imageId, index) => (imageId && index !== slotIndex ? index : null))
+      .filter((value) => Number.isFinite(value)),
+    ...Object.entries(ensureSlideLayerPagesStore()).flatMap(([key, record]) => {
+      const parsed = parseSlideLayerKey(key);
+      if (!parsed || !record || !Array.isArray(record.slots)) return [];
+      return record.slots
+        .map((imageId, offset) => {
+          const candidate = getLayerSlotIndex(parsed.page, parsed.layer, offset);
+          return imageId && candidate !== slotIndex ? candidate : null;
+        })
+        .filter((value) => Number.isFinite(value));
+    }),
+  ];
   if (targetSlotIndices.length === 0) return;
 
   beginEditHistoryAction();
@@ -3160,7 +3465,7 @@ function bindSlotTransform(input, output, key, suffix = "%") {
 }
 
 function syncLayoutControls() {
-  const layout = getPageLayout(state.pageIndex);
+  const layout = state.pageIndex > 0 ? getCurrentPageSlotMeta().layout : getPageLayout(state.pageIndex);
   els.gridRows.value = layout.rows;
   els.gridCols.value = layout.cols;
   els.layoutMode.value = layout.mode;
@@ -3178,6 +3483,44 @@ function applyLayoutToPage(page, mode, rows, cols) {
   }
 
   const nextLayout = createLayoutConfig(mode, rows, cols);
+  const activeLayer = page === state.pageIndex ? getCurrentSlideLayerStatus()?.currentLayer : DEFAULT_SLIDE_LAYER;
+  if (activeLayer && activeLayer !== DEFAULT_SLIDE_LAYER) {
+    beginEditHistoryAction();
+    const layerPage = getLayerSlidePage(page, activeLayer, { create: true });
+    if (!layerPage) return;
+
+    const nextPageSize = getPageSizeForLayout(nextLayout);
+    const previousPageSize = layerPage.slots.length;
+    const nextSlots =
+      nextPageSize > previousPageSize
+        ? [...layerPage.slots, ...Array(nextPageSize - previousPageSize).fill(null)]
+        : layerPage.slots.slice(0, nextPageSize);
+
+    for (let offset = nextPageSize; offset < previousPageSize; offset += 1) {
+      delete state.slotTransforms[getLayerSlotIndex(page, activeLayer, offset)];
+    }
+
+    state.slideLayerPages[getSlideLayerKey(page, activeLayer)] = {
+      layout: nextLayout,
+      slots: nextSlots,
+      caption: layerPage.caption,
+    };
+
+    const selectedLayerSlot = parseLayerSlotIndex(state.selectedSlotIndex);
+    if (
+      selectedLayerSlot?.page === Number(page) &&
+      selectedLayerSlot.layer === activeLayer &&
+      selectedLayerSlot.offset >= nextPageSize
+    ) {
+      state.selectedSlotIndex = null;
+    }
+
+    markSlideSlotsDirty();
+    markLayoutDirty();
+    render();
+    return;
+  }
+
   const pages = getSlidePages().map((entry) => ({
     pageIndex: entry.pageIndex,
     start: entry.start,
@@ -3233,7 +3576,10 @@ function applyLayoutToPage(page, mode, rows, cols) {
       nextSlotIndex += 1;
     });
   });
-  state.slotTransforms = nextTransforms;
+  state.slotTransforms = {
+    ...Object.fromEntries(Object.entries(state.slotTransforms).filter(([key]) => parseLayerSlotIndex(Number(key)))),
+    ...nextTransforms,
+  };
   state.selectedSlotIndex = Number.isFinite(nextSelectedSlotIndex) ? nextSelectedSlotIndex : null;
   state.pageIndex = clamp(state.pageIndex, 0, Math.max(pages.length, 0));
   resetSlideLayerAnchor(state.pageIndex);
@@ -3325,50 +3671,43 @@ function renderGuideControls() {
 }
 
 function setSlot(slotIndex, imageId) {
-  if (slotIndex < 0) return;
+  const normalizedSlotIndex = normalizeSlotIndex(slotIndex);
+  if (normalizedSlotIndex === null) return;
 
   beginEditHistoryAction();
-  normalizeSlidePageLayouts(slotIndex + 1);
-  while (state.slideSlots.length <= slotIndex) {
-    state.slideSlots.push(null);
-  }
-
-  state.slideSlots[slotIndex] = imageId;
+  if (!writeSlotImageId(normalizedSlotIndex, imageId)) return;
+  if (!imageId) delete state.slotTransforms[normalizedSlotIndex];
   markSlideSlotsDirty();
-  if (imageId) state.selectedSlotIndex = slotIndex;
-  if (!imageId && state.selectedSlotIndex === slotIndex) state.selectedSlotIndex = null;
+  if (imageId) state.selectedSlotIndex = normalizedSlotIndex;
+  if (!imageId && state.selectedSlotIndex === normalizedSlotIndex) state.selectedSlotIndex = null;
   render();
 }
 
 function moveOrSwapSlotContent(fromSlotIndex, toSlotIndex, { copy = false } = {}) {
-  if (!Number.isFinite(fromSlotIndex) || !Number.isFinite(toSlotIndex)) return;
-  if (fromSlotIndex < 0 || toSlotIndex < 0 || fromSlotIndex === toSlotIndex) return;
-  if (!state.slideSlots[fromSlotIndex]) return;
+  const normalizedFromSlotIndex = normalizeSlotIndex(fromSlotIndex);
+  const normalizedToSlotIndex = normalizeSlotIndex(toSlotIndex);
+  if (normalizedFromSlotIndex === null || normalizedToSlotIndex === null || normalizedFromSlotIndex === normalizedToSlotIndex) return;
+  if (!getSlotImageId(normalizedFromSlotIndex)) return;
 
   beginEditHistoryAction();
-  normalizeSlidePageLayouts(Math.max(fromSlotIndex, toSlotIndex) + 1);
-  while (state.slideSlots.length <= Math.max(fromSlotIndex, toSlotIndex)) {
-    state.slideSlots.push(null);
-  }
-
-  const fromImageId = state.slideSlots[fromSlotIndex];
-  const toImageId = state.slideSlots[toSlotIndex] ?? null;
-  const fromTransform = state.slotTransforms[fromSlotIndex] ? { ...state.slotTransforms[fromSlotIndex] } : null;
-  const toTransform = state.slotTransforms[toSlotIndex] ? { ...state.slotTransforms[toSlotIndex] } : null;
+  const fromImageId = getSlotImageId(normalizedFromSlotIndex);
+  const toImageId = getSlotImageId(normalizedToSlotIndex);
+  const fromTransform = state.slotTransforms[normalizedFromSlotIndex] ? { ...state.slotTransforms[normalizedFromSlotIndex] } : null;
+  const toTransform = state.slotTransforms[normalizedToSlotIndex] ? { ...state.slotTransforms[normalizedToSlotIndex] } : null;
   const movedImageName = getImageById(fromImageId)?.name || "사진";
 
-  state.slideSlots[toSlotIndex] = fromImageId;
-  if (fromTransform) state.slotTransforms[toSlotIndex] = fromTransform;
-  else delete state.slotTransforms[toSlotIndex];
+  writeSlotImageId(normalizedToSlotIndex, fromImageId);
+  if (fromTransform) state.slotTransforms[normalizedToSlotIndex] = fromTransform;
+  else delete state.slotTransforms[normalizedToSlotIndex];
 
   if (!copy) {
-    state.slideSlots[fromSlotIndex] = toImageId;
-    if (toImageId && toTransform) state.slotTransforms[fromSlotIndex] = toTransform;
-    else delete state.slotTransforms[fromSlotIndex];
+    writeSlotImageId(normalizedFromSlotIndex, toImageId);
+    if (toImageId && toTransform) state.slotTransforms[normalizedFromSlotIndex] = toTransform;
+    else delete state.slotTransforms[normalizedFromSlotIndex];
   }
 
   markSlideSlotsDirty();
-  state.selectedSlotIndex = toSlotIndex;
+  state.selectedSlotIndex = normalizedToSlotIndex;
   render();
   if (copy) {
     showToast(`${movedImageName}을(를) 다른 칸에 복제했습니다.`);
@@ -3382,8 +3721,19 @@ function moveOrSwapSlotContent(fromSlotIndex, toSlotIndex, { copy = false } = {}
 }
 
 function findNextEmptySlotIndex(fromSlotIndex = -1) {
-  for (let slotIndex = Math.max(0, fromSlotIndex + 1); slotIndex < state.slideSlots.length; slotIndex += 1) {
-    if (!state.slideSlots[slotIndex]) return slotIndex;
+  const location = getSlotLocation(Number(fromSlotIndex));
+  if (location?.layer && location.layer !== DEFAULT_SLIDE_LAYER) {
+    const layerPage = getLayerSlidePage(location.page, location.layer);
+    if (!layerPage) return null;
+    for (let offset = location.offset + 1; offset < layerPage.pageSize; offset += 1) {
+      const slotIndex = getLayerSlotIndex(location.page, location.layer, offset);
+      if (!getSlotImageId(slotIndex)) return slotIndex;
+    }
+    return null;
+  }
+
+  for (let slotIndex = Math.max(0, Number(fromSlotIndex) + 1); slotIndex < state.slideSlots.length; slotIndex += 1) {
+    if (!getSlotImageId(slotIndex)) return slotIndex;
   }
   return null;
 }
@@ -3449,28 +3799,30 @@ function resolvePhotoListTargetSlotIndex() {
 }
 
 function assignImageToSlot(slotIndex, imageId, { advance = false } = {}) {
-  if (!Number.isFinite(slotIndex) || slotIndex < 0 || !imageId) return;
+  const normalizedSlotIndex = normalizeSlotIndex(slotIndex);
+  if (normalizedSlotIndex === null || !imageId) return;
 
   beginEditHistoryAction();
-  normalizeSlidePageLayouts(slotIndex + 1);
-  while (state.slideSlots.length <= slotIndex) {
-    state.slideSlots.push(null);
-  }
-
-  state.slideSlots[slotIndex] = imageId;
+  if (!writeSlotImageId(normalizedSlotIndex, imageId)) return;
   markSlideSlotsDirty();
 
   if (advance) {
-    const nextEmptySlotIndex = findNextEmptySlotIndex(slotIndex);
+    const nextEmptySlotIndex = findNextEmptySlotIndex(normalizedSlotIndex);
     if (Number.isFinite(nextEmptySlotIndex)) {
       const location = getSlotLocation(nextEmptySlotIndex);
       if (location) {
         state.pageIndex = location.page;
-        resetSlideLayerAnchor(state.pageIndex);
+        state.slideLayerIndex = location.layer ?? DEFAULT_SLIDE_LAYER;
         state.selectedSlotIndex = nextEmptySlotIndex;
         render();
         return;
       }
+    }
+
+    if (parseLayerSlotIndex(normalizedSlotIndex)) {
+      state.selectedSlotIndex = normalizedSlotIndex;
+      render();
+      return;
     }
 
     const layout = getPageLayout(state.pageIndex);
@@ -3490,7 +3842,7 @@ function assignImageToSlot(slotIndex, imageId, { advance = false } = {}) {
     return;
   }
 
-  state.selectedSlotIndex = slotIndex;
+  state.selectedSlotIndex = normalizedSlotIndex;
   render();
 }
 
@@ -3512,6 +3864,7 @@ function clearSlideSlots() {
     state.slideSlots = [];
     state.slidePageLayouts = [];
     state.slideCaptions = [];
+    state.slideLayerPages = {};
     markSlideSlotsDirty();
     markLayoutDirty();
     state.pageIndex = 0;
@@ -3525,6 +3878,7 @@ function clearSlideSlots() {
   state.slidePageLayouts = [layout];
   state.slideSlots = Array(getPageSizeForLayout(layout)).fill(null);
   state.slideCaptions = [""];
+  state.slideLayerPages = {};
   markSlideSlotsDirty();
   markLayoutDirty();
   state.slotTransforms = {};
@@ -3556,6 +3910,7 @@ function resetAllPhotosAndSlides() {
   state.slideSlots = [];
   state.slideCaptions = [];
   state.slidePageLayouts = [];
+  state.slideLayerPages = {};
   state.slotTransforms = {};
   state.selectedSlotIndex = null;
   state.pageIndex = 0;
@@ -3575,27 +3930,54 @@ function resetAllPhotosAndSlides() {
 }
 
 function findFirstFilledSlotIndexForPage(page) {
+  if (Number(page) === state.pageIndex && !isDefaultSlideLayer()) {
+    const pageMeta = getCurrentPageSlotMeta();
+    for (let offset = 0; offset < pageMeta.pageSize; offset += 1) {
+      const slotIndex = pageMeta.slotIndices[offset];
+      if (getSlotImageId(slotIndex)) return slotIndex;
+    }
+    return null;
+  }
+
   const pageMeta = getSlidePages().find((entry) => entry.pageIndex === Number(page));
   if (!pageMeta) return null;
   for (let offset = 0; offset < pageMeta.pageSize; offset += 1) {
     const slotIndex = pageMeta.start + offset;
-    if (state.slideSlots[slotIndex]) return slotIndex;
+    if (getSlotImageId(slotIndex)) return slotIndex;
   }
   return null;
 }
 
 function findFirstEmptySlotIndexForPage(page = state.pageIndex) {
+  if (Number(page) === state.pageIndex && !isDefaultSlideLayer()) {
+    const pageMeta = getCurrentPageSlotMeta();
+    for (let offset = 0; offset < pageMeta.pageSize; offset += 1) {
+      const slotIndex = pageMeta.slotIndices[offset];
+      if (!getSlotImageId(slotIndex)) return slotIndex;
+    }
+    return null;
+  }
+
   const pageMeta = getSlidePages().find((entry) => entry.pageIndex === Number(page));
   if (!pageMeta) return null;
   for (let offset = 0; offset < pageMeta.pageSize; offset += 1) {
     const slotIndex = pageMeta.start + offset;
-    if (!state.slideSlots[slotIndex]) return slotIndex;
+    if (!getSlotImageId(slotIndex)) return slotIndex;
   }
   return null;
 }
 
 function findFirstSlotIndexByImageId(imageId) {
-  return state.slideSlots.findIndex((slotId) => slotId === imageId);
+  const defaultIndex = state.slideSlots.findIndex((slotId) => slotId === imageId);
+  if (defaultIndex >= 0) return defaultIndex;
+
+  for (const [key, record] of Object.entries(ensureSlideLayerPagesStore())) {
+    const parsed = parseSlideLayerKey(key);
+    if (!parsed || !record || !Array.isArray(record.slots)) continue;
+    const offset = record.slots.findIndex((slotId) => slotId === imageId);
+    if (offset >= 0) return getLayerSlotIndex(parsed.page, parsed.layer, offset);
+  }
+  return -1;
 }
 
 function findNextSlotIndexByImageId(imageId, currentSlotIndex = state.selectedSlotIndex) {
@@ -3603,12 +3985,16 @@ function findNextSlotIndexByImageId(imageId, currentSlotIndex = state.selectedSl
   if (placements.length === 0) return -1;
   if (placements.length === 1) {
     const onlyPlacement = placements[0];
+    if ((onlyPlacement.layer ?? DEFAULT_SLIDE_LAYER) !== DEFAULT_SLIDE_LAYER) {
+      return getLayerSlotIndex(onlyPlacement.page, onlyPlacement.layer, onlyPlacement.slot - 1);
+    }
     const onlyLocation = getSlidePages().find((page) => page.pageIndex === onlyPlacement.page);
     return onlyLocation ? onlyLocation.start + (onlyPlacement.slot - 1) : findFirstSlotIndexByImageId(imageId);
   }
 
   const slotIndices = placements
-    .map(({ page, slot }) => {
+    .map(({ page, layer = DEFAULT_SLIDE_LAYER, slot }) => {
+      if (layer !== DEFAULT_SLIDE_LAYER) return getLayerSlotIndex(page, layer, slot - 1);
       const pageMeta = getSlidePages().find((entry) => entry.pageIndex === page);
       return pageMeta ? pageMeta.start + (slot - 1) : null;
     })
@@ -3622,14 +4008,18 @@ function findNextSlotIndexByImageId(imageId, currentSlotIndex = state.selectedSl
 }
 
 function goToPageWithSelection(page, slotIndex = null) {
+  const location = Number.isFinite(slotIndex) ? getSlotLocation(slotIndex) : null;
   state.pageIndex = clamp(page, 0, Math.max(getTotalPages() - 1, 0));
-  resetSlideLayerAnchor(state.pageIndex);
+  state.slideLayerIndex = location?.layer ?? DEFAULT_SLIDE_LAYER;
   state.selectedSlotIndex = Number.isFinite(slotIndex) && slotIndex >= 0 ? slotIndex : null;
   render({ refreshPhotoList: false });
 }
 
 function rebuildSlotTransformsFromPages(pages) {
   const nextTransforms = {};
+  const layerTransforms = Object.fromEntries(
+    Object.entries(state.slotTransforms).filter(([key]) => parseLayerSlotIndex(Number(key))),
+  );
   let nextStart = 0;
 
   pages.forEach((page) => {
@@ -3642,7 +4032,10 @@ function rebuildSlotTransformsFromPages(pages) {
     nextStart += page.pageSize;
   });
 
-  state.slotTransforms = nextTransforms;
+  state.slotTransforms = {
+    ...layerTransforms,
+    ...nextTransforms,
+  };
 }
 
 function captureSlidePageSnapshot(page = state.pageIndex) {
@@ -3669,10 +4062,12 @@ function reorderSlidePage(fromPage, toPage) {
   const toIndex = Number(toPage) - 1;
   if (!Number.isFinite(fromIndex) || !Number.isFinite(toIndex) || fromIndex < 0 || toIndex < 0) return;
   if (fromIndex === toIndex || fromIndex >= pages.length || toIndex >= pages.length) return;
+  const fromPageNumber = fromIndex + 1;
+  const toPageNumber = toIndex + 1;
   beginEditHistoryAction();
   const selectedImageId =
     Number.isFinite(state.selectedSlotIndex) && state.selectedSlotIndex >= 0
-      ? state.slideSlots[state.selectedSlotIndex]
+      ? getSlotImageId(state.selectedSlotIndex)
       : null;
 
   const movedPages = [...pages];
@@ -3683,6 +4078,12 @@ function reorderSlidePage(fromPage, toPage) {
   state.slideCaptions = movedPages.map((page) => page.caption);
   state.slidePageLayouts = movedPages.map((page) => createLayoutConfig(page.layout.mode, page.layout.rows, page.layout.cols));
   rebuildSlotTransformsFromPages(movedPages);
+  remapSlideLayerPages((layerPage) => {
+    if (layerPage === fromPageNumber) return { page: toPageNumber };
+    if (fromPageNumber < toPageNumber && layerPage > fromPageNumber && layerPage <= toPageNumber) return { page: layerPage - 1 };
+    if (fromPageNumber > toPageNumber && layerPage >= toPageNumber && layerPage < fromPageNumber) return { page: layerPage + 1 };
+    return { page: layerPage };
+  });
   markSlideSlotsDirty();
   markLayoutDirty();
   normalizeSlideCaptions(movedPages.length);
@@ -3729,6 +4130,7 @@ function pasteSlidePageAfter(page = state.pageIndex) {
   const pages = getSlidePages();
   const pageIndex = Number(page) - 1;
   if (!Number.isFinite(pageIndex) || pageIndex < 0 || pageIndex >= pages.length) return;
+  const pageNumber = pageIndex + 1;
 
   beginEditHistoryAction();
   const snapshot = {
@@ -3763,17 +4165,43 @@ function pasteSlidePageAfter(page = state.pageIndex) {
     }
     nextStart += entry.pageSize;
   });
-  state.slotTransforms = nextTransforms;
+  state.slotTransforms = {
+    ...Object.fromEntries(Object.entries(state.slotTransforms).filter(([key]) => parseLayerSlotIndex(Number(key)))),
+    ...nextTransforms,
+  };
+  remapSlideLayerPages((layerPage) => (layerPage >= pageNumber + 1 ? { page: layerPage + 1 } : { page: layerPage }));
 
   markSlideSlotsDirty();
   markLayoutDirty();
   normalizeSlideCaptions(nextPages.length);
   state.selectedSlotIndex = null;
-  goToPage(page + 1);
+  goToPage(pageNumber + 1);
   showToast("복사한 슬라이드를 뒤에 붙여넣었습니다.");
 }
 
 function clearSlidePage(page = state.pageIndex) {
+  if (Number(page) === state.pageIndex && !isDefaultSlideLayer()) {
+    const pageMeta = getCurrentPageSlotMeta();
+    beginEditHistoryAction();
+    let changed = false;
+    pageMeta.slotIndices.forEach((slotIndex) => {
+      if (getSlotImageId(slotIndex)) {
+        writeSlotImageId(slotIndex, null);
+        changed = true;
+      }
+      if (state.slotTransforms[slotIndex]) {
+        delete state.slotTransforms[slotIndex];
+        changed = true;
+      }
+    });
+    if (!changed) return;
+    state.selectedSlotIndex = null;
+    markSlideSlotsDirty();
+    render();
+    showToast("현재 레이어의 사진을 비웠습니다.");
+    return;
+  }
+
   const pageMeta = getSlidePages().find((entry) => entry.pageIndex === Number(page));
   if (!pageMeta) return;
 
@@ -3828,6 +4256,8 @@ function insertSlidePage(referencePage, position = "after", { announce = true } 
   state.slideCaptions = nextPages.map((entry) => entry.caption);
   state.slidePageLayouts = nextPages.map((page) => createLayoutConfig(page.layout.mode, page.layout.rows, page.layout.cols));
   rebuildSlotTransformsFromPages(nextPages);
+  const insertedPage = insertIndex + 1;
+  remapSlideLayerPages((layerPage) => (layerPage >= insertedPage ? { page: layerPage + 1 } : { page: layerPage }));
   markSlideSlotsDirty();
   markLayoutDirty();
   normalizeSlideCaptions(nextPages.length);
@@ -3871,6 +4301,7 @@ function duplicateSlidePage(page) {
   const pages = getSlidePages();
   const pageIndex = Number(page) - 1;
   if (!Number.isFinite(pageIndex) || pageIndex < 0 || pageIndex >= pages.length) return;
+  const pageNumber = pageIndex + 1;
   beginEditHistoryAction();
 
   const sourcePage = pages[pageIndex];
@@ -3898,13 +4329,18 @@ function duplicateSlidePage(page) {
     }
     nextStart += entry.pageSize;
   });
-  state.slotTransforms = nextTransforms;
+  state.slotTransforms = {
+    ...Object.fromEntries(Object.entries(state.slotTransforms).filter(([key]) => parseLayerSlotIndex(Number(key)))),
+    ...nextTransforms,
+  };
+  remapSlideLayerPages((layerPage) => (layerPage >= pageNumber + 1 ? { page: layerPage + 1 } : { page: layerPage }));
+  copySlideLayerPages(pageNumber, pageNumber + 1);
 
   markSlideSlotsDirty();
   markLayoutDirty();
   normalizeSlideCaptions(nextPages.length);
   state.selectedSlotIndex = null;
-  goToPage(page + 1);
+  goToPage(pageNumber + 1);
   showToast("현재 슬라이드를 복제했습니다.");
 }
 
@@ -3912,10 +4348,11 @@ function deleteSlidePage(page) {
   const pages = getSlidePages();
   const pageIndex = Number(page) - 1;
   if (!Number.isFinite(pageIndex) || pageIndex < 0 || pageIndex >= pages.length) return;
+  const pageNumber = pageIndex + 1;
   beginEditHistoryAction();
   const selectedImageId =
     Number.isFinite(state.selectedSlotIndex) && state.selectedSlotIndex >= 0
-      ? state.slideSlots[state.selectedSlotIndex]
+      ? getSlotImageId(state.selectedSlotIndex)
       : null;
 
   const nextPages = pages.filter((_, index) => index !== pageIndex);
@@ -3923,15 +4360,20 @@ function deleteSlidePage(page) {
   state.slideCaptions = nextPages.map((entry) => entry.caption);
   state.slidePageLayouts = nextPages.map((page) => createLayoutConfig(page.layout.mode, page.layout.rows, page.layout.cols));
   rebuildSlotTransformsFromPages(nextPages);
+  remapSlideLayerPages((layerPage) => {
+    if (layerPage === pageNumber) return null;
+    if (layerPage > pageNumber) return { page: layerPage - 1 };
+    return { page: layerPage };
+  });
   markSlideSlotsDirty();
   markLayoutDirty();
   normalizeSlideCaptions(nextPages.length);
 
   const nextTotalPages = 1 + nextPages.length;
   state.pageIndex = clamp(state.pageIndex, 0, Math.max(nextTotalPages - 1, 0));
-  if (state.pageIndex === page) {
-    state.pageIndex = Math.max(1, Math.min(page, nextPages.length));
-  } else if (state.pageIndex > page) {
+  if (state.pageIndex === pageNumber) {
+    state.pageIndex = Math.max(1, Math.min(pageNumber, nextPages.length));
+  } else if (state.pageIndex > pageNumber) {
     state.pageIndex -= 1;
   }
   resetSlideLayerAnchor(state.pageIndex);
@@ -3950,6 +4392,26 @@ function deleteSlidePage(page) {
 function updateSlideCaption(page, value) {
   const pageIndex = Number(page) - 1;
   if (!Number.isFinite(pageIndex) || pageIndex < 0) return;
+
+  const activeLayer = Number(page) === state.pageIndex ? getCurrentSlideLayerStatus()?.currentLayer : DEFAULT_SLIDE_LAYER;
+  if (activeLayer && activeLayer !== DEFAULT_SLIDE_LAYER) {
+    const layerPage = getLayerSlidePage(page, activeLayer, { create: true });
+    if (!layerPage) return;
+    state.slideLayerPages[getSlideLayerKey(page, activeLayer)] = {
+      layout: createLayoutConfig(layerPage.layout.mode, layerPage.layout.rows, layerPage.layout.cols),
+      slots: [...layerPage.slots],
+      caption: value,
+    };
+    markSlideSlotsDirty();
+
+    if (state.pageIndex === page && !getCurrentPageSlotMeta().slots.some(Boolean)) {
+      render({ refreshGuidePanel: false, refreshThumbnails: false, refreshPhotoList: false, persist: false });
+    }
+
+    queuePersistSettings();
+    return;
+  }
+
   normalizeSlideCaptions();
   state.slideCaptions[pageIndex] = value;
 
@@ -3970,32 +4432,48 @@ function removeImageFromLibrary(imageId) {
   markImagesDirty();
 
   let slotsChanged = false;
+  let defaultSlotsChanged = false;
   state.slideSlots = state.slideSlots.map((slotId) => {
     if (slotId !== imageId) return slotId;
     slotsChanged = true;
+    defaultSlotsChanged = true;
     return null;
   });
+  Object.entries(ensureSlideLayerPagesStore()).forEach(([key, record]) => {
+    if (!record || !Array.isArray(record.slots)) return;
+    const nextSlots = record.slots.map((slotId) => {
+      if (slotId !== imageId) return slotId;
+      slotsChanged = true;
+      return null;
+    });
+    state.slideLayerPages[key] = {
+      ...record,
+      slots: nextSlots,
+    };
+  });
 
-  if (slotsChanged) {
+  if (defaultSlotsChanged) {
     markSlideSlotsDirty();
     trimTrailingEmptySlidePages();
+  } else if (slotsChanged) {
+    markSlideSlotsDirty();
   }
 
   const nextTransforms = {};
   for (const [key, transform] of Object.entries(state.slotTransforms)) {
     const slotIndex = Number(key);
-    if (state.slideSlots[slotIndex]) {
+    if (getSlotImageId(slotIndex)) {
       nextTransforms[slotIndex] = transform;
     }
   }
   state.slotTransforms = nextTransforms;
 
-  if (state.selectedSlotIndex !== null && state.slideSlots[state.selectedSlotIndex] !== imageId) {
-    if (!state.slideSlots[state.selectedSlotIndex]) {
+  if (state.selectedSlotIndex !== null && getSlotImageId(state.selectedSlotIndex) !== imageId) {
+    if (!getSlotImageId(state.selectedSlotIndex)) {
       state.selectedSlotIndex = null;
     }
   }
-  if (state.selectedSlotIndex !== null && state.slideSlots[state.selectedSlotIndex] === imageId) {
+  if (state.selectedSlotIndex !== null && getSlotImageId(state.selectedSlotIndex) === imageId) {
     state.selectedSlotIndex = null;
   }
 
@@ -4194,6 +4672,7 @@ function renderPhotoList() {
     slideSlotsVersion,
     layoutVersion,
     state.pageIndex,
+    state.slideLayerIndex,
     state.images.length,
     state.slideSlots.length,
     state.photoSearchQuery,
@@ -4210,7 +4689,7 @@ function renderPhotoList() {
   activePhotoListCard = null;
   const selectedSlotImageId =
     Number.isFinite(state.selectedSlotIndex) && state.selectedSlotIndex >= 0
-      ? state.slideSlots[state.selectedSlotIndex]
+      ? getSlotImageId(state.selectedSlotIndex)
       : null;
 
   if (filteredImages.length === 0) {
@@ -4232,8 +4711,8 @@ function renderPhotoList() {
       placementList.length === 0
         ? "미배치"
         : placementList.length === 1
-          ? `${firstPlacement.page}페이지 ${firstPlacement.slot}칸`
-          : `${firstPlacement.page}페이지 ${firstPlacement.slot}칸 외 ${placementList.length - 1}곳`;
+          ? `${firstPlacement.page}페이지 ${firstPlacement.layer ?? DEFAULT_SLIDE_LAYER}번 레이어 ${firstPlacement.slot}칸`
+          : `${firstPlacement.page}페이지 ${firstPlacement.layer ?? DEFAULT_SLIDE_LAYER}번 레이어 ${firstPlacement.slot}칸 외 ${placementList.length - 1}곳`;
     return `
       <article
         class="photo-list-card ${usedCount > 0 ? "is-in-slide" : "is-unused"} ${selectedSlotImageId === image.id ? "is-active" : ""} ${isOnCurrentPage ? "is-on-current-slide" : ""}"
@@ -4460,7 +4939,7 @@ els.stage?.addEventListener("pointerdown", (event) => {
   if (!(slot instanceof HTMLElement)) return;
 
   const slotIndex = Number(slot.dataset.slotIndex);
-  if (!Number.isFinite(slotIndex) || !state.slideSlots[slotIndex]) return;
+  if (!Number.isFinite(slotIndex) || !getSlotImageId(slotIndex)) return;
 
   const rect = slot.getBoundingClientRect();
   const transform = getSlotTransform(slotIndex);
@@ -4485,7 +4964,7 @@ els.stage?.addEventListener("dragstart", (event) => {
   const handle = event.target instanceof Element ? event.target.closest("[data-drag-slot]") : null;
   if (!(handle instanceof HTMLElement) || !event.dataTransfer) return;
   const slotIndex = Number(handle.getAttribute("data-drag-slot"));
-  if (!Number.isFinite(slotIndex) || slotIndex < 0 || !state.slideSlots[slotIndex]) {
+  if (!Number.isFinite(slotIndex) || slotIndex < 0 || !getSlotImageId(slotIndex)) {
     event.preventDefault();
     return;
   }
@@ -4513,7 +4992,7 @@ els.stage?.addEventListener("contextmenu", (event) => {
   const slot = event.target instanceof Element ? event.target.closest("[data-slot-index]") : null;
   if (slot instanceof HTMLElement) {
     const slotIndex = Number(slot.dataset.slotIndex);
-    if (Number.isFinite(slotIndex) && slotIndex >= 0 && state.slideSlots[slotIndex]) {
+    if (Number.isFinite(slotIndex) && slotIndex >= 0 && getSlotImageId(slotIndex)) {
       event.preventDefault();
       selectSlot(slotIndex);
       openSlotContextMenu(slotIndex, event.clientX, event.clientY);
@@ -4720,7 +5199,7 @@ els.thumbnailRail?.addEventListener("click", (event) => {
     if (!Number.isFinite(slotIndex)) return;
     const location = getSlotLocation(slotIndex);
     if (!location) return;
-    goToPageWithSelection(location.page, state.slideSlots[slotIndex] ? slotIndex : null);
+    goToPageWithSelection(location.page, getSlotImageId(slotIndex) ? slotIndex : null);
     return;
   }
 
@@ -4932,7 +5411,7 @@ els.photoListPanel?.addEventListener("click", (event) => {
   const location = getSlotLocation(slotIndex);
   if (!location) return;
   goToPageWithSelection(location.page, slotIndex);
-  showToast(`${location.page}페이지 ${slotIndex - location.pageStart + 1}칸으로 이동했습니다.`);
+  showToast(`${getSlotDisplayLabel(slotIndex)}으로 이동했습니다.`);
 });
 
 els.photoListPanel?.addEventListener("dblclick", (event) => {
@@ -5553,6 +6032,7 @@ function getPresentationData() {
     slideSlots: state.slideSlots,
     slideCaptions: state.slideCaptions,
     slidePageLayouts: state.slidePageLayouts,
+    slideLayerPages: state.slideLayerPages,
     slotTransforms: state.slotTransforms,
     layoutMode: state.layoutMode,
     gridRows: state.gridRows,
@@ -5588,6 +6068,7 @@ function getSettingsData() {
     slideSlots: state.slideSlots,
     slideCaptions: state.slideCaptions,
     slidePageLayouts: state.slidePageLayouts,
+    slideLayerPages: state.slideLayerPages,
     slotTransforms: state.slotTransforms,
     layoutMode: state.layoutMode,
     gridRows: state.gridRows,
@@ -5930,7 +6411,8 @@ async function drawSlidePageToCanvas(ctx, page, width, height) {
         width: cellWidth,
         height: cellHeight,
       };
-      return drawImageSlotToCanvas(ctx, getImageById(imageId), page.start + offset, rect, width, height);
+      const slotIndex = page.slotIndices?.[offset] ?? page.start + offset;
+      return drawImageSlotToCanvas(ctx, getImageById(imageId), slotIndex, rect, width, height);
     }),
   );
 
@@ -5965,7 +6447,31 @@ async function drawSlidePageToCanvas(ctx, page, width, height) {
   drawWrappedText(ctx, caption, textX + width * 0.012, textY + height * 0.013, textWidth - width * 0.024, lineHeight, 1);
 }
 
-async function renderDeckPageToCanvas(pageIndex, size = getSlideExportSize()) {
+function getCanvasSlidePage(pageIndex, layer = DEFAULT_SLIDE_LAYER) {
+  const page = getSlidePages()[pageIndex - 1];
+  if (!page) return null;
+  if (layer === DEFAULT_SLIDE_LAYER) {
+    return {
+      ...page,
+      slotIndices: Array.from({ length: page.pageSize }, (_, offset) => page.start + offset),
+    };
+  }
+
+  const layerPage = getLayerSlidePage(pageIndex, layer);
+  if (!layerPage) return page;
+  return {
+    pageIndex,
+    layer,
+    start: null,
+    layout: layerPage.layout,
+    pageSize: layerPage.pageSize,
+    slots: layerPage.slots,
+    caption: layerPage.caption,
+    slotIndices: Array.from({ length: layerPage.pageSize }, (_, offset) => getLayerSlotIndex(pageIndex, layer, offset)),
+  };
+}
+
+async function renderDeckPageToCanvas(pageIndex, size = getSlideExportSize(), { layer = DEFAULT_SLIDE_LAYER } = {}) {
   const canvas = document.createElement("canvas");
   canvas.width = size.width;
   canvas.height = size.height;
@@ -5978,7 +6484,7 @@ async function renderDeckPageToCanvas(pageIndex, size = getSlideExportSize()) {
     return canvas;
   }
 
-  const page = getSlidePages()[pageIndex - 1];
+  const page = getCanvasSlidePage(pageIndex, layer);
   if (!page) {
     drawStageCanvasBackground(ctx, size.width, size.height);
     return canvas;
@@ -6009,11 +6515,15 @@ function getDeckFileStem() {
   return safeFileNamePart(els.coverTitle.value || "medical-image-presentation", "medical-image-presentation");
 }
 
-async function downloadSlidePng(pageIndex = state.pageIndex, { silent = false, sequence = pageIndex + 1 } = {}) {
+async function downloadSlidePng(
+  pageIndex = state.pageIndex,
+  { silent = false, sequence = pageIndex + 1, layer = DEFAULT_SLIDE_LAYER } = {},
+) {
   const size = getSlideExportSize();
-  const canvas = await renderDeckPageToCanvas(pageIndex, size);
+  const canvas = await renderDeckPageToCanvas(pageIndex, size, { layer });
   const blob = await canvasToPngBlob(canvas);
-  const pageLabel = pageIndex === 0 ? "cover" : `slide-${String(pageIndex).padStart(2, "0")}`;
+  const layerLabel = pageIndex > 0 && layer !== DEFAULT_SLIDE_LAYER ? `-layer-${layer}` : "";
+  const pageLabel = pageIndex === 0 ? "cover" : `slide-${String(pageIndex).padStart(2, "0")}${layerLabel}`;
   const fileName = `${String(sequence).padStart(3, "0")}-${getDeckFileStem()}-${pageLabel}-${size.width}x${size.height}.png`;
   downloadBlob(fileName, blob);
   if (!silent) showToast(`${size.width}×${size.height} PNG를 내려받았습니다.`);
@@ -6022,7 +6532,7 @@ async function downloadSlidePng(pageIndex = state.pageIndex, { silent = false, s
 async function downloadCurrentSlidePng() {
   showLoading("현재 슬라이드를 PNG로 만드는 중입니다", 0.2);
   try {
-    await downloadSlidePng(state.pageIndex, { silent: true, sequence: state.pageIndex + 1 });
+    await downloadSlidePng(state.pageIndex, { silent: true, sequence: state.pageIndex + 1, layer: state.slideLayerIndex });
     const size = getSlideExportSize();
     showToast(`현재 슬라이드를 ${size.width}×${size.height} PNG로 저장했습니다.`);
   } finally {
@@ -6145,6 +6655,10 @@ function applyPersistedState() {
     markSlideSlotsDirty();
     state.slideCaptions = Array.isArray(data.slideCaptions) ? data.slideCaptions : state.slideCaptions;
     state.slidePageLayouts = Array.isArray(data.slidePageLayouts) ? data.slidePageLayouts : state.slidePageLayouts;
+    state.slideLayerPages =
+      data.slideLayerPages && typeof data.slideLayerPages === "object"
+        ? cloneSlideLayerPages(data.slideLayerPages)
+        : state.slideLayerPages;
     state.slotTransforms = data.slotTransforms ?? state.slotTransforms;
     state.selectedSlotIndex = data.selectedSlotIndex ?? state.selectedSlotIndex;
     state.layoutMode = data.layoutMode ?? state.layoutMode;
@@ -6174,6 +6688,9 @@ function applyPersistedState() {
     state.filters = { ...state.filters, ...(data.filters ?? {}) };
     state.pageIndex = data.pageIndex ?? state.pageIndex;
     state.slideLayerIndex = DEFAULT_SLIDE_LAYER;
+    if (parseLayerSlotIndex(state.selectedSlotIndex)) {
+      state.selectedSlotIndex = null;
+    }
     applyImageOrder(data.imageOrder);
 
     els.sortMode.value = state.sortMode;
