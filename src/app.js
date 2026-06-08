@@ -9,6 +9,11 @@ const SLIDE_EXPORT_SIZES = {
   "3840x2160": { width: 3840, height: 2160, label: "4K" },
 };
 const DEFAULT_SLIDE_EXPORT_SIZE = "1920x1080";
+const CUSTOM_SLIDE_EXPORT_SIZE = "custom";
+const DEFAULT_SLIDE_EXPORT_CUSTOM_SIZE = { width: 1920, height: 1080 };
+const MIN_SLIDE_EXPORT_WIDTH = 320;
+const MIN_SLIDE_EXPORT_HEIGHT = 180;
+const MAX_SLIDE_EXPORT_DIMENSION = 7680;
 const SLIDE_LAYER_COUNT = 3;
 const DEFAULT_SLIDE_LAYER = 2;
 const LAYER_SLOT_BASE = 1_000_000;
@@ -35,6 +40,7 @@ const state = {
   photoSearchQuery: "",
   photoFilterMode: "all",
   slideExportSize: DEFAULT_SLIDE_EXPORT_SIZE,
+  slideExportCustomSize: { ...DEFAULT_SLIDE_EXPORT_CUSTOM_SIZE },
   fitMode: "fit",
   backgroundEnabled: true,
   autoplaySeconds: 3,
@@ -224,6 +230,9 @@ const els = {
   openPagesButton: document.querySelector("#openPagesButton"),
   downloadImagesButton: document.querySelector("#downloadImagesButton"),
   slideExportSize: document.querySelector("#slideExportSize"),
+  slideExportCustomSize: document.querySelector("#slideExportCustomSize"),
+  slideExportCustomWidth: document.querySelector("#slideExportCustomWidth"),
+  slideExportCustomHeight: document.querySelector("#slideExportCustomHeight"),
   slideExportSummary: document.querySelector("#slideExportSummary"),
   downloadCurrentSlideButton: document.querySelector("#downloadCurrentSlideButton"),
   downloadAllSlidesButton: document.querySelector("#downloadAllSlidesButton"),
@@ -5583,6 +5592,18 @@ els.openPagesButton.addEventListener("click", () => {
 });
 els.downloadImagesButton.addEventListener("click", downloadAdjustedImages);
 els.slideExportSize?.addEventListener("change", () => setSlideExportSize(els.slideExportSize.value));
+els.slideExportCustomWidth?.addEventListener("input", () =>
+  setSlideExportCustomSize({ width: els.slideExportCustomWidth.value }, { syncCustomInputs: false }),
+);
+els.slideExportCustomWidth?.addEventListener("change", () =>
+  setSlideExportCustomSize({ width: els.slideExportCustomWidth.value }),
+);
+els.slideExportCustomHeight?.addEventListener("input", () =>
+  setSlideExportCustomSize({ height: els.slideExportCustomHeight.value }, { syncCustomInputs: false }),
+);
+els.slideExportCustomHeight?.addEventListener("change", () =>
+  setSlideExportCustomSize({ height: els.slideExportCustomHeight.value }),
+);
 els.downloadCurrentSlideButton?.addEventListener("click", downloadCurrentSlidePng);
 els.downloadAllSlidesButton?.addEventListener("click", downloadAllSlidesPng);
 els.backgroundMusicInput?.addEventListener("change", async (event) => {
@@ -6042,6 +6063,7 @@ function getPresentationData() {
     gridCols: state.gridCols,
     sortMode: state.sortMode,
     slideExportSize: state.slideExportSize,
+    slideExportCustomSize: state.slideExportCustomSize,
     fitMode: state.fitMode,
     backgroundEnabled: state.backgroundEnabled,
     autoplaySeconds: state.autoplaySeconds,
@@ -6078,6 +6100,7 @@ function getSettingsData() {
     gridCols: state.gridCols,
     sortMode: state.sortMode,
     slideExportSize: state.slideExportSize,
+    slideExportCustomSize: state.slideExportCustomSize,
     fitMode: state.fitMode,
     backgroundEnabled: state.backgroundEnabled,
     autoplaySeconds: state.autoplaySeconds,
@@ -6114,7 +6137,33 @@ function downloadTextFile(fileName, text) {
   URL.revokeObjectURL(url);
 }
 
+function normalizeSlideExportDimension(value, fallback, min) {
+  const numberValue = Math.round(Number(value));
+  const normalized = Number.isFinite(numberValue) ? numberValue : fallback;
+  return clamp(normalized, min, MAX_SLIDE_EXPORT_DIMENSION);
+}
+
+function normalizeSlideExportCustomSize(value = state.slideExportCustomSize) {
+  return {
+    width: normalizeSlideExportDimension(
+      value?.width,
+      DEFAULT_SLIDE_EXPORT_CUSTOM_SIZE.width,
+      MIN_SLIDE_EXPORT_WIDTH,
+    ),
+    height: normalizeSlideExportDimension(
+      value?.height,
+      DEFAULT_SLIDE_EXPORT_CUSTOM_SIZE.height,
+      MIN_SLIDE_EXPORT_HEIGHT,
+    ),
+  };
+}
+
 function getSlideExportSize() {
+  if (state.slideExportSize === CUSTOM_SLIDE_EXPORT_SIZE) {
+    state.slideExportCustomSize = normalizeSlideExportCustomSize();
+    return state.slideExportCustomSize;
+  }
+
   const key = Object.hasOwn(SLIDE_EXPORT_SIZES, state.slideExportSize)
     ? state.slideExportSize
     : DEFAULT_SLIDE_EXPORT_SIZE;
@@ -6132,10 +6181,23 @@ function getAllSlideLayerPngItems() {
   return items.map((item, index) => ({ ...item, sequence: index + 1 }));
 }
 
-function syncSlideExportControls() {
+function syncSlideExportControls({ syncCustomInputs = true } = {}) {
   const size = getSlideExportSize();
   const slidePageCount = getSlidePageCount();
   const totalPngCount = getAllSlideLayerPngItems().length;
+  const isCustomSize = state.slideExportSize === CUSTOM_SLIDE_EXPORT_SIZE;
+  if (els.slideExportSize) {
+    els.slideExportSize.value = isCustomSize ? CUSTOM_SLIDE_EXPORT_SIZE : state.slideExportSize;
+  }
+  if (els.slideExportCustomSize) {
+    els.slideExportCustomSize.hidden = !isCustomSize;
+  }
+  if (syncCustomInputs && els.slideExportCustomWidth) {
+    els.slideExportCustomWidth.value = String(size.width);
+  }
+  if (syncCustomInputs && els.slideExportCustomHeight) {
+    els.slideExportCustomHeight.value = String(size.height);
+  }
   if (els.slideExportSummary) {
     els.slideExportSummary.textContent =
       slidePageCount > 0
@@ -6152,9 +6214,22 @@ function syncSlideExportControls() {
 }
 
 function setSlideExportSize(value) {
-  state.slideExportSize = Object.hasOwn(SLIDE_EXPORT_SIZES, value) ? value : DEFAULT_SLIDE_EXPORT_SIZE;
-  if (els.slideExportSize) els.slideExportSize.value = state.slideExportSize;
+  state.slideExportSize =
+    value === CUSTOM_SLIDE_EXPORT_SIZE || Object.hasOwn(SLIDE_EXPORT_SIZES, value)
+      ? value
+      : DEFAULT_SLIDE_EXPORT_SIZE;
+  state.slideExportCustomSize = normalizeSlideExportCustomSize();
   syncSlideExportControls();
+  queuePersistSettings();
+}
+
+function setSlideExportCustomSize(nextValue, { syncCustomInputs = true } = {}) {
+  state.slideExportSize = CUSTOM_SLIDE_EXPORT_SIZE;
+  state.slideExportCustomSize = normalizeSlideExportCustomSize({
+    ...state.slideExportCustomSize,
+    ...nextValue,
+  });
+  syncSlideExportControls({ syncCustomInputs });
   queuePersistSettings();
 }
 
@@ -6870,9 +6945,11 @@ function applyPersistedState() {
     markLayoutDirty();
     normalizeSlidePageLayouts();
     state.sortMode = data.sortMode ?? state.sortMode;
-    state.slideExportSize = Object.hasOwn(SLIDE_EXPORT_SIZES, data.slideExportSize)
-      ? data.slideExportSize
-      : DEFAULT_SLIDE_EXPORT_SIZE;
+    state.slideExportSize =
+      data.slideExportSize === CUSTOM_SLIDE_EXPORT_SIZE || Object.hasOwn(SLIDE_EXPORT_SIZES, data.slideExportSize)
+        ? data.slideExportSize
+        : DEFAULT_SLIDE_EXPORT_SIZE;
+    state.slideExportCustomSize = normalizeSlideExportCustomSize(data.slideExportCustomSize);
     state.photoSearchQuery = typeof data.photoSearchQuery === "string" ? data.photoSearchQuery : "";
     state.photoFilterMode =
       data.photoFilterMode === "placed" || data.photoFilterMode === "unplaced" || data.photoFilterMode === "current"
@@ -6897,7 +6974,7 @@ function applyPersistedState() {
     applyImageOrder(data.imageOrder);
 
     els.sortMode.value = state.sortMode;
-    if (els.slideExportSize) els.slideExportSize.value = state.slideExportSize;
+    syncSlideExportControls();
     updatePhotoFilterUi();
     els.layoutMode.value = state.layoutMode;
     els.gridRows.value = state.gridRows;

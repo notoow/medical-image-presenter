@@ -201,8 +201,19 @@
               <option value="1920x1080">1920 × 1080 Full HD</option>
               <option value="2560x1440">2560 × 1440 QHD</option>
               <option value="3840x2160">3840 × 2160 4K</option>
+              <option value="custom">직접 입력</option>
             </select>
           </label>
+          <div id="slideExportCustomSize" class="export-size-custom" hidden>
+            <label>
+              가로 px
+              <input id="slideExportCustomWidth" type="number" min="320" max="7680" step="1" inputmode="numeric" />
+            </label>
+            <label>
+              세로 px
+              <input id="slideExportCustomHeight" type="number" min="180" max="7680" step="1" inputmode="numeric" />
+            </label>
+          </div>
           <p id="slideExportSummary" class="export-summary" aria-live="polite">
             1920 × 1080 픽셀 · ZIP에 PNG 1장
           </p>
