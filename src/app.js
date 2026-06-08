@@ -6821,8 +6821,12 @@ function createStandaloneHtml(data) {
     .is-active-mode { border-color:rgba(217,160,111,.42); background:linear-gradient(180deg,rgba(217,160,111,.22),rgba(143,92,56,.18)); }
     .stack { display:grid; gap:.55rem; }
     .stage-wrap { display:grid; grid-template-rows:auto 1fr; gap:1rem; min-width:0; }
-    .toolbar { display:flex; gap:.5rem; justify-content:flex-end; align-items:center; }
+    .toolbar { display:flex; flex-wrap:wrap; gap:.5rem; justify-content:flex-end; align-items:center; }
     .status { min-width:8rem; text-align:center; color:var(--muted); }
+    .layer-controls { display:inline-flex; align-items:center; gap:.36rem; border:1px solid var(--line); border-radius:999px; padding:.24rem; background:rgba(255,255,255,.06); }
+    .layer-controls button { min-width:2.35rem; padding:.48rem .58rem; }
+    .layer-controls button:disabled { cursor:not-allowed; opacity:.38; transform:none; }
+    .layer-status { min-width:3.4rem; color:var(--muted); text-align:center; font-weight:800; }
     .stage { position:relative; overflow:hidden; align-self:center; justify-self:center; width:min(100%,calc((100vh - 6rem) * 16 / 9)); aspect-ratio:16/9; border-radius:1.2rem; background:#111; box-shadow:0 24px 80px rgba(0,0,0,.45); }
     .cover { display:grid; place-items:center; padding:4rem; background:radial-gradient(circle at 20% 15%,rgba(255,255,255,.12),transparent 22rem),linear-gradient(145deg,#26231f,#080807); }
     .cover-card { width:min(75%,58rem); border:1px solid var(--line); border-radius:2rem; padding:3rem; background:rgba(255,255,255,.07); backdrop-filter:blur(18px); }
@@ -6838,6 +6842,7 @@ function createStandaloneHtml(data) {
     .photo { position:absolute; inset:0; width:100%; height:100%; object-fit:contain; transform-origin:center; }
     .fill .photo { object-fit:cover; }
     .label { position:absolute; z-index:2; left:.8rem; right:.8rem; bottom:.7rem; overflow:hidden; color:rgba(255,253,247,.78); white-space:nowrap; text-overflow:ellipsis; font-size:.82rem; }
+    .layer-badge { position:absolute; z-index:7; top:.8rem; right:.8rem; display:inline-flex; align-items:center; min-height:2.15rem; border:1px solid var(--line); border-radius:999px; padding:.38rem .72rem; color:rgba(255,253,247,.9); background:rgba(10,10,10,.55); font-size:.82rem; font-weight:800; backdrop-filter:blur(10px); }
     .slide-caption { position:absolute; z-index:6; top:1rem; left:1rem; display:inline-flex; align-items:center; max-width:min(38rem,calc(100% - 3rem)); border:1px solid var(--line); border-radius:999px; padding:.62rem .95rem; color:rgba(255,253,247,.94); background:rgba(10,10,10,.52); font-size:clamp(.95rem,1.6vw,1.08rem); font-weight:800; letter-spacing:-.02em; backdrop-filter:blur(10px); }
     .empty-slide-caption { position:absolute; z-index:6; top:50%; left:50%; max-width:min(72%,30rem); transform:translate(-50%,-50%); border:1px solid var(--line); border-radius:1rem; padding:.9rem 1.2rem; color:rgba(255,253,247,.9); background:rgba(10,10,10,.56); font-size:clamp(1.1rem,2.2vw,1.6rem); font-weight:800; text-align:center; backdrop-filter:blur(10px); }
     dialog { width:min(54rem,calc(100vw - 2rem)); border:1px solid var(--line); border-radius:1.5rem; padding:0; color:var(--ink); background:linear-gradient(145deg,rgba(37,34,30,.98),rgba(8,8,7,.98)); box-shadow:0 28px 90px rgba(0,0,0,.5); }
@@ -6858,6 +6863,7 @@ function createStandaloneHtml(data) {
     body.presenting .panel, body.presenting .toolbar { display:none; }
     body.presenting .app { display:grid; grid-template-columns:1fr; padding:0; }
     body.presenting .stage { width:100vw; height:100vh; border-radius:0; aspect-ratio:auto; }
+    body.presenting .layer-badge { display:none; }
     @media (max-width:900px){ .app{grid-template-columns:1fr}.panel{max-height:none}.stage{width:100%}.help-grid{grid-template-columns:1fr}.toggle-grid{grid-template-columns:1fr} }
   </style>
 </head>
@@ -6877,7 +6883,7 @@ function createStandaloneHtml(data) {
         <label class="toggle-pill"><input id="showDate" type="checkbox"> 날짜</label>
         <label class="toggle-pill"><input id="showLogo" type="checkbox"> 로고</label>
       </div>
-      <label>페이지 구성 <select id="layout"><option value="single">낱장</option><option value="pair">2분할</option><option value="triple">3분할</option></select></label>
+      <label>페이지 구성 <select id="layout"><option value="single">낱장</option><option value="pair">2분할</option><option value="triple">3분할</option><option value="quad">4분할</option></select></label>
       <div class="row"><button id="fit">맞추기 F</button><button id="fill">채우기 Shift+F</button></div>
       <button id="bg">배경 채우기 Enter</button>
       <div class="presentation-mode-row">
@@ -6895,7 +6901,7 @@ function createStandaloneHtml(data) {
       <label>색조 <input id="hue" type="range" min="-45" max="45" /></label>
       <p>F5 / Shift+F5: 일반 발표 시작 / 현재 페이지부터 시작</p>
       <p>F6 / Shift+F6: 자동재생 시작 / 현재 페이지부터 시작 / A: 발표 중 자동재생 전환</p>
-      <p>Esc / 화살표 / Space / = - 휠 / 0 / C: 종료 · 이동 · 확대 축소 · 초기화 · 커버</p>
+      <p>Esc / 좌우·위아래 / Space / = - 휠 / 0 / C: 종료 · 페이지 이동 · 레이어 이동 · 확대 축소 · 초기화 · 커버</p>
       <button id="openPages" class="sidebar-footer-link" type="button" aria-label="GitHub Pages 열기">
         <span class="sidebar-footer-mark" aria-hidden="true">
           <svg viewBox="0 0 24 24" role="img">
@@ -6909,7 +6915,7 @@ function createStandaloneHtml(data) {
       </button>
     </aside>
     <section class="stage-wrap">
-      <div class="toolbar"><button id="prev">이전</button><span id="status" class="status">Cover</span><button id="next">다음</button></div>
+      <div class="toolbar"><button id="prev">이전</button><span id="status" class="status">Cover</span><button id="next">다음</button><span class="layer-controls" aria-label="슬라이드 레이어 이동"><button id="layerUp" type="button" aria-label="위 레이어">▲</button><span id="layerStatus" class="layer-status">2 / 3</span><button id="layerDown" type="button" aria-label="아래 레이어">▼</button></span></div>
       <article id="stage" class="stage cover"></article>
     </section>
   </main>
@@ -6923,8 +6929,9 @@ function createStandaloneHtml(data) {
         <p><kbd>Shift</kbd> + <kbd>F6</kbd><span>현재 페이지부터 자동재생 발표</span></p>
         <p><kbd>A</kbd><span>발표 중 자동재생 토글</span></p>
         <p><kbd>Esc</kbd><span>발표/도움말 종료</span></p>
-        <p><kbd>→</kbd> <kbd>↓</kbd> <kbd>N</kbd><span>다음 페이지</span></p>
-        <p><kbd>←</kbd> <kbd>↑</kbd> <kbd>P</kbd><span>이전 페이지</span></p>
+        <p><kbd>→</kbd> <kbd>N</kbd><span>다음 페이지</span></p>
+        <p><kbd>←</kbd> <kbd>P</kbd><span>이전 페이지</span></p>
+        <p><kbd>↑</kbd> <kbd>↓</kbd><span>위/아래 레이어</span></p>
         <p><kbd>Home</kbd> / <kbd>End</kbd><span>커버 / 마지막</span></p>
         <p><kbd>F</kbd> / <kbd>Shift</kbd> + <kbd>F</kbd><span>맞추기 / 채우기</span></p>
         <p><kbd>Enter</kbd><span>블러 배경 토글</span></p>
@@ -6936,7 +6943,13 @@ function createStandaloneHtml(data) {
   </dialog>
   <script>
     const data = ${serialized};
-    const state = { ...data, pageIndex: 0, autoplaySeconds: Number(data.autoplaySeconds ?? 3) || 3 };
+    const SLIDE_LAYER_COUNT = 3;
+    const DEFAULT_SLIDE_LAYER = 2;
+    const LAYER_SLOT_BASE = 1000000;
+    const LAYER_SLOT_PAGE_FACTOR = 10000;
+    const LAYER_SLOT_LAYER_FACTOR = 100;
+    const state = { ...data, pageIndex: 0, slideLayerIndex: DEFAULT_SLIDE_LAYER, autoplaySeconds: Number(data.autoplaySeconds ?? 3) || 3 };
+    state.slideLayerPages = state.slideLayerPages && typeof state.slideLayerPages === "object" && !Array.isArray(state.slideLayerPages) ? state.slideLayerPages : {};
     let playbackMode = "manual";
     let autoplayTimer = null;
     const normalizeLayout = (layout) => {
@@ -6968,9 +6981,94 @@ function createStandaloneHtml(data) {
         return page;
       });
     };
-    const pageLayout = (page = state.pageIndex) => page > 0 ? (slidePages()[page - 1]?.layout || defaultLayout()) : defaultLayout();
-    const currentPageMeta = () => state.pageIndex > 0 ? (slidePages()[state.pageIndex - 1] || { start:0, pageSize: layoutSize(defaultLayout()), layout: defaultLayout(), slots: [] }) : { start:0, pageSize: layoutSize(defaultLayout()), layout: defaultLayout(), slots: [] };
-    function setPageLayout(mode){ const next=normalizeLayout({ mode, rows: mode==="custom" ? (pageLayout().rows||1) : undefined, cols: mode==="custom" ? (pageLayout().cols||1) : undefined }); if(state.pageIndex>0){ const pages=slidePages().map((page)=>({ pageIndex:page.pageIndex,start:page.start,pageSize:page.pageSize,layout:normalizeLayout(page.layout),caption:page.caption,slots:[...page.slots],transforms:Array.from({length:page.pageSize},(_,offset)=>{ const transform=state.slotTransforms?.[page.start+offset]; return transform ? {...transform} : null; }) })); const target=pages[state.pageIndex-1]; if(!target) return; const nextSize=layoutSize(next); if(nextSize>target.slots.length){ target.slots.push(...Array(nextSize-target.slots.length).fill(null)); target.transforms.push(...Array(nextSize-target.transforms.length).fill(null)); } else if(nextSize<target.slots.length){ target.slots=target.slots.slice(0,nextSize); target.transforms=target.transforms.slice(0,nextSize); } target.layout=next; target.pageSize=nextSize; state.slideSlots=pages.flatMap((page)=>page.slots); state.slideCaptions=pages.map((page)=>page.caption); state.slidePageLayouts=pages.map((page)=>normalizeLayout(page.layout)); const nextTransforms={}; let nextSlotIndex=0; pages.forEach((page)=>{ page.transforms.forEach((transform,offset)=>{ if(transform) nextTransforms[nextSlotIndex+offset]=transform; }); nextSlotIndex+=page.pageSize; }); state.slotTransforms=nextTransforms; } else { state.layoutMode=next.mode; state.gridRows=next.rows; state.gridCols=next.cols; } render(); }
+    const layerKey = (page, layer) => String(Number(page)) + ":" + String(Number(layer));
+    const layerSlotIndex = (page, layer, offset) => LAYER_SLOT_BASE + Number(page) * LAYER_SLOT_PAGE_FACTOR + Number(layer) * LAYER_SLOT_LAYER_FACTOR + Number(offset);
+    const parseLayerSlotIndex = (slotIndex) => {
+      const raw = Number(slotIndex);
+      if (!Number.isInteger(raw) || raw < LAYER_SLOT_BASE) return null;
+      const page = Math.floor((raw - LAYER_SLOT_BASE) / LAYER_SLOT_PAGE_FACTOR);
+      const layer = Math.floor(((raw - LAYER_SLOT_BASE) % LAYER_SLOT_PAGE_FACTOR) / LAYER_SLOT_LAYER_FACTOR);
+      const offset = (raw - LAYER_SLOT_BASE) % LAYER_SLOT_LAYER_FACTOR;
+      if (page <= 0 || layer < 1 || layer > SLIDE_LAYER_COUNT || layer === DEFAULT_SLIDE_LAYER || offset < 0) return null;
+      return { page, layer, offset };
+    };
+    const currentLayer = () => state.pageIndex > 0 ? Math.min(Math.max(Number(state.slideLayerIndex) || DEFAULT_SLIDE_LAYER, 1), SLIDE_LAYER_COUNT) : DEFAULT_SLIDE_LAYER;
+    const layerPage = (page, layer, { create = false } = {}) => {
+      const pageNumber = Number(page);
+      const layerNumber = Number(layer);
+      const base = slidePages()[pageNumber - 1];
+      if (!base || layerNumber === DEFAULT_SLIDE_LAYER || layerNumber < 1 || layerNumber > SLIDE_LAYER_COUNT) return null;
+      const key = layerKey(pageNumber, layerNumber);
+      const record = state.slideLayerPages[key];
+      const layout = normalizeLayout(record?.layout || base.layout || defaultLayout());
+      const size = layoutSize(layout);
+      const slots = Array.from({ length: size }, (_, offset) => (Array.isArray(record?.slots) ? record.slots[offset] : null) ?? null);
+      const caption = record?.caption || "";
+      if (create) state.slideLayerPages[key] = { layout, slots: [...slots], caption };
+      return {
+        pageIndex: pageNumber,
+        start: null,
+        pageSize: size,
+        layout,
+        slots,
+        caption,
+        layer: layerNumber,
+        slotIndices: Array.from({ length: size }, (_, offset) => layerSlotIndex(pageNumber, layerNumber, offset)),
+      };
+    };
+    const defaultPageMeta = () => ({ start:0, pageSize: layoutSize(defaultLayout()), layout: defaultLayout(), slots: [], layer: DEFAULT_SLIDE_LAYER, slotIndices: [] });
+    const basePageMeta = (page = state.pageIndex) => {
+      const base = page > 0 ? slidePages()[page - 1] : null;
+      if (!base) return defaultPageMeta();
+      return { ...base, layer: DEFAULT_SLIDE_LAYER, slotIndices: Array.from({ length: base.pageSize }, (_, offset) => base.start + offset) };
+    };
+    const currentPageMeta = () => {
+      if (state.pageIndex <= 0) return defaultPageMeta();
+      const layer = currentLayer();
+      return layer === DEFAULT_SLIDE_LAYER ? basePageMeta(state.pageIndex) : (layerPage(state.pageIndex, layer) || basePageMeta(state.pageIndex));
+    };
+    const pageLayout = (page = state.pageIndex) => page === state.pageIndex ? currentPageMeta().layout : basePageMeta(page).layout;
+    function setPageLayout(mode){
+      const activeLayout = pageLayout();
+      const next=normalizeLayout({ mode, rows: mode==="custom" ? (activeLayout.rows||1) : undefined, cols: mode==="custom" ? (activeLayout.cols||1) : undefined });
+      if(state.pageIndex>0 && currentLayer() !== DEFAULT_SLIDE_LAYER){
+        const page=state.pageIndex;
+        const layer=currentLayer();
+        const target=layerPage(page, layer, { create:true });
+        if(!target) return;
+        const nextSize=layoutSize(next);
+        const slots=nextSize>target.slots.length ? [...target.slots, ...Array(nextSize-target.slots.length).fill(null)] : target.slots.slice(0,nextSize);
+        state.slideLayerPages[layerKey(page, layer)] = { layout: next, slots, caption: target.caption };
+        const nextTransforms={};
+        Object.entries(state.slotTransforms||{}).forEach(([key, transform]) => {
+          const parsed = parseLayerSlotIndex(key);
+          if (parsed && parsed.page === page && parsed.layer === layer && parsed.offset >= nextSize) return;
+          nextTransforms[key] = transform;
+        });
+        state.slotTransforms=nextTransforms;
+      } else if(state.pageIndex>0){
+        const pages=slidePages().map((page)=>({ pageIndex:page.pageIndex,start:page.start,pageSize:page.pageSize,layout:normalizeLayout(page.layout),caption:page.caption,slots:[...page.slots],transforms:Array.from({length:page.pageSize},(_,offset)=>{ const transform=state.slotTransforms?.[page.start+offset]; return transform ? {...transform} : null; }) }));
+        const target=pages[state.pageIndex-1];
+        if(!target) return;
+        const nextSize=layoutSize(next);
+        if(nextSize>target.slots.length){ target.slots.push(...Array(nextSize-target.slots.length).fill(null)); target.transforms.push(...Array(nextSize-target.transforms.length).fill(null)); } else if(nextSize<target.slots.length){ target.slots=target.slots.slice(0,nextSize); target.transforms=target.transforms.slice(0,nextSize); }
+        target.layout=next;
+        target.pageSize=nextSize;
+        state.slideSlots=pages.flatMap((page)=>page.slots);
+        state.slideCaptions=pages.map((page)=>page.caption);
+        state.slidePageLayouts=pages.map((page)=>normalizeLayout(page.layout));
+        const nextTransforms={};
+        Object.entries(state.slotTransforms||{}).forEach(([key, transform]) => { if (parseLayerSlotIndex(key)) nextTransforms[key]=transform; });
+        let nextSlotIndex=0;
+        pages.forEach((page)=>{ page.transforms.forEach((transform,offset)=>{ if(transform) nextTransforms[nextSlotIndex+offset]=transform; }); nextSlotIndex+=page.pageSize; });
+        state.slotTransforms=nextTransforms;
+      } else {
+        state.layoutMode=next.mode;
+        state.gridRows=next.rows;
+        state.gridCols=next.cols;
+      }
+      render();
+    }
     const totalPages = () => 1 + slidePages().length;
     const $ = (id) => document.getElementById(id);
     const esc = (v) => String(v).replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#039;");
@@ -6978,20 +7076,23 @@ function createStandaloneHtml(data) {
     const filter = () => \`brightness(\${state.filters.brightness}%) contrast(\${state.filters.contrast}%) saturate(\${state.filters.saturate}%) hue-rotate(\${state.filters.hue}deg)\`;
     const imageFromUrl = (url) => new Promise((resolve,reject)=>{ const image = new Image(); image.onload=()=>resolve(image); image.onerror=reject; image.src=url; });
     function syncInputs(){ const activeLayout = pageLayout(state.pageIndex); $("title").value=state.cover.title; $("subtitle").value=state.cover.subtitle; $("hospital").value=state.cover.hospitalName; $("presenter").value=state.cover.presenterName; $("layout").value=activeLayout.mode; $("showTitle").checked=state.coverVisibility.title; $("showSubtitle").checked=state.coverVisibility.subtitle; $("showHospital").checked=state.coverVisibility.hospitalName; $("showPresenter").checked=state.coverVisibility.presenterName; $("showDate").checked=state.coverVisibility.date; $("showLogo").checked=state.coverVisibility.logo; $("autoplaySeconds").value=String(normalizeAutoplaySeconds(state.autoplaySeconds)); $("autoplayValue").textContent=\`\${normalizeAutoplaySeconds(state.autoplaySeconds).toFixed(1)}초\`; $("bgMusicName").value=state.cover.backgroundMusicName||"음악 없음"; if(state.cover.backgroundMusicUrl){ if($("bgMusic").src!==state.cover.backgroundMusicUrl) $("bgMusic").src=state.cover.backgroundMusicUrl; $("bgMusic").hidden=false; } else { $("bgMusic").hidden=true; } for (const key of ["brightness","contrast","saturate","hue"]) $(key).value=state.filters[key]; }
-    function render(){ state.pageIndex=Math.min(Math.max(state.pageIndex,0),totalPages()-1); if(state.pageIndex===0) renderCover(); else renderSlide(); const modeText=document.body.classList.contains("presenting")?(playbackMode==="autoplay"?\`자동재생 \${normalizeAutoplaySeconds(state.autoplaySeconds).toFixed(1)}초\`:"일반 발표"):"편집 중"; $("status").textContent=state.pageIndex===0?\`Cover / \${totalPages()} · \${modeText}\`:\`\${state.pageIndex+1} / \${totalPages()} · \${modeText}\`; $("bg").textContent=state.backgroundEnabled?"배경 채우기 켜짐 Enter":"배경 채우기 꺼짐 Enter"; $("present").classList.toggle("is-active-mode",document.body.classList.contains("presenting")&&playbackMode==="manual"); $("autoplay").classList.toggle("is-active-mode",document.body.classList.contains("presenting")&&playbackMode==="autoplay"); $("autoplayValue").textContent=\`\${normalizeAutoplaySeconds(state.autoplaySeconds).toFixed(1)}초\`; }
+    function syncLayerControls(){ const isSlide = state.pageIndex > 0; const layer = currentLayer(); $("layerStatus").textContent = isSlide ? String(layer) + " / " + String(SLIDE_LAYER_COUNT) : "-"; $("layerUp").disabled = !isSlide || layer <= 1; $("layerDown").disabled = !isSlide || layer >= SLIDE_LAYER_COUNT; $("layout").value = pageLayout(state.pageIndex).mode; }
+    function render(){ state.pageIndex=Math.min(Math.max(state.pageIndex,0),totalPages()-1); if(state.pageIndex===0) renderCover(); else renderSlide(); const modeText=document.body.classList.contains("presenting")?(playbackMode==="autoplay"?\`자동재생 \${normalizeAutoplaySeconds(state.autoplaySeconds).toFixed(1)}초\`:"일반 발표"):"편집 중"; const layerText=state.pageIndex>0?\` · 레이어 \${currentLayer()} / \${SLIDE_LAYER_COUNT}\`:""; $("status").textContent=state.pageIndex===0?\`Cover / \${totalPages()} · \${modeText}\`:\`\${state.pageIndex+1} / \${totalPages()} · \${modeText}\${layerText}\`; $("bg").textContent=state.backgroundEnabled?"배경 채우기 켜짐 Enter":"배경 채우기 꺼짐 Enter"; $("present").classList.toggle("is-active-mode",document.body.classList.contains("presenting")&&playbackMode==="manual"); $("autoplay").classList.toggle("is-active-mode",document.body.classList.contains("presenting")&&playbackMode==="autoplay"); $("autoplayValue").textContent=\`\${normalizeAutoplaySeconds(state.autoplaySeconds).toFixed(1)}초\`; syncLayerControls(); }
     function renderCover(){ const meta=[state.coverVisibility.hospitalName?state.cover.hospitalName:"",state.coverVisibility.presenterName?state.cover.presenterName:"",state.coverVisibility.date?state.cover.date:""].filter(Boolean); $("stage").className="stage cover"; $("stage").innerHTML=\`<div class="cover-card">\${state.coverVisibility.logo&&state.cover.logoUrl?\`<img class="cover-logo" src="\${state.cover.logoUrl}" alt="logo">\`:""}\${state.coverVisibility.title?\`<h2 class="cover-title">\${esc(state.cover.title)}</h2>\`:""}\${state.coverVisibility.subtitle?\`<p class="cover-subtitle">\${esc(state.cover.subtitle)}</p>\`:""}\${meta.length?\`<p class="meta">\${meta.map(esc).join(" · ")}</p>\`:""}</div>\`; }
     function getImage(id){ return state.images.find((image)=>image.id===id); }
     function slotTransform(i){ return {scale:100,x:0,y:0,rotate:0,fitMode:"inherit",flipX:false,flipY:false,cropLeft:0,cropRight:0,cropTop:0,cropBottom:0,...(state.slotTransforms?.[i]||{})}; }
     function crop(i){ const t=slotTransform(i), c=state.crop||{left:0,right:0,top:0,bottom:0}; return \`inset(\${(c.top||0)+t.cropTop}% \${(c.right||0)+t.cropRight}% \${(c.bottom||0)+t.cropBottom}% \${(c.left||0)+t.cropLeft}%)\`; }
     function photoTransform(i){ const t=slotTransform(i); const base=(state.zoom||1)*(t.scale/100); const sx=base*(t.flipX?-1:1); const sy=base*(t.flipY?-1:1); return \`translate(\${t.x}%, \${t.y}%) scale(\${sx}, \${sy}) rotate(\${t.rotate}deg)\`; }
     function card(img, slotIndex){ if(!img) return \`<figure class="card empty"></figure>\`; const t=slotTransform(slotIndex); const fitMode=t.fitMode==="fill"?"fill":t.fitMode==="fit"?"fit":state.fitMode; return \`<figure class="card \${state.backgroundEnabled?"bg-on":""} \${fitMode==="fill"?"fill":""}"><img class="blur" src="\${img.url}" alt=""><img class="photo" src="\${img.url}" alt="\${esc(img.name)}" style="clip-path:\${crop(slotIndex)};filter:\${filter()};transform:\${photoTransform(slotIndex)}"><figcaption class="label">\${esc(img.name)}</figcaption></figure>\`; }
-    function renderSlide(){ const meta=currentPageMeta(); const layout=meta.layout; const cls=layout.mode==="custom"?"custom":layout.mode; const caption=(meta.caption||"").trim(); const emptySlide = meta.slots.length > 0 && meta.slots.every((id)=>!id); $("stage").className="stage"; $("stage").innerHTML=\`<div class="grid \${cls}" style="--grid-cols:\${layout.cols||2};--grid-rows:\${layout.rows||1}">\${meta.slots.map((id,offset)=>card(getImage(id),meta.start+offset)).join("")}</div>\${!emptySlide && caption ? \`<div class="slide-caption">\${esc(caption)}</div>\` : ""}\${emptySlide && caption ? \`<div class="empty-slide-caption">\${esc(caption)}</div>\` : ""}\`; }
-    async function downloadImages(){ if(!state.images.length){ alert("먼저 사진을 넣어주세요."); return; } const ordered = (state.slideSlots?.length?state.slideSlots:state.images.map((image)=>image.id)).map((id,slotIndex)=>({ item:getImage(id), slotIndex })).filter(({item})=>Boolean(item)); for(const [index,{item,slotIndex}] of ordered.entries()){ const image = await imageFromUrl(item.url); const t = slotTransform(slotIndex); const c = state.crop||{left:0,right:0,top:0,bottom:0}; const cropLeftPx = Math.round(image.naturalWidth * (((c.left||0)+t.cropLeft) / 100)); const cropRightPx = Math.round(image.naturalWidth * (((c.right||0)+t.cropRight) / 100)); const cropTopPx = Math.round(image.naturalHeight * (((c.top||0)+t.cropTop) / 100)); const cropBottomPx = Math.round(image.naturalHeight * (((c.bottom||0)+t.cropBottom) / 100)); const sourceWidth = Math.max(1, image.naturalWidth - cropLeftPx - cropRightPx); const sourceHeight = Math.max(1, image.naturalHeight - cropTopPx - cropBottomPx); const canvas = document.createElement("canvas"); canvas.width = sourceWidth; canvas.height = sourceHeight; const ctx = canvas.getContext("2d"); ctx.filter = filter(); ctx.drawImage(image,cropLeftPx,cropTopPx,sourceWidth,sourceHeight,0,0,sourceWidth,sourceHeight); await new Promise((resolve)=>{ canvas.toBlob((blob)=>{ if(!blob){ resolve(); return; } const url = URL.createObjectURL(blob); const link = document.createElement("a"); link.href = url; link.download = \`\${String(index+1).padStart(3,"0")}-\${item.name.replace(/\\.[^.]+$/,"")}.png\`; document.body.append(link); link.click(); link.remove(); URL.revokeObjectURL(url); setTimeout(resolve,120); }, "image/png"); }); } }
+    function renderSlide(){ const meta=currentPageMeta(); const layout=meta.layout; const cls=layout.mode==="custom"?"custom":layout.mode; const caption=(meta.caption||"").trim(); const emptySlide = meta.slots.length > 0 && meta.slots.every((id)=>!id); const badge=\`<div class="layer-badge">\${currentLayer()} / \${SLIDE_LAYER_COUNT}</div>\`; $("stage").className="stage"; $("stage").innerHTML=\`\${badge}<div class="grid \${cls}" style="--grid-cols:\${layout.cols||2};--grid-rows:\${layout.rows||1}">\${meta.slots.map((id,offset)=>card(getImage(id),meta.slotIndices?.[offset] ?? meta.start+offset)).join("")}</div>\${!emptySlide && caption ? \`<div class="slide-caption">\${esc(caption)}</div>\` : ""}\${emptySlide && caption ? \`<div class="empty-slide-caption">\${esc(caption)}</div>\` : ""}\`; }
+    function orderedImageSlots(){ const defaultSlots = (state.slideSlots?.length?state.slideSlots:state.images.map((image)=>image.id)).map((id,slotIndex)=>({ id, slotIndex })); const layerSlots = Object.entries(state.slideLayerPages||{}).flatMap(([key, record])=>{ const [page, layer] = key.split(":").map(Number); if(!Number.isInteger(page)||!Number.isInteger(layer)||layer===DEFAULT_SLIDE_LAYER) return []; const slots = Array.isArray(record?.slots) ? record.slots : []; return slots.map((id,offset)=>({ id, slotIndex: layerSlotIndex(page, layer, offset) })); }); return [...defaultSlots, ...layerSlots].map(({id,slotIndex})=>({ item:getImage(id), slotIndex })).filter(({item})=>Boolean(item)); }
+    async function downloadImages(){ if(!state.images.length){ alert("먼저 사진을 넣어주세요."); return; } const ordered = orderedImageSlots(); for(const [index,{item,slotIndex}] of ordered.entries()){ const image = await imageFromUrl(item.url); const t = slotTransform(slotIndex); const c = state.crop||{left:0,right:0,top:0,bottom:0}; const cropLeftPx = Math.round(image.naturalWidth * (((c.left||0)+t.cropLeft) / 100)); const cropRightPx = Math.round(image.naturalWidth * (((c.right||0)+t.cropRight) / 100)); const cropTopPx = Math.round(image.naturalHeight * (((c.top||0)+t.cropTop) / 100)); const cropBottomPx = Math.round(image.naturalHeight * (((c.bottom||0)+t.cropBottom) / 100)); const sourceWidth = Math.max(1, image.naturalWidth - cropLeftPx - cropRightPx); const sourceHeight = Math.max(1, image.naturalHeight - cropTopPx - cropBottomPx); const canvas = document.createElement("canvas"); canvas.width = sourceWidth; canvas.height = sourceHeight; const ctx = canvas.getContext("2d"); ctx.filter = filter(); ctx.drawImage(image,cropLeftPx,cropTopPx,sourceWidth,sourceHeight,0,0,sourceWidth,sourceHeight); await new Promise((resolve)=>{ canvas.toBlob((blob)=>{ if(!blob){ resolve(); return; } const url = URL.createObjectURL(blob); const link = document.createElement("a"); link.href = url; link.download = \`\${String(index+1).padStart(3,"0")}-\${item.name.replace(/\\.[^.]+$/,"")}.png\`; document.body.append(link); link.click(); link.remove(); URL.revokeObjectURL(url); setTimeout(resolve,120); }, "image/png"); }); } }
     function isZoomInKey(e){ return e.key==="+" || e.key==="=" || e.code==="NumpadAdd"; }
     function isZoomOutKey(e){ return e.key==="-" || e.key==="_" || e.code==="NumpadSubtract"; }
     function stopAutoplay(){ if(!autoplayTimer) return; window.clearTimeout(autoplayTimer); autoplayTimer=null; }
     function scheduleAutoplay(){ stopAutoplay(); if(playbackMode!=="autoplay"||!document.body.classList.contains("presenting")) return; autoplayTimer=window.setTimeout(()=>{ autoplayTimer=null; if(playbackMode!=="autoplay"||!document.body.classList.contains("presenting")) return; if(state.pageIndex>=totalPages()-1){ stopPresentation(true); return; } go(state.pageIndex+1); }, normalizeAutoplaySeconds(state.autoplaySeconds)*1000); }
-    function go(n){ state.pageIndex=n; render(); if(playbackMode==="autoplay"&&document.body.classList.contains("presenting")) scheduleAutoplay(); }
+    function go(n){ const nextPage=Math.min(Math.max(Number(n)||0,0),totalPages()-1); const pageChanged=nextPage!==state.pageIndex; state.pageIndex=nextPage; if(pageChanged) state.slideLayerIndex=DEFAULT_SLIDE_LAYER; render(); if(playbackMode==="autoplay"&&document.body.classList.contains("presenting")) scheduleAutoplay(); }
+    function goLayer(direction){ if(state.pageIndex<=0) return; const layer=currentLayer(); const nextLayer=Math.min(Math.max(layer+(direction<0?-1:1),1),SLIDE_LAYER_COUNT); if(nextLayer===layer) return; state.slideLayerIndex=nextLayer; render(); }
     function updateZoom(delta){ state.zoom=Math.min(Math.max(Number((state.zoom+delta).toFixed(2)),.5),2.5); render(); }
     function resetZoom(){ state.zoom=1; render(); }
     function startPresentation(autoplay=false){ playbackMode=autoplay?"autoplay":"manual"; document.body.classList.add("presenting"); if(autoplay) scheduleAutoplay(); else stopAutoplay(); if(state.cover.backgroundMusicUrl){ try{$("bgMusic").currentTime=0}catch{} $("bgMusic").play().catch(()=>{}); } $("stage").requestFullscreen?.().catch(()=>{}); render(); }
@@ -7001,14 +7102,34 @@ function createStandaloneHtml(data) {
     function hideHelp(){ if($("shortcutDialog").open) $("shortcutDialog").close(); }
     function backdropClose(e){ if(e.target!==$("shortcutDialog")) return; const r=$("shortcutDialog").getBoundingClientRect(); if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom) hideHelp(); }
     function onWheelZoom(e){ if(!(e.target instanceof Element) || !e.target.closest("#stage")) return; e.preventDefault(); if(e.deltaY<0) updateZoom(.1); else if(e.deltaY>0) updateZoom(-.1); }
-    $("prev").onclick=()=>go(state.pageIndex-1); $("next").onclick=()=>go(state.pageIndex+1); $("fit").onclick=()=>{state.fitMode="fit";render()}; $("fill").onclick=()=>{state.fitMode="fill";render()}; $("bg").onclick=()=>{state.backgroundEnabled=!state.backgroundEnabled;render()}; $("present").onclick=()=>{go(0);startPresentation(false)}; $("autoplay").onclick=()=>{go(0);startPresentation(true)}; $("autoplaySeconds").oninput=()=>{ state.autoplaySeconds=normalizeAutoplaySeconds($("autoplaySeconds").value); render(); if(playbackMode==="autoplay"&&document.body.classList.contains("presenting")) scheduleAutoplay(); };
+    $("prev").onclick=()=>go(state.pageIndex-1); $("next").onclick=()=>go(state.pageIndex+1); $("layerUp").onclick=()=>goLayer(-1); $("layerDown").onclick=()=>goLayer(1); $("fit").onclick=()=>{state.fitMode="fit";render()}; $("fill").onclick=()=>{state.fitMode="fill";render()}; $("bg").onclick=()=>{state.backgroundEnabled=!state.backgroundEnabled;render()}; $("present").onclick=()=>{go(0);startPresentation(false)}; $("autoplay").onclick=()=>{go(0);startPresentation(true)}; $("autoplaySeconds").oninput=()=>{ state.autoplaySeconds=normalizeAutoplaySeconds($("autoplaySeconds").value); render(); if(playbackMode==="autoplay"&&document.body.classList.contains("presenting")) scheduleAutoplay(); };
     $("help").onclick=showHelp; $("closeHelp").onclick=hideHelp; $("downloadImages").onclick=downloadImages; $("openPages").onclick=()=>window.open("https://github.com/notoow/medical-image-presenter","_blank","noopener,noreferrer");
     $("shortcutDialog").onclick=backdropClose;
     document.addEventListener("wheel", onWheelZoom, { passive:false });
     for (const id of ["title","subtitle","hospital","presenter"]) $(id).oninput=()=>{ const map={title:"title",subtitle:"subtitle",hospital:"hospitalName",presenter:"presenterName"}; state.cover[map[id]]=$(id).value; render(); };
     for (const [id,key] of [["showTitle","title"],["showSubtitle","subtitle"],["showHospital","hospitalName"],["showPresenter","presenterName"],["showDate","date"],["showLogo","logo"]]) $(id).onchange=()=>{state.coverVisibility[key]=$(id).checked;render()};
     $("layout").onchange=()=>setPageLayout($("layout").value); for (const key of ["brightness","contrast","saturate","hue"]) $(key).oninput=()=>{state.filters[key]=Number($(key).value);render()};
-    document.onkeydown=(e)=>{ if(["INPUT","TEXTAREA","SELECT"].includes(e.target.tagName)) return; if(e.key==="?"||(e.shiftKey&&e.key==="/")){e.preventDefault();showHelp();return} if(e.key==="Escape"){ if($("shortcutDialog").open){hideHelp();return} if(document.body.classList.contains("presenting")) stopPresentation(); } if(e.key==="F5"){e.preventDefault(); if(!e.shiftKey)go(0); startPresentation(false)} if(e.key==="F6"){e.preventDefault(); if(!e.shiftKey)go(0); startPresentation(true)} if(e.key.toLowerCase()==="a"&&document.body.classList.contains("presenting")){e.preventDefault();toggleAutoplay()} if(e.key==="ArrowLeft"||e.key==="ArrowUp"||e.key==="PageUp"||e.key.toLowerCase()==="p")go(state.pageIndex-1); if(e.key==="ArrowRight"||e.key==="ArrowDown"||e.key==="PageDown"||e.key===" "||e.key.toLowerCase()==="n")go(state.pageIndex+1); if(e.key==="Home")go(0); if(e.key==="End")go(totalPages()-1); if(e.key==="Enter"){state.backgroundEnabled=!state.backgroundEnabled;render()} if(e.key.toLowerCase()==="f"){state.fitMode=e.shiftKey?"fill":"fit";render()} if(isZoomInKey(e)) {e.preventDefault(); updateZoom(.1)} if(isZoomOutKey(e)) {e.preventDefault(); updateZoom(-.1)} if(e.key==="0"){resetZoom()} if(e.key.toLowerCase()==="c")go(0); };
+    document.onkeydown=(e)=>{
+      if(["INPUT","TEXTAREA","SELECT"].includes(e.target.tagName)) return;
+      const presenting=document.body.classList.contains("presenting");
+      if(e.key==="?"||(e.shiftKey&&e.key==="/")){e.preventDefault();showHelp();return}
+      if(e.key==="Escape"){ if($("shortcutDialog").open){hideHelp();return} if(presenting) stopPresentation(); return; }
+      if(e.key==="F5"){e.preventDefault(); if(!e.shiftKey)go(0); startPresentation(false); return}
+      if(e.key==="F6"){e.preventDefault(); if(!e.shiftKey)go(0); startPresentation(true); return}
+      if(e.key.toLowerCase()==="a"&&presenting){e.preventDefault();toggleAutoplay();return}
+      if(!presenting && e.key==="ArrowUp"){e.preventDefault();goLayer(-1);return}
+      if(!presenting && e.key==="ArrowDown"){e.preventDefault();goLayer(1);return}
+      if(e.key==="ArrowLeft"||e.key==="PageUp"||e.key.toLowerCase()==="p"||(presenting&&e.key==="ArrowUp")){e.preventDefault();go(state.pageIndex-1);return}
+      if(e.key==="ArrowRight"||e.key==="PageDown"||e.key===" "||e.key.toLowerCase()==="n"||(presenting&&e.key==="ArrowDown")){e.preventDefault();go(state.pageIndex+1);return}
+      if(e.key==="Home"){e.preventDefault();go(0);return}
+      if(e.key==="End"){e.preventDefault();go(totalPages()-1);return}
+      if(e.key==="Enter"){e.preventDefault();state.backgroundEnabled=!state.backgroundEnabled;render();return}
+      if(e.key.toLowerCase()==="f"){e.preventDefault();state.fitMode=e.shiftKey?"fill":"fit";render();return}
+      if(isZoomInKey(e)) {e.preventDefault(); updateZoom(.1); return}
+      if(isZoomOutKey(e)) {e.preventDefault(); updateZoom(-.1); return}
+      if(e.key==="0"){e.preventDefault();resetZoom();return}
+      if(e.key.toLowerCase()==="c"){e.preventDefault();go(0)}
+    };
     syncInputs(); render();
   </script>
 </body>
