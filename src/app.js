@@ -223,6 +223,7 @@ const els = {
   openPagesButton: document.querySelector("#openPagesButton"),
   downloadImagesButton: document.querySelector("#downloadImagesButton"),
   slideExportSize: document.querySelector("#slideExportSize"),
+  slideExportSummary: document.querySelector("#slideExportSummary"),
   downloadCurrentSlideButton: document.querySelector("#downloadCurrentSlideButton"),
   downloadAllSlidesButton: document.querySelector("#downloadAllSlidesButton"),
   zoomOutButton: document.querySelector("#zoomOutButton"),
@@ -2003,6 +2004,7 @@ function render({ refreshGuidePanel = true, refreshThumbnails = true, refreshPho
   }
 
   syncDeckStatus();
+  syncSlideExportControls();
   syncSelectedSlotControls();
   if (refreshGuidePanel) renderGuideControls();
   if (refreshThumbnails) renderThumbnails();
@@ -6118,9 +6120,40 @@ function getSlideExportSize() {
   return SLIDE_EXPORT_SIZES[key];
 }
 
+function getAllSlideLayerPngItems() {
+  const items = [{ pageIndex: 0, layer: DEFAULT_SLIDE_LAYER, includeLayerLabel: false }];
+  const slidePageCount = getSlidePageCount();
+  for (let pageIndex = 1; pageIndex <= slidePageCount; pageIndex += 1) {
+    for (let layer = 1; layer <= SLIDE_LAYER_COUNT; layer += 1) {
+      items.push({ pageIndex, layer, includeLayerLabel: true });
+    }
+  }
+  return items.map((item, index) => ({ ...item, sequence: index + 1 }));
+}
+
+function syncSlideExportControls() {
+  const size = getSlideExportSize();
+  const slidePageCount = getSlidePageCount();
+  const totalPngCount = getAllSlideLayerPngItems().length;
+  if (els.slideExportSummary) {
+    els.slideExportSummary.textContent =
+      slidePageCount > 0
+        ? `${size.width} × ${size.height} 픽셀 · 커버 1장 + 슬라이드 ${slidePageCount}장 × 레이어 ${SLIDE_LAYER_COUNT} = ${totalPngCount}장`
+        : `${size.width} × ${size.height} 픽셀 · 커버 1장`;
+  }
+  if (els.downloadAllSlidesButton) {
+    els.downloadAllSlidesButton.textContent =
+      slidePageCount > 0 ? `전체 레이어 PNG (${totalPngCount}장)` : "전체 레이어 PNG";
+  }
+  if (els.downloadCurrentSlideButton) {
+    els.downloadCurrentSlideButton.textContent = state.pageIndex > 0 ? "현재 레이어 PNG" : "커버 PNG";
+  }
+}
+
 function setSlideExportSize(value) {
   state.slideExportSize = Object.hasOwn(SLIDE_EXPORT_SIZES, value) ? value : DEFAULT_SLIDE_EXPORT_SIZE;
   if (els.slideExportSize) els.slideExportSize.value = state.slideExportSize;
+  syncSlideExportControls();
   queuePersistSettings();
 }
 
@@ -6517,12 +6550,12 @@ function getDeckFileStem() {
 
 async function downloadSlidePng(
   pageIndex = state.pageIndex,
-  { silent = false, sequence = pageIndex + 1, layer = DEFAULT_SLIDE_LAYER } = {},
+  { silent = false, sequence = pageIndex + 1, layer = DEFAULT_SLIDE_LAYER, includeLayerLabel = false } = {},
 ) {
   const size = getSlideExportSize();
   const canvas = await renderDeckPageToCanvas(pageIndex, size, { layer });
   const blob = await canvasToPngBlob(canvas);
-  const layerLabel = pageIndex > 0 && layer !== DEFAULT_SLIDE_LAYER ? `-layer-${layer}` : "";
+  const layerLabel = pageIndex > 0 && (includeLayerLabel || layer !== DEFAULT_SLIDE_LAYER) ? `-layer-${layer}` : "";
   const pageLabel = pageIndex === 0 ? "cover" : `slide-${String(pageIndex).padStart(2, "0")}${layerLabel}`;
   const fileName = `${String(sequence).padStart(3, "0")}-${getDeckFileStem()}-${pageLabel}-${size.width}x${size.height}.png`;
   downloadBlob(fileName, blob);
@@ -6532,25 +6565,38 @@ async function downloadSlidePng(
 async function downloadCurrentSlidePng() {
   showLoading("현재 슬라이드를 PNG로 만드는 중입니다", 0.2);
   try {
-    await downloadSlidePng(state.pageIndex, { silent: true, sequence: state.pageIndex + 1, layer: state.slideLayerIndex });
+    await downloadSlidePng(state.pageIndex, {
+      silent: true,
+      sequence: state.pageIndex + 1,
+      layer: state.slideLayerIndex,
+      includeLayerLabel: state.pageIndex > 0,
+    });
     const size = getSlideExportSize();
-    showToast(`현재 슬라이드를 ${size.width}×${size.height} PNG로 저장했습니다.`);
+    const targetText = state.pageIndex > 0 ? `${state.slideLayerIndex}번 레이어` : "커버";
+    showToast(`${targetText}를 ${size.width}×${size.height} PNG로 저장했습니다.`);
   } finally {
     hideLoading();
   }
 }
 
 async function downloadAllSlidesPng() {
-  const total = getTotalPages();
+  const exportItems = getAllSlideLayerPngItems();
+  const total = exportItems.length;
   const size = getSlideExportSize();
-  showLoading(`전체 ${total}장을 PNG로 만드는 중입니다`, 0);
+  showLoading(`전체 레이어 ${total}장을 PNG로 만드는 중입니다`, 0);
   try {
-    for (let page = 0; page < total; page += 1) {
-      updateLoading(`PNG 저장 중: ${page + 1} / ${total}`, page / total);
-      await downloadSlidePng(page, { silent: true, sequence: page + 1 });
+    for (const [index, item] of exportItems.entries()) {
+      const label = item.pageIndex === 0 ? "커버" : `${item.pageIndex}번 슬라이드 ${item.layer}번 레이어`;
+      updateLoading(`PNG 저장 중: ${index + 1} / ${total} · ${label}`, index / total);
+      await downloadSlidePng(item.pageIndex, {
+        silent: true,
+        sequence: item.sequence,
+        layer: item.layer,
+        includeLayerLabel: item.includeLayerLabel,
+      });
       await new Promise((resolve) => window.setTimeout(resolve, 120));
     }
-    showToast(`전체 ${total}장을 ${size.width}×${size.height} PNG로 저장했습니다.`);
+    showToast(`전체 레이어 ${total}장을 ${size.width}×${size.height} PNG로 저장했습니다.`);
   } finally {
     hideLoading();
   }
