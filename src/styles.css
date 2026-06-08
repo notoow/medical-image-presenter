@@ -11,6 +11,7 @@
   --accent-strong: #5b2f1b;
   --stage: #151512;
   --deck-aspect-ratio: 16 / 9;
+  --deck-aspect-scale: 1.7777778;
   --app-height: 100vh;
   --editor-panel-height: calc(var(--app-height) - 2.5rem);
   --stage-reserved-height: 20rem;
@@ -1544,7 +1545,7 @@ kbd {
   overflow: hidden;
   align-self: center;
   justify-self: center;
-  width: min(100%, calc((var(--app-height) - var(--stage-reserved-height)) * 16 / 9));
+  width: min(100%, calc((var(--app-height) - var(--stage-reserved-height)) * var(--deck-aspect-scale)));
   aspect-ratio: var(--deck-aspect-ratio);
   border-radius: 1.5rem;
   color: var(--white);

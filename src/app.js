@@ -6181,11 +6181,35 @@ function getAllSlideLayerPngItems() {
   return items.map((item, index) => ({ ...item, sequence: index + 1 }));
 }
 
+function getGreatestCommonDivisor(a, b) {
+  let left = Math.abs(Math.round(a));
+  let right = Math.abs(Math.round(b));
+  while (right > 0) {
+    const next = left % right;
+    left = right;
+    right = next;
+  }
+  return left || 1;
+}
+
+function getSlideExportAspectLabel(size = getSlideExportSize()) {
+  const divisor = getGreatestCommonDivisor(size.width, size.height);
+  return `${Math.round(size.width / divisor)}:${Math.round(size.height / divisor)}`;
+}
+
+function syncDeckAspectRatio(size = getSlideExportSize()) {
+  const width = Math.max(1, size.width);
+  const height = Math.max(1, size.height);
+  document.documentElement.style.setProperty("--deck-aspect-ratio", `${width} / ${height}`);
+  document.documentElement.style.setProperty("--deck-aspect-scale", String(width / height));
+}
+
 function syncSlideExportControls({ syncCustomInputs = true } = {}) {
   const size = getSlideExportSize();
   const slidePageCount = getSlidePageCount();
   const totalPngCount = getAllSlideLayerPngItems().length;
   const isCustomSize = state.slideExportSize === CUSTOM_SLIDE_EXPORT_SIZE;
+  syncDeckAspectRatio(size);
   if (els.slideExportSize) {
     els.slideExportSize.value = isCustomSize ? CUSTOM_SLIDE_EXPORT_SIZE : state.slideExportSize;
   }
@@ -6199,10 +6223,11 @@ function syncSlideExportControls({ syncCustomInputs = true } = {}) {
     els.slideExportCustomHeight.value = String(size.height);
   }
   if (els.slideExportSummary) {
+    const aspectLabel = getSlideExportAspectLabel(size);
     els.slideExportSummary.textContent =
       slidePageCount > 0
-        ? `${size.width} × ${size.height} 픽셀 · ZIP에 PNG ${totalPngCount}장`
-        : `${size.width} × ${size.height} 픽셀 · ZIP에 PNG 1장`;
+        ? `${size.width} × ${size.height} 픽셀 · ${aspectLabel} · ZIP에 PNG ${totalPngCount}장`
+        : `${size.width} × ${size.height} 픽셀 · ${aspectLabel} · ZIP에 PNG 1장`;
   }
   if (els.downloadAllSlidesButton) {
     els.downloadAllSlidesButton.textContent =
@@ -7068,7 +7093,7 @@ function createStandaloneHtml(data) {
   <meta name="robots" content="noindex,nofollow" />
   <style>
     @import url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css");
-    :root { color-scheme: dark; --ink:#fffdf7; --muted:rgba(255,253,247,.68); --panel:rgba(20,19,17,.84); --panel-soft:rgba(255,255,255,.05); --line:rgba(255,253,247,.16); --accent:#d9a06f; --accent-strong:#8f5c38; --white:#fffdf7; }
+    :root { color-scheme: dark; --ink:#fffdf7; --muted:rgba(255,253,247,.68); --panel:rgba(20,19,17,.84); --panel-soft:rgba(255,255,255,.05); --line:rgba(255,253,247,.16); --accent:#d9a06f; --accent-strong:#8f5c38; --white:#fffdf7; --deck-aspect-ratio:16 / 9; --deck-aspect-scale:1.7777778; }
     * { box-sizing: border-box; }
     body { margin:0; min-height:100vh; color:var(--ink); font-family:Pretendard,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; background:radial-gradient(circle at 15% 10%,rgba(217,160,111,.2),transparent 28rem),linear-gradient(135deg,#151512,#050505); }
     button,input,textarea,select { font:inherit; }
@@ -7107,7 +7132,7 @@ function createStandaloneHtml(data) {
     .layer-controls button { min-width:2.35rem; padding:.48rem .58rem; }
     .layer-controls button:disabled { cursor:not-allowed; opacity:.38; transform:none; }
     .layer-status { min-width:3.4rem; color:var(--muted); text-align:center; font-weight:800; }
-    .stage { position:relative; overflow:hidden; align-self:center; justify-self:center; width:min(100%,calc((100vh - 6rem) * 16 / 9)); aspect-ratio:16/9; border-radius:1.2rem; background:#111; box-shadow:0 24px 80px rgba(0,0,0,.45); }
+    .stage { position:relative; overflow:hidden; align-self:center; justify-self:center; width:min(100%,calc((100vh - 6rem) * var(--deck-aspect-scale))); aspect-ratio:var(--deck-aspect-ratio); border-radius:1.2rem; background:#111; box-shadow:0 24px 80px rgba(0,0,0,.45); }
     .cover { display:grid; place-items:center; padding:4rem; background:radial-gradient(circle at 20% 15%,rgba(255,255,255,.12),transparent 22rem),linear-gradient(145deg,#26231f,#080807); }
     .cover-card { width:min(75%,58rem); border:1px solid var(--line); border-radius:2rem; padding:3rem; background:rgba(255,255,255,.07); backdrop-filter:blur(18px); }
     .cover-logo { max-width:10rem; max-height:5rem; object-fit:contain; margin-bottom:2rem; }
@@ -7230,6 +7255,16 @@ function createStandaloneHtml(data) {
     const LAYER_SLOT_LAYER_FACTOR = 100;
     const state = { ...data, pageIndex: 0, slideLayerIndex: DEFAULT_SLIDE_LAYER, autoplaySeconds: Number(data.autoplaySeconds ?? 3) || 3 };
     state.slideLayerPages = state.slideLayerPages && typeof state.slideLayerPages === "object" && !Array.isArray(state.slideLayerPages) ? state.slideLayerPages : {};
+    const exportSizes = { "1920x1080": { width:1920, height:1080 }, "2560x1440": { width:2560, height:1440 }, "3840x2160": { width:3840, height:2160 } };
+    const exportSize = () => {
+      if(state.slideExportSize==="custom"){
+        const width = Math.min(Math.max(Math.round(Number(state.slideExportCustomSize?.width)||1920),320),7680);
+        const height = Math.min(Math.max(Math.round(Number(state.slideExportCustomSize?.height)||1080),180),7680);
+        return { width, height };
+      }
+      return exportSizes[state.slideExportSize] || exportSizes["1920x1080"];
+    };
+    function syncDeckAspect(){ const size=exportSize(); document.documentElement.style.setProperty("--deck-aspect-ratio", String(size.width) + " / " + String(size.height)); document.documentElement.style.setProperty("--deck-aspect-scale", String(size.width / size.height)); }
     let playbackMode = "manual";
     let autoplayTimer = null;
     const normalizeLayout = (layout) => {
@@ -7410,7 +7445,7 @@ function createStandaloneHtml(data) {
       if(e.key==="0"){e.preventDefault();resetZoom();return}
       if(e.key.toLowerCase()==="c"){e.preventDefault();go(0)}
     };
-    syncInputs(); render();
+    syncDeckAspect(); syncInputs(); render();
   </script>
 </body>
 </html>`;
