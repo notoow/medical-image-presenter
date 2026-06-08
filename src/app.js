@@ -23,7 +23,7 @@ const state = {
   backgroundMusicUrl: "",
   backgroundMusicName: "",
   pageIndex: 0,
-  slideLayerAnchorPage: null,
+  slideLayerIndex: DEFAULT_SLIDE_LAYER,
   layoutMode: "pair",
   gridRows: 1,
   gridCols: 2,
@@ -345,7 +345,7 @@ function captureEditHistorySnapshot() {
     selectedSlotIndex: state.selectedSlotIndex,
     logoUrl: state.logoUrl,
     pageIndex: state.pageIndex,
-    slideLayerAnchorPage: state.slideLayerAnchorPage,
+    slideLayerIndex: state.slideLayerIndex,
     layoutMode: state.layoutMode,
     gridRows: state.gridRows,
     gridCols: state.gridCols,
@@ -391,7 +391,7 @@ function restoreEditHistorySnapshot(snapshot) {
     state.selectedSlotIndex = snapshot.selectedSlotIndex;
     state.logoUrl = snapshot.logoUrl;
     state.pageIndex = snapshot.pageIndex;
-    state.slideLayerAnchorPage = snapshot.slideLayerAnchorPage ?? null;
+    state.slideLayerIndex = snapshot.slideLayerIndex ?? DEFAULT_SLIDE_LAYER;
     state.layoutMode = snapshot.layoutMode;
     state.gridRows = snapshot.gridRows;
     state.gridCols = snapshot.gridCols;
@@ -839,51 +839,26 @@ function getCropStyle() {
   return `inset(${state.crop.top}% ${state.crop.right}% ${state.crop.bottom}% ${state.crop.left}%)`;
 }
 
-function resetSlideLayerAnchor(page = state.pageIndex) {
-  const totalSlides = getSlidePageCount();
-  if (page <= 0 || totalSlides <= 0) {
-    state.slideLayerAnchorPage = null;
-    return;
-  }
-  state.slideLayerAnchorPage = clamp(Number(page) || 1, 1, totalSlides);
+function resetSlideLayerAnchor() {
+  state.slideLayerIndex = DEFAULT_SLIDE_LAYER;
 }
 
 function ensureSlideLayerAnchor() {
-  const totalSlides = getSlidePageCount();
-  if (state.pageIndex <= 0 || totalSlides <= 0) {
-    state.slideLayerAnchorPage = null;
-    return null;
-  }
-
-  let anchorPage = Number(state.slideLayerAnchorPage);
-  if (!Number.isFinite(anchorPage) || anchorPage < 1 || anchorPage > totalSlides) {
-    anchorPage = state.pageIndex;
-  }
-
-  const currentLayer = state.pageIndex - anchorPage + DEFAULT_SLIDE_LAYER;
-  if (currentLayer < 1 || currentLayer > SLIDE_LAYER_COUNT) {
-    anchorPage = state.pageIndex;
-  }
-
-  state.slideLayerAnchorPage = clamp(anchorPage, 1, totalSlides);
-  return state.slideLayerAnchorPage;
+  if (state.pageIndex <= 0) return null;
+  const nextLayer = Number(state.slideLayerIndex);
+  state.slideLayerIndex = clamp(Number.isFinite(nextLayer) ? nextLayer : DEFAULT_SLIDE_LAYER, 1, SLIDE_LAYER_COUNT);
+  return state.slideLayerIndex;
 }
 
 function getCurrentSlideLayerStatus() {
-  const totalSlides = getSlidePageCount();
-  const anchorPage = ensureSlideLayerAnchor();
-  if (!anchorPage) return null;
-
-  const currentLayer = state.pageIndex - anchorPage + DEFAULT_SLIDE_LAYER;
-  const firstLayerPage = anchorPage - (DEFAULT_SLIDE_LAYER - 1);
-  const lastLayerPage = anchorPage + (SLIDE_LAYER_COUNT - DEFAULT_SLIDE_LAYER);
+  const currentLayer = ensureSlideLayerAnchor();
+  if (!currentLayer) return null;
 
   return {
-    anchorPage,
     currentLayer,
     totalLayers: SLIDE_LAYER_COUNT,
-    hasPrevious: currentLayer > 1 && state.pageIndex > 1 && firstLayerPage <= state.pageIndex - 1,
-    hasNext: currentLayer < SLIDE_LAYER_COUNT && state.pageIndex < totalSlides && lastLayerPage >= state.pageIndex + 1,
+    hasPrevious: currentLayer > 1,
+    hasNext: currentLayer < SLIDE_LAYER_COUNT,
   };
 }
 
@@ -892,8 +867,68 @@ function getStageIndexBadgeHtml() {
   if (!status) return "";
 
   const text = `${status.currentLayer} / ${status.totalLayers}`;
-  const label = `${status.currentLayer}번 슬라이드 레이어, 기본 레이어 ${DEFAULT_SLIDE_LAYER}번, 실제 ${state.pageIndex}번 슬라이드`;
+  const label = `${state.pageIndex}번 슬라이드의 ${status.currentLayer}번 레이어, 기본 레이어 ${DEFAULT_SLIDE_LAYER}번`;
   return `<div class="stage-index-badge" aria-label="${escapeHtml(label)}">${escapeHtml(text)}</div>`;
+}
+
+function isDefaultSlideLayer() {
+  return (getCurrentSlideLayerStatus()?.currentLayer ?? DEFAULT_SLIDE_LAYER) === DEFAULT_SLIDE_LAYER;
+}
+
+function renderBlankLayerSlots(layout) {
+  const pageSize = getPageSizeForLayout(layout);
+  return Array.from({ length: pageSize }, (_, index) => (
+    `<div class="slide-slot-empty layer-slot-empty" aria-label="빈 레이어 슬롯 ${index + 1}">빈칸</div>`
+  )).join("");
+}
+
+function renderSlideThumbGrid(page) {
+  return `
+    <div
+      class="slide-thumb-grid ${page.layout.mode === "custom" ? "layout-custom" : `layout-${page.layout.mode}`}"
+      style="--grid-cols:${page.layout.cols}; --grid-rows:${page.layout.rows};"
+    >
+      ${page.slots
+        .map((imageId, offset) => {
+          const slotIndex = page.start + offset;
+          const image = getImageById(imageId);
+          return image
+            ? `<img src="${getRenderableImageUrl(image)}" data-renderable-image-id="${image.id}" data-slot-thumb-index="${slotIndex}" alt="" loading="lazy" decoding="async" />`
+            : `<button class="slide-thumb-empty slide-slot-empty" type="button" data-slot-thumb-index="${slotIndex}">빈칸</button>`;
+        })
+        .join("")}
+    </div>
+  `;
+}
+
+function renderSlideThumbBlankLayerGrid(page, layer) {
+  return `
+    <div
+      class="slide-thumb-grid ${page.layout.mode === "custom" ? "layout-custom" : `layout-${page.layout.mode}`} is-layer-empty"
+      style="--grid-cols:${page.layout.cols}; --grid-rows:${page.layout.rows};"
+      aria-label="${layer}번 빈 레이어"
+    >
+      ${Array.from({ length: page.pageSize }, () => `<span class="slide-thumb-empty layer-thumb-empty">빈칸</span>`).join("")}
+    </div>
+  `;
+}
+
+function renderSlideThumbLayerStack(page) {
+  const currentLayer = getCurrentSlideLayerStatus()?.currentLayer ?? DEFAULT_SLIDE_LAYER;
+  return `
+    <div class="slide-thumb-layer-stack" style="--active-slide-layer:${currentLayer};">
+      ${Array.from({ length: SLIDE_LAYER_COUNT }, (_, index) => {
+        const layer = index + 1;
+        const isDefaultLayer = layer === DEFAULT_SLIDE_LAYER;
+        return `
+          <div class="slide-thumb-layer-frame ${layer === currentLayer ? "is-current-layer" : ""} ${isDefaultLayer ? "has-content-layer" : "is-empty-layer"}">
+            <span class="slide-thumb-layer-tag">${layer}</span>
+            ${isDefaultLayer ? renderSlideThumbGrid(page) : renderSlideThumbBlankLayerGrid(page, layer)}
+          </div>
+        `;
+      }).join("")}
+    </div>
+  `;
 }
 
 function renderCover() {
@@ -1037,8 +1072,33 @@ function renderSlide() {
   const slideCaption = state.slideCaptions[state.pageIndex - 1] ?? "";
   const trimmedCaption = slideCaption.trim();
   const isEmptySlide = pageSlots.length > 0 && !pageSlots.some(Boolean);
+  const layerStatus = getCurrentSlideLayerStatus();
+  const isBlankLayer = layerStatus && layerStatus.currentLayer !== DEFAULT_SLIDE_LAYER;
+  const layoutClass = layout.mode === "custom" ? "layout-custom" : `layout-${layout.mode}`;
 
   els.stage.className = `stage layout-${layout.mode} has-stage-index`;
+
+  if (isBlankLayer) {
+    visibleSlideCardCache = new Map();
+    visibleGuideCache = new Map();
+    activeStageSlotDropTarget = null;
+    unregisterRenderableImageNodesInRoot(els.stage);
+    els.stage.innerHTML = `
+      ${getStageIndexBadgeHtml()}
+      <div
+        class="slide-grid ${layoutClass} is-layer-empty"
+        style="--grid-cols:${layout.cols}; --grid-rows:${layout.rows};"
+      >
+        ${renderBlankLayerSlots(layout)}
+      </div>
+      <div class="layer-empty-note">
+        <strong>${layerStatus.currentLayer}번 레이어</strong>
+        <span>빈 슬라이드</span>
+      </div>
+      ${renderGuides()}
+    `;
+    return;
+  }
 
   if (pageSlots.length === 0) {
     visibleSlideCardCache = new Map();
@@ -1056,7 +1116,6 @@ function renderSlide() {
     return;
   }
 
-  const layoutClass = layout.mode === "custom" ? "layout-custom" : `layout-${layout.mode}`;
   visibleSlideCardCache = new Map();
   visibleGuideCache = new Map();
   activeStageSlotDropTarget = null;
@@ -1239,26 +1298,8 @@ function scrollSlidePreviewLayer(direction = 1) {
 }
 
 function getSlideLayerStatus(row = getSlidePreviewRow()) {
-  if (!(row instanceof HTMLElement)) return null;
-  const cards = Array.from(row.querySelectorAll(".slide-thumb-editor"));
-  const totalLayers = Math.max(1, Math.ceil(cards.length / 3));
-  if (cards.length === 0) {
-    return { currentLayer: 1, totalLayers, hasPrevious: false, hasNext: false };
-  }
-
-  const rowRect = row.getBoundingClientRect();
-  const firstVisibleCard = cards.find((card) => {
-    const rect = card.getBoundingClientRect();
-    return rect.right > rowRect.left + 4 && rect.left < rowRect.right - 4;
-  });
-  const firstVisiblePage = Number(firstVisibleCard?.getAttribute("data-page")) || 1;
-  const currentLayer = clamp(Math.ceil(firstVisiblePage / 3), 1, totalLayers);
-  return {
-    currentLayer,
-    totalLayers,
-    hasPrevious: currentLayer > 1,
-    hasNext: currentLayer < totalLayers,
-  };
+  void row;
+  return getCurrentSlideLayerStatus();
 }
 
 function updateSlideLayerIndicators() {
@@ -1394,6 +1435,23 @@ function syncThumbnailSlotSelection() {
   activeThumbnailSlotNode = nextNode;
 }
 
+function syncThumbnailLayerPreview() {
+  if (!els.thumbnailRail) return;
+  const currentLayer = getCurrentSlideLayerStatus()?.currentLayer ?? DEFAULT_SLIDE_LAYER;
+  els.thumbnailRail.querySelectorAll(".slide-thumb-open.has-layer-preview").forEach((open) => {
+    if (!(open instanceof HTMLElement)) return;
+    open.classList.toggle("has-layer-before", currentLayer > 1);
+    open.classList.toggle("has-layer-after", currentLayer < SLIDE_LAYER_COUNT);
+  });
+  els.thumbnailRail.querySelectorAll(".slide-thumb-layer-stack").forEach((stack) => {
+    if (!(stack instanceof HTMLElement)) return;
+    stack.style.setProperty("--active-slide-layer", String(currentLayer));
+    stack.querySelectorAll(".slide-thumb-layer-frame").forEach((frame, index) => {
+      frame.classList.toggle("is-current-layer", index + 1 === currentLayer);
+    });
+  });
+}
+
 function syncPhotoListSelection() {
   if (!els.photoListPanel) return;
 
@@ -1518,7 +1576,7 @@ function getFilteredImages(usedCounts = getUsedCounts()) {
   const query = state.photoSearchQuery.trim().toLocaleLowerCase("ko-KR");
   const currentPageImageIds =
     state.photoFilterMode === "current"
-      ? new Set(getCurrentPageSlotMeta().slots.filter(Boolean))
+      ? new Set(isDefaultSlideLayer() ? getCurrentPageSlotMeta().slots.filter(Boolean) : [])
       : null;
   return state.images.filter((image) => {
     const usedCount = usedCounts.get(image.id) ?? 0;
@@ -1531,6 +1589,7 @@ function getFilteredImages(usedCounts = getUsedCounts()) {
 }
 
 function getVisibleSlideSlotIndices() {
+  if (!isDefaultSlideLayer()) return [];
   return getCurrentPageSlotMeta().slotIndices;
 }
 
@@ -1808,12 +1867,12 @@ function goToAdjacentSlideLayer(direction = 1) {
   const status = getCurrentSlideLayerStatus();
   if (!status) return false;
 
-  if ((direction < 0 && !status.hasPrevious) || (direction > 0 && !status.hasNext)) {
-    showToast(direction < 0 ? "위 레이어 슬라이드가 없습니다." : "아래 레이어 슬라이드가 없습니다.");
-    return true;
-  }
+  const nextLayer = clamp(status.currentLayer + (direction < 0 ? -1 : 1), 1, SLIDE_LAYER_COUNT);
+  if (nextLayer === status.currentLayer) return true;
 
-  goToPage(state.pageIndex + (direction < 0 ? -1 : 1), { preserveSlideLayerAnchor: true });
+  state.slideLayerIndex = nextLayer;
+  state.selectedSlotIndex = null;
+  render({ refreshPhotoList: false, persist: false });
   return true;
 }
 
@@ -4006,11 +4065,11 @@ function renderThumbnails() {
       <div class="thumbnail-section">
         <div class="thumbnail-section-head">
           <strong>슬라이드 목록</strong>
-          <span class="thumbnail-section-hint">선택 · 순서 변경 · 분할 편집</span>
-          <div class="slide-layer-indicator" aria-label="슬라이드 묶음 이동">
-            <button type="button" data-slide-layer-prev aria-label="이전 슬라이드 묶음" title="이전 슬라이드 묶음">▲</button>
+          <span class="thumbnail-section-hint">선택 · 순서 변경 · 레이어 편집</span>
+          <div class="slide-layer-indicator" aria-label="슬라이드 레이어 이동">
+            <button type="button" data-slide-layer-prev aria-label="위 레이어" title="위 레이어">▲</button>
             <output data-slide-layer-status aria-live="polite">1 / 1</output>
-            <button type="button" data-slide-layer-next aria-label="다음 슬라이드 묶음" title="다음 슬라이드 묶음">▼</button>
+            <button type="button" data-slide-layer-next aria-label="아래 레이어" title="아래 레이어">▼</button>
           </div>
         </div>
         <div class="slide-preview-row" tabindex="0" aria-label="슬라이드 목록 3장 묶음">
@@ -4035,21 +4094,11 @@ function renderThumbnails() {
                     aria-label="${page.pageIndex}페이지 순서 변경"
                     title="드래그해서 순서 변경"
                   >...</button>
-                  <div class="slide-thumb-open" data-page="${page.pageIndex}">
-                    <div
-                      class="slide-thumb-grid ${page.layout.mode === "custom" ? "layout-custom" : `layout-${page.layout.mode}`}"
-                      style="--grid-cols:${page.layout.cols}; --grid-rows:${page.layout.rows};"
-                    >
-                      ${page.slots
-                        .map((imageId, offset) => {
-                          const slotIndex = page.start + offset;
-                          const image = getImageById(imageId);
-                          return image
-                            ? `<img src="${getRenderableImageUrl(image)}" data-renderable-image-id="${image.id}" data-slot-thumb-index="${slotIndex}" alt="" loading="lazy" decoding="async" />`
-                            : `<button class="slide-thumb-empty slide-slot-empty" type="button" data-slot-thumb-index="${slotIndex}">빈칸</button>`;
-                        })
-                        .join("")}
-                    </div>
+                  <div
+                    class="slide-thumb-open has-layer-preview ${state.slideLayerIndex > 1 ? "has-layer-before" : ""} ${state.slideLayerIndex < SLIDE_LAYER_COUNT ? "has-layer-after" : ""}"
+                    data-page="${page.pageIndex}"
+                  >
+                    ${renderSlideThumbLayerStack(page)}
                   </div>
                   <div class="slide-thumb-meta">
                     <span class="slide-thumb-label">#${page.pageIndex}</span>
@@ -4105,6 +4154,8 @@ function renderThumbnails() {
   }
 
   if (activeThumbnailButton && Number(activeThumbnailButton.dataset.page) === state.pageIndex) {
+    syncThumbnailLayerPreview();
+    updateSlideLayerIndicators();
     return;
   }
 
@@ -4113,6 +4164,7 @@ function renderThumbnails() {
   activeThumbnailButton?.classList.add("is-active");
   revealPanelItem(activeThumbnailButton);
   syncThumbnailSlotSelection();
+  syncThumbnailLayerPreview();
   window.requestAnimationFrame(updateSlideLayerIndicators);
 }
 
@@ -4613,14 +4665,14 @@ els.thumbnailRail?.addEventListener("click", (event) => {
   if (slideLayerPrevButton instanceof HTMLButtonElement) {
     event.preventDefault();
     event.stopPropagation();
-    scrollSlidePreviewLayer(-1);
+    goToAdjacentSlideLayer(-1);
     return;
   }
   const slideLayerNextButton = target?.closest("[data-slide-layer-next]");
   if (slideLayerNextButton instanceof HTMLButtonElement) {
     event.preventDefault();
     event.stopPropagation();
-    scrollSlidePreviewLayer(1);
+    goToAdjacentSlideLayer(1);
     return;
   }
   const insertBeforeButton = target?.closest("[data-insert-slide-before]");
@@ -5552,7 +5604,6 @@ function getSettingsData() {
     guides: state.guides,
     filters: state.filters,
     pageIndex: state.pageIndex,
-    slideLayerAnchorPage: state.slideLayerAnchorPage,
     selectedSlotIndex: state.selectedSlotIndex,
     imageOrder: getImageOrder(),
   };
@@ -6122,7 +6173,7 @@ function applyPersistedState() {
     state.coverVisibility = { ...state.coverVisibility, ...(data.coverVisibility ?? {}) };
     state.filters = { ...state.filters, ...(data.filters ?? {}) };
     state.pageIndex = data.pageIndex ?? state.pageIndex;
-    state.slideLayerAnchorPage = data.slideLayerAnchorPage ?? null;
+    state.slideLayerIndex = DEFAULT_SLIDE_LAYER;
     applyImageOrder(data.imageOrder);
 
     els.sortMode.value = state.sortMode;
