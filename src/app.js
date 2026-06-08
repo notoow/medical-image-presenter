@@ -122,6 +122,7 @@ let filterStyleCacheKey = "";
 let cachedFilterStyle = "";
 let backgroundFilterStyleCacheKey = "";
 let cachedBackgroundFilterStyle = "";
+let zipCrcTable = null;
 let imageIndexDirty = true;
 let imageSortDirty = true;
 let lastAppliedSortMode = state.sortMode;
@@ -6138,12 +6139,12 @@ function syncSlideExportControls() {
   if (els.slideExportSummary) {
     els.slideExportSummary.textContent =
       slidePageCount > 0
-        ? `${size.width} × ${size.height} 픽셀 · 커버 1장 + 슬라이드 ${slidePageCount}장 × 레이어 ${SLIDE_LAYER_COUNT} = ${totalPngCount}장`
-        : `${size.width} × ${size.height} 픽셀 · 커버 1장`;
+        ? `${size.width} × ${size.height} 픽셀 · ZIP에 PNG ${totalPngCount}장`
+        : `${size.width} × ${size.height} 픽셀 · ZIP에 PNG 1장`;
   }
   if (els.downloadAllSlidesButton) {
     els.downloadAllSlidesButton.textContent =
-      slidePageCount > 0 ? `전체 레이어 PNG (${totalPngCount}장)` : "전체 레이어 PNG";
+      slidePageCount > 0 ? `전체 레이어 ZIP (${totalPngCount}장)` : "전체 레이어 ZIP";
   }
   if (els.downloadCurrentSlideButton) {
     els.downloadCurrentSlideButton.textContent = state.pageIndex > 0 ? "현재 레이어 PNG" : "커버 PNG";
@@ -6527,8 +6528,11 @@ async function renderDeckPageToCanvas(pageIndex, size = getSlideExportSize(), { 
 }
 
 function canvasToPngBlob(canvas) {
-  return new Promise((resolve) => {
-    canvas.toBlob((blob) => resolve(blob), "image/png");
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (blob) resolve(blob);
+      else reject(new Error("PNG blob creation failed"));
+    }, "image/png");
   });
 }
 
@@ -6544,21 +6548,162 @@ function downloadBlob(fileName, blob) {
   URL.revokeObjectURL(url);
 }
 
+function getZipCrcTable() {
+  if (zipCrcTable) return zipCrcTable;
+  zipCrcTable = new Uint32Array(256);
+  for (let i = 0; i < 256; i += 1) {
+    let value = i;
+    for (let bit = 0; bit < 8; bit += 1) {
+      value = value & 1 ? 0xedb88320 ^ (value >>> 1) : value >>> 1;
+    }
+    zipCrcTable[i] = value >>> 0;
+  }
+  return zipCrcTable;
+}
+
+function getZipCrc32(bytes) {
+  const table = getZipCrcTable();
+  let crc = 0xffffffff;
+  for (const byte of bytes) {
+    crc = table[(crc ^ byte) & 0xff] ^ (crc >>> 8);
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+function getZipDosDateTime(date = new Date()) {
+  const year = Math.max(1980, date.getFullYear());
+  return {
+    date: ((year - 1980) << 9) | ((date.getMonth() + 1) << 5) | date.getDate(),
+    time: (date.getHours() << 11) | (date.getMinutes() << 5) | Math.floor(date.getSeconds() / 2),
+  };
+}
+
+function createZipLocalHeader(fileNameBytes, crc, size, dosDateTime) {
+  const header = new Uint8Array(30 + fileNameBytes.length);
+  const view = new DataView(header.buffer);
+  view.setUint32(0, 0x04034b50, true);
+  view.setUint16(4, 20, true);
+  view.setUint16(6, 0x0800, true);
+  view.setUint16(8, 0, true);
+  view.setUint16(10, dosDateTime.time, true);
+  view.setUint16(12, dosDateTime.date, true);
+  view.setUint32(14, crc, true);
+  view.setUint32(18, size, true);
+  view.setUint32(22, size, true);
+  view.setUint16(26, fileNameBytes.length, true);
+  view.setUint16(28, 0, true);
+  header.set(fileNameBytes, 30);
+  return header;
+}
+
+function createZipCentralHeader(entry) {
+  const header = new Uint8Array(46 + entry.fileNameBytes.length);
+  const view = new DataView(header.buffer);
+  view.setUint32(0, 0x02014b50, true);
+  view.setUint16(4, 20, true);
+  view.setUint16(6, 20, true);
+  view.setUint16(8, 0x0800, true);
+  view.setUint16(10, 0, true);
+  view.setUint16(12, entry.dosDateTime.time, true);
+  view.setUint16(14, entry.dosDateTime.date, true);
+  view.setUint32(16, entry.crc, true);
+  view.setUint32(20, entry.size, true);
+  view.setUint32(24, entry.size, true);
+  view.setUint16(28, entry.fileNameBytes.length, true);
+  view.setUint16(30, 0, true);
+  view.setUint16(32, 0, true);
+  view.setUint16(34, 0, true);
+  view.setUint16(36, 0, true);
+  view.setUint32(38, 0, true);
+  view.setUint32(42, entry.localOffset, true);
+  header.set(entry.fileNameBytes, 46);
+  return header;
+}
+
+function createZipEndRecord(entryCount, centralDirectorySize, centralDirectoryOffset) {
+  const record = new Uint8Array(22);
+  const view = new DataView(record.buffer);
+  view.setUint32(0, 0x06054b50, true);
+  view.setUint16(4, 0, true);
+  view.setUint16(6, 0, true);
+  view.setUint16(8, entryCount, true);
+  view.setUint16(10, entryCount, true);
+  view.setUint32(12, centralDirectorySize, true);
+  view.setUint32(16, centralDirectoryOffset, true);
+  view.setUint16(20, 0, true);
+  return record;
+}
+
+async function createZipBlob(files, onProgress = null) {
+  if (files.length > 0xffff) {
+    throw new Error("Too many files for standard ZIP export");
+  }
+
+  const encoder = new TextEncoder();
+  const chunks = [];
+  const centralEntries = [];
+  let offset = 0;
+
+  for (const [index, file] of files.entries()) {
+    if (file.blob.size > 0xffffffff) {
+      throw new Error("A PNG file is too large for standard ZIP export");
+    }
+
+    const bytes = new Uint8Array(await file.blob.arrayBuffer());
+    const fileNameBytes = encoder.encode(file.name);
+    const dosDateTime = getZipDosDateTime();
+    const crc = getZipCrc32(bytes);
+    const localHeader = createZipLocalHeader(fileNameBytes, crc, file.blob.size, dosDateTime);
+    if (offset + localHeader.length + file.blob.size > 0xffffffff) {
+      throw new Error("ZIP export is larger than the standard ZIP limit");
+    }
+
+    chunks.push(localHeader, file.blob);
+    centralEntries.push({
+      fileNameBytes,
+      dosDateTime,
+      crc,
+      size: file.blob.size,
+      localOffset: offset,
+    });
+    offset += localHeader.length + file.blob.size;
+    onProgress?.(index + 1, files.length);
+  }
+
+  const centralDirectoryOffset = offset;
+  const centralChunks = centralEntries.map(createZipCentralHeader);
+  const centralDirectorySize = centralChunks.reduce((sum, chunk) => sum + chunk.length, 0);
+  if (centralDirectoryOffset + centralDirectorySize > 0xffffffff) {
+    throw new Error("ZIP central directory is larger than the standard ZIP limit");
+  }
+
+  const endRecord = createZipEndRecord(centralEntries.length, centralDirectorySize, centralDirectoryOffset);
+  return new Blob([...chunks, ...centralChunks, endRecord], { type: "application/zip" });
+}
+
 function getDeckFileStem() {
   return safeFileNamePart(els.coverTitle.value || "medical-image-presentation", "medical-image-presentation");
 }
 
-async function downloadSlidePng(
+async function createSlidePngFile(
   pageIndex = state.pageIndex,
-  { silent = false, sequence = pageIndex + 1, layer = DEFAULT_SLIDE_LAYER, includeLayerLabel = false } = {},
+  { sequence = pageIndex + 1, layer = DEFAULT_SLIDE_LAYER, includeLayerLabel = false } = {},
 ) {
   const size = getSlideExportSize();
   const canvas = await renderDeckPageToCanvas(pageIndex, size, { layer });
   const blob = await canvasToPngBlob(canvas);
   const layerLabel = pageIndex > 0 && (includeLayerLabel || layer !== DEFAULT_SLIDE_LAYER) ? `-layer-${layer}` : "";
   const pageLabel = pageIndex === 0 ? "cover" : `slide-${String(pageIndex).padStart(2, "0")}${layerLabel}`;
-  const fileName = `${String(sequence).padStart(3, "0")}-${getDeckFileStem()}-${pageLabel}-${size.width}x${size.height}.png`;
-  downloadBlob(fileName, blob);
+  const name = `${String(sequence).padStart(3, "0")}-${getDeckFileStem()}-${pageLabel}-${size.width}x${size.height}.png`;
+  return { name, blob, size };
+}
+
+async function downloadSlidePng(
+  pageIndex = state.pageIndex,
+  { silent = false, sequence = pageIndex + 1, layer = DEFAULT_SLIDE_LAYER, includeLayerLabel = false } = {},
+) {
+  const { name, blob, size } = await createSlidePngFile(pageIndex, { sequence, layer, includeLayerLabel });
+  downloadBlob(name, blob);
   if (!silent) showToast(`${size.width}×${size.height} PNG를 내려받았습니다.`);
 }
 
@@ -6583,20 +6728,32 @@ async function downloadAllSlidesPng() {
   const exportItems = getAllSlideLayerPngItems();
   const total = exportItems.length;
   const size = getSlideExportSize();
-  showLoading(`전체 레이어 ${total}장을 PNG로 만드는 중입니다`, 0);
+  const files = [];
+  showLoading(`전체 레이어 PNG ${total}장을 ZIP으로 준비하는 중입니다`, 0);
   try {
     for (const [index, item] of exportItems.entries()) {
       const label = item.pageIndex === 0 ? "커버" : `${item.pageIndex}번 슬라이드 ${item.layer}번 레이어`;
-      updateLoading(`PNG 저장 중: ${index + 1} / ${total} · ${label}`, index / total);
-      await downloadSlidePng(item.pageIndex, {
-        silent: true,
-        sequence: item.sequence,
-        layer: item.layer,
-        includeLayerLabel: item.includeLayerLabel,
-      });
-      await new Promise((resolve) => window.setTimeout(resolve, 120));
+      updateLoading(`PNG 생성 중: ${index + 1} / ${total} · ${label}`, (index / total) * 0.72);
+      files.push(
+        await createSlidePngFile(item.pageIndex, {
+          sequence: item.sequence,
+          layer: item.layer,
+          includeLayerLabel: item.includeLayerLabel,
+        }),
+      );
+      await new Promise((resolve) => window.setTimeout(resolve, 20));
     }
-    showToast(`전체 레이어 ${total}장을 ${size.width}×${size.height} PNG로 저장했습니다.`);
+
+    updateLoading("ZIP 파일로 묶는 중입니다", 0.76);
+    const zipBlob = await createZipBlob(files, (current, fileCount) => {
+      updateLoading(`ZIP 묶는 중: ${current} / ${fileCount}`, 0.76 + (current / fileCount) * 0.22);
+    });
+    const zipName = `${getDeckFileStem()}-all-layers-${size.width}x${size.height}.zip`;
+    downloadBlob(zipName, zipBlob);
+    showToast(`전체 레이어 PNG ${total}장을 ZIP으로 저장했습니다.`);
+  } catch (error) {
+    console.error(error);
+    showToast("전체 레이어 ZIP 저장 중 오류가 발생했습니다.");
   } finally {
     hideLoading();
   }
