@@ -2124,6 +2124,12 @@ body.presenting .guide-ruler {
   border-radius: 0.8rem;
 }
 
+.slide-thumb:focus-visible,
+.slide-thumb.is-keyboard-focus {
+  outline: 3px solid rgba(64, 210, 255, 0.86);
+  outline-offset: 3px;
+}
+
 .slide-preview-row.is-grabbed,
 .photo-order-row.is-grabbed {
   cursor: grabbing;
@@ -2164,6 +2170,13 @@ body.presenting .guide-ruler {
   box-shadow: 0 0 0 3px rgba(138, 75, 45, 0.16);
 }
 
+.slide-thumb.is-keyboard-focus {
+  border-color: rgba(64, 210, 255, 0.94);
+  box-shadow:
+    0 0 0 4px rgba(64, 210, 255, 0.2),
+    0 14px 28px rgba(20, 106, 128, 0.18);
+}
+
 .slide-thumb.is-reorder-target {
   border-color: rgba(64, 210, 255, 0.84);
   box-shadow: 0 0 0 3px rgba(64, 210, 255, 0.14);
@@ -2176,7 +2189,7 @@ body.presenting .guide-ruler {
 
 .slide-preview-row.is-slide-reordering .slide-thumb {
   transition:
-    transform 210ms cubic-bezier(0.2, 0.86, 0.22, 1),
+    transform 145ms cubic-bezier(0.18, 1, 0.22, 1),
     opacity 160ms ease,
     border-color 160ms ease,
     box-shadow 160ms ease;
@@ -2200,6 +2213,8 @@ body.presenting .guide-ruler {
   filter: drop-shadow(0 20px 34px rgba(18, 15, 10, 0.38));
   transform-origin: top left;
   transition: none;
+  border-color: rgba(64, 210, 255, 0.9);
+  box-shadow: 0 0 0 3px rgba(64, 210, 255, 0.18);
 }
 
 .slide-drag-ghost input,

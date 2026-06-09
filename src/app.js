@@ -97,7 +97,10 @@ let activeSlideReorderTarget = null;
 let activeSlideReorderSource = null;
 let activeSlideHandleDrag = null;
 let activeThumbnailRailPan = null;
+let activeThumbnailFocusTimer = null;
 let thumbnailRailSuppressClickUntil = 0;
+let transientZoomActive = false;
+let zoomAutoResetTimer = null;
 let photoSearchActivationQuery = "";
 let photoSearchActivationIndex = -1;
 let activeStageSlotDropTarget = null;
@@ -1574,6 +1577,31 @@ function revealPanelItem(element) {
   });
 }
 
+function clearActiveThumbnailFocus() {
+  if (activeThumbnailFocusTimer) {
+    window.clearTimeout(activeThumbnailFocusTimer);
+    activeThumbnailFocusTimer = null;
+  }
+  activeThumbnailButton?.classList.remove("is-keyboard-focus");
+}
+
+function focusActiveThumbnail({ pulse = false } = {}) {
+  const target = thumbnailPageButtonCache.get(state.pageIndex);
+  if (!(target instanceof HTMLElement)) return false;
+
+  revealPanelItem(target);
+  target.focus({ preventScroll: true });
+  if (pulse) {
+    clearActiveThumbnailFocus();
+    target.classList.add("is-keyboard-focus");
+    activeThumbnailFocusTimer = window.setTimeout(() => {
+      target.classList.remove("is-keyboard-focus");
+      activeThumbnailFocusTimer = null;
+    }, 1200);
+  }
+  return true;
+}
+
 function getSlidePreviewRow() {
   return els.thumbnailRail?.querySelector(".slide-preview-row") ?? null;
 }
@@ -1689,10 +1717,97 @@ function updateSlideDragGhostPosition(event) {
   ghost.style.transform = `translate3d(${event.clientX - offsetX}px, ${event.clientY - offsetY}px, 0) scale(0.98)`;
 }
 
+function getStoredSlideReorderRect(card) {
+  const drag = activeSlideHandleDrag;
+  const storedRect = drag?.rects instanceof Map ? drag.rects.get(card) : null;
+  const rect = storedRect ?? card.getBoundingClientRect();
+  const row = drag?.row;
+  const scrollDelta =
+    row instanceof HTMLElement && Number.isFinite(drag?.rowScrollLeft)
+      ? row.scrollLeft - drag.rowScrollLeft
+      : 0;
+
+  return {
+    left: rect.left - scrollDelta,
+    right: rect.right - scrollDelta,
+    top: rect.top,
+    width: rect.width,
+    height: rect.height,
+  };
+}
+
+function getSlideReorderCards(row = getActiveSlideReorderRow()) {
+  if (!(row instanceof HTMLElement)) return [];
+  return Array.from(row.querySelectorAll(".slide-thumb-editor")).filter((card) => card instanceof HTMLElement);
+}
+
+function autoScrollSlideReorderRow(event) {
+  const row = activeSlideHandleDrag?.row ?? getActiveSlideReorderRow();
+  if (!(row instanceof HTMLElement) || row.scrollWidth <= row.clientWidth) return;
+
+  const rect = row.getBoundingClientRect();
+  const edgeSize = Math.min(54, rect.width * 0.18);
+  let delta = 0;
+  if (event.clientX < rect.left + edgeSize) {
+    delta = -Math.ceil((1 - (event.clientX - rect.left) / edgeSize) * 18);
+  } else if (event.clientX > rect.right - edgeSize) {
+    delta = Math.ceil((1 - (rect.right - event.clientX) / edgeSize) * 18);
+  }
+  if (!delta) return;
+  row.scrollLeft = clamp(row.scrollLeft + delta, 0, Math.max(0, row.scrollWidth - row.clientWidth));
+}
+
+function resolveSlideReorderTargetFromPointer(event) {
+  const drag = activeSlideHandleDrag;
+  if (!drag || !(drag.source instanceof HTMLElement)) return null;
+
+  const cards = getSlideReorderCards(drag.row ?? getActiveSlideReorderRow());
+  const fromIndex = cards.indexOf(drag.source);
+  if (fromIndex < 0) return null;
+
+  const sourceRect = getStoredSlideReorderRect(drag.source);
+  const ghostWidth = Math.max(1, drag.sourceRect?.width ?? sourceRect.width);
+  const ghostOffsetX = Number.isFinite(drag.ghostOffsetX) ? drag.ghostOffsetX : ghostWidth / 2;
+  const ghostLeft = event.clientX - ghostOffsetX;
+  const ghostRight = ghostLeft + ghostWidth;
+  const releasePadding = 8;
+  let target = null;
+
+  if (ghostRight >= sourceRect.right + releasePadding) {
+    for (let index = fromIndex + 1; index < cards.length; index += 1) {
+      const rect = getStoredSlideReorderRect(cards[index]);
+      const midpoint = rect.left + rect.width / 2;
+      if (ghostRight >= midpoint) {
+        target = cards[index];
+        continue;
+      }
+      break;
+    }
+  } else if (ghostLeft <= sourceRect.left - releasePadding) {
+    for (let index = fromIndex - 1; index >= 0; index -= 1) {
+      const rect = getStoredSlideReorderRect(cards[index]);
+      const midpoint = rect.left + rect.width / 2;
+      if (ghostLeft <= midpoint) {
+        target = cards[index];
+        continue;
+      }
+      break;
+    }
+  }
+
+  if (!target && activeSlideReorderTarget instanceof HTMLElement) {
+    const targetIndex = cards.indexOf(activeSlideReorderTarget);
+    if (targetIndex > fromIndex && ghostRight > sourceRect.right + releasePadding) return activeSlideReorderTarget;
+    if (targetIndex < fromIndex && ghostLeft < sourceRect.left - releasePadding) return activeSlideReorderTarget;
+  }
+
+  return target;
+}
+
 function createSlideDragGhost(event) {
   const drag = activeSlideHandleDrag;
   if (!drag || !(drag.source instanceof HTMLElement) || drag.ghost) return;
-  const rect = drag.source.getBoundingClientRect();
+  const rect = drag.sourceRect ?? drag.source.getBoundingClientRect();
   const ghost = drag.source.cloneNode(true);
   ghost.classList.remove("is-active", "is-reordering", "is-reorder-target", "is-reorder-shift-left", "is-reorder-shift-right");
   ghost.classList.add("slide-drag-ghost");
@@ -2152,7 +2267,7 @@ function stopAutoplayTimer() {
   autoplayTimer = null;
 }
 
-function goToPage(nextPage, { preserveSlideLayerAnchor = false } = {}) {
+function goToPage(nextPage, { preserveSlideLayerAnchor = false, focusThumbnail = false } = {}) {
   state.pageIndex = clamp(nextPage, 0, Math.max(getTotalPages() - 1, 0));
   if (preserveSlideLayerAnchor) {
     ensureSlideLayerAnchor();
@@ -2160,6 +2275,7 @@ function goToPage(nextPage, { preserveSlideLayerAnchor = false } = {}) {
     resetSlideLayerAnchor(state.pageIndex);
   }
   render({ refreshPhotoList: false });
+  if (focusThumbnail) focusActiveThumbnail({ pulse: true });
   if (presentationPlaybackMode === "autoplay" && isPresenting()) {
     scheduleAutoplayAdvance();
   }
@@ -2187,16 +2303,48 @@ function updateFitMode(mode) {
   showToast(mode === "fill" ? "전체 사진을 채우기 기준으로 바꿨습니다." : "전체 사진을 맞추기 기준으로 바꿨습니다.");
 }
 
-function updateZoom(delta) {
-  state.zoom = clamp(Number((state.zoom + delta).toFixed(2)), 0.5, 2.5);
-  scheduleLightweightRefresh();
-  queuePersistSettings();
+function clearZoomAutoResetTimer() {
+  if (!zoomAutoResetTimer) return;
+  window.clearTimeout(zoomAutoResetTimer);
+  zoomAutoResetTimer = null;
 }
 
-function resetZoom() {
+function resetZoom({ notify = false } = {}) {
+  clearZoomAutoResetTimer();
+  transientZoomActive = false;
+  if (state.zoom === 1) return;
   state.zoom = 1;
   scheduleLightweightRefresh();
   queuePersistSettings();
+  if (notify) showToast("확대를 100% 화면 맞춤으로 되돌렸습니다.");
+}
+
+function scheduleZoomAutoReset(delay = 2000) {
+  transientZoomActive = true;
+  clearZoomAutoResetTimer();
+  if (state.zoom === 1) {
+    transientZoomActive = false;
+    return;
+  }
+  zoomAutoResetTimer = window.setTimeout(() => {
+    zoomAutoResetTimer = null;
+    if (!transientZoomActive || state.zoom === 1) return;
+    resetZoom({ notify: true });
+  }, delay);
+}
+
+function updateZoom(delta, { transient = false } = {}) {
+  const nextZoom = clamp(Number((state.zoom + delta).toFixed(2)), 0.5, 2.5);
+  if (state.zoom === nextZoom) return;
+  state.zoom = nextZoom;
+  scheduleLightweightRefresh();
+  queuePersistSettings();
+  if (transient) {
+    scheduleZoomAutoReset();
+  } else {
+    transientZoomActive = false;
+    clearZoomAutoResetTimer();
+  }
 }
 
 function isZoomInKey(event) {
@@ -2215,9 +2363,9 @@ function handleStageWheelZoom(event) {
   if (!(event.target instanceof Element) || !event.target.closest("#stage")) return;
   event.preventDefault();
   if (event.deltaY < 0) {
-    updateZoom(0.1);
+    updateZoom(0.1, { transient: true });
   } else if (event.deltaY > 0) {
-    updateZoom(-0.1);
+    updateZoom(-0.1, { transient: true });
   }
 }
 
@@ -3057,9 +3205,8 @@ document.addEventListener("pointermove", (event) => {
     if (!activeSlideHandleDrag.moved) return;
 
     updateSlideDragGhostPosition(event);
-    const target = document.elementFromPoint(event.clientX, event.clientY);
-    const card = target instanceof Element ? target.closest(".slide-thumb-editor") : null;
-    setSlideReorderTarget(card);
+    autoScrollSlideReorderRow(event);
+    setSlideReorderTarget(resolveSlideReorderTargetFromPointer(event));
     event.preventDefault();
     return;
   }
@@ -3352,6 +3499,17 @@ function updateSelectedSlotTransform(key, value, { recordHistory = false } = {})
   getSlotTransform(slotIndex)[key] = typeof value === "number" ? value : value;
   scheduleLightweightRefresh([slotIndex]);
   queuePersistSettings();
+}
+
+function resetSlotTransform(slotIndex, { recordHistory = true, notify = false } = {}) {
+  const normalizedSlotIndex = normalizeSlotIndex(slotIndex);
+  if (normalizedSlotIndex === null || !getSlotImageId(normalizedSlotIndex)) return false;
+  if (recordHistory) beginEditHistoryAction();
+  state.slotTransforms[normalizedSlotIndex] = getDefaultSlotTransform();
+  render();
+  queuePersistSettings();
+  if (notify) showToast("사진 위치와 확대를 기본값으로 되돌렸습니다.");
+  return true;
 }
 
 function nudgeSelectedSlotPosition(direction, amount = 1) {
@@ -4574,12 +4732,14 @@ function renderThumbnails() {
                 <article
                   class="slide-thumb slide-thumb-editor"
                   data-page="${page.pageIndex}"
+                  tabindex="-1"
+                  aria-label="${page.pageIndex}페이지 슬라이드"
                   title="${page.pageIndex}페이지"
                 >
                   <button
                     class="slide-drag-handle"
                     type="button"
-                    draggable="true"
+                    draggable="false"
                     data-slide-drag-handle
                     aria-label="${page.pageIndex}페이지 순서 변경"
                     title="드래그해서 순서 변경"
@@ -4649,7 +4809,7 @@ function renderThumbnails() {
     return;
   }
 
-  activeThumbnailButton?.classList.remove("is-active");
+  activeThumbnailButton?.classList.remove("is-active", "is-keyboard-focus");
   activeThumbnailButton = thumbnailPageButtonCache.get(state.pageIndex) ?? null;
   activeThumbnailButton?.classList.add("is-active");
   revealPanelItem(activeThumbnailButton);
@@ -5041,6 +5201,7 @@ window.addEventListener("pointermove", (event) => {
   transform.y = nextY;
   activeSlotPan.moved = true;
   scheduleLightweightRefresh([activeSlotPan.slotIndex]);
+  if (transientZoomActive && state.zoom !== 1) scheduleZoomAutoReset();
 });
 
 window.addEventListener("pointerup", (event) => {
@@ -5076,6 +5237,28 @@ els.stage?.addEventListener("click", (event) => {
   const slotIndex = Number(slot.dataset.slotIndex);
   if (!Number.isFinite(slotIndex)) return;
   selectSlot(slotIndex);
+});
+
+els.stage?.addEventListener("dblclick", (event) => {
+  const target = event.target instanceof Element ? event.target : null;
+  const slot = target?.closest("[data-slot-index]");
+  if (slot instanceof HTMLElement) {
+    const slotIndex = Number(slot.dataset.slotIndex);
+    if (Number.isFinite(slotIndex) && getSlotImageId(slotIndex)) {
+      event.preventDefault();
+      event.stopPropagation();
+      selectSlot(slotIndex);
+      const didResetSlot = resetSlotTransform(slotIndex, { recordHistory: true, notify: false });
+      resetZoom();
+      if (didResetSlot) showToast("사진 위치와 확대를 기본값으로 되돌렸습니다.");
+      return;
+    }
+  }
+
+  if (state.zoom !== 1) {
+    event.preventDefault();
+    resetZoom({ notify: true });
+  }
 });
 
 els.stage?.addEventListener("keydown", (event) => {
@@ -5243,10 +5426,32 @@ els.thumbnailRail?.addEventListener("pointerdown", (event) => {
     const card = dragHandle.closest(".slide-thumb-editor");
     const page = Number(card?.getAttribute("data-page"));
     if (!(card instanceof HTMLElement) || !Number.isFinite(page)) return;
+    const row = card.closest(".slide-preview-row");
+    if (!(row instanceof HTMLElement)) return;
+    const cards = Array.from(row.querySelectorAll(".slide-thumb-editor")).filter((item) => item instanceof HTMLElement);
+    const rects = new Map(
+      cards.map((item) => {
+        const rect = item.getBoundingClientRect();
+        return [
+          item,
+          {
+            left: rect.left,
+            right: rect.right,
+            top: rect.top,
+            width: rect.width,
+            height: rect.height,
+          },
+        ];
+      }),
+    );
     activeSlideHandleDrag = {
       pointerId: event.pointerId,
       source: card,
       page,
+      row,
+      rowScrollLeft: row.scrollLeft,
+      rects,
+      sourceRect: rects.get(card),
       startX: event.clientX,
       startY: event.clientY,
       moved: false,
@@ -5656,10 +5861,7 @@ bindSlotTransform(els.slotCropTop, els.slotCropTopValue, "cropTop");
 bindSlotTransform(els.slotCropBottom, els.slotCropBottomValue, "cropBottom");
 els.resetSlotTransformButton?.addEventListener("click", () => {
   const slotIndex = Number(state.selectedSlotIndex);
-  if (!Number.isFinite(slotIndex) || slotIndex < 0) return;
-  beginEditHistoryAction();
-  state.slotTransforms[slotIndex] = getDefaultSlotTransform();
-  render();
+  resetSlotTransform(slotIndex);
 });
 els.slotFitButton?.addEventListener("click", () => setSelectedSlotFitMode("fit"));
 els.slotFillButton?.addEventListener("click", () => setSelectedSlotFitMode("fill"));
@@ -5960,7 +6162,7 @@ document.addEventListener("keydown", (event) => {
 
   if (event.key === "ArrowLeft" || event.key.toLowerCase() === "p") {
     event.preventDefault();
-    goToPage(state.pageIndex - 1);
+    goToPage(state.pageIndex - 1, { focusThumbnail: !isPresenting() });
   }
 
   if (
@@ -5970,22 +6172,22 @@ document.addEventListener("keydown", (event) => {
     event.key.toLowerCase() === "n"
   ) {
     event.preventDefault();
-    goToPage(state.pageIndex + 1);
+    goToPage(state.pageIndex + 1, { focusThumbnail: !isPresenting() });
   }
 
   if (event.key === "PageUp") {
     event.preventDefault();
-    goToPage(state.pageIndex - 1);
+    goToPage(state.pageIndex - 1, { focusThumbnail: !isPresenting() });
   }
 
   if (event.key === "Home") {
     event.preventDefault();
-    goToPage(0);
+    goToPage(0, { focusThumbnail: !isPresenting() });
   }
 
   if (event.key === "End") {
     event.preventDefault();
-    goToPage(getTotalPages() - 1);
+    goToPage(getTotalPages() - 1, { focusThumbnail: !isPresenting() });
   }
 
   if (event.key === "F5") {
@@ -7267,6 +7469,8 @@ function createStandaloneHtml(data) {
     function syncDeckAspect(){ const size=exportSize(); document.documentElement.style.setProperty("--deck-aspect-ratio", String(size.width) + " / " + String(size.height)); document.documentElement.style.setProperty("--deck-aspect-scale", String(size.width / size.height)); }
     let playbackMode = "manual";
     let autoplayTimer = null;
+    let zoomResetTimer = null;
+    let transientZoom = false;
     const normalizeLayout = (layout) => {
       const mode = layout?.mode === "custom" ? "custom" : ({ single:1, pair:1, triple:1, quad:1 }[layout?.mode] ? layout.mode : "pair");
       const rows = mode === "custom" ? Math.min(Math.max(Number(layout?.rows)||1,1),4) : ({ single:1, pair:1, triple:1, quad:2 }[mode] || 1);
@@ -7408,15 +7612,17 @@ function createStandaloneHtml(data) {
     function scheduleAutoplay(){ stopAutoplay(); if(playbackMode!=="autoplay"||!document.body.classList.contains("presenting")) return; autoplayTimer=window.setTimeout(()=>{ autoplayTimer=null; if(playbackMode!=="autoplay"||!document.body.classList.contains("presenting")) return; if(state.pageIndex>=totalPages()-1){ stopPresentation(true); return; } go(state.pageIndex+1); }, normalizeAutoplaySeconds(state.autoplaySeconds)*1000); }
     function go(n){ const nextPage=Math.min(Math.max(Number(n)||0,0),totalPages()-1); const pageChanged=nextPage!==state.pageIndex; state.pageIndex=nextPage; if(pageChanged) state.slideLayerIndex=DEFAULT_SLIDE_LAYER; render(); if(playbackMode==="autoplay"&&document.body.classList.contains("presenting")) scheduleAutoplay(); }
     function goLayer(direction){ if(state.pageIndex<=0) return; const layer=currentLayer(); const nextLayer=Math.min(Math.max(layer+(direction<0?-1:1),1),SLIDE_LAYER_COUNT); if(nextLayer===layer) return; state.slideLayerIndex=nextLayer; render(); }
-    function updateZoom(delta){ state.zoom=Math.min(Math.max(Number((state.zoom+delta).toFixed(2)),.5),2.5); render(); }
-    function resetZoom(){ state.zoom=1; render(); }
+    function clearZoomResetTimer(){ if(!zoomResetTimer) return; window.clearTimeout(zoomResetTimer); zoomResetTimer=null; }
+    function resetZoom(){ clearZoomResetTimer(); transientZoom=false; state.zoom=1; render(); }
+    function scheduleZoomReset(){ transientZoom=true; clearZoomResetTimer(); if(state.zoom===1){ transientZoom=false; return; } zoomResetTimer=window.setTimeout(()=>{ zoomResetTimer=null; if(!transientZoom||state.zoom===1) return; resetZoom(); },2000); }
+    function updateZoom(delta, transient=false){ const nextZoom=Math.min(Math.max(Number((state.zoom+delta).toFixed(2)),.5),2.5); if(state.zoom===nextZoom) return; state.zoom=nextZoom; render(); if(transient) scheduleZoomReset(); else { transientZoom=false; clearZoomResetTimer(); } }
     function startPresentation(autoplay=false){ playbackMode=autoplay?"autoplay":"manual"; document.body.classList.add("presenting"); if(autoplay) scheduleAutoplay(); else stopAutoplay(); if(state.cover.backgroundMusicUrl){ try{$("bgMusic").currentTime=0}catch{} $("bgMusic").play().catch(()=>{}); } $("stage").requestFullscreen?.().catch(()=>{}); render(); }
     function stopPresentation(silent=false){ stopAutoplay(); playbackMode="manual"; document.body.classList.remove("presenting"); $("bgMusic").pause(); try{$("bgMusic").currentTime=0}catch{} if(document.fullscreenElement) document.exitFullscreen?.().catch(()=>{}); render(); }
     function toggleAutoplay(){ if(!document.body.classList.contains("presenting")) return; if(playbackMode==="autoplay"){ playbackMode="manual"; stopAutoplay(); } else { playbackMode="autoplay"; scheduleAutoplay(); } render(); }
     function showHelp(){ if(!$("shortcutDialog").open) $("shortcutDialog").showModal(); }
     function hideHelp(){ if($("shortcutDialog").open) $("shortcutDialog").close(); }
     function backdropClose(e){ if(e.target!==$("shortcutDialog")) return; const r=$("shortcutDialog").getBoundingClientRect(); if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom) hideHelp(); }
-    function onWheelZoom(e){ if(!(e.target instanceof Element) || !e.target.closest("#stage")) return; e.preventDefault(); if(e.deltaY<0) updateZoom(.1); else if(e.deltaY>0) updateZoom(-.1); }
+    function onWheelZoom(e){ if(!(e.target instanceof Element) || !e.target.closest("#stage")) return; e.preventDefault(); if(e.deltaY<0) updateZoom(.1,true); else if(e.deltaY>0) updateZoom(-.1,true); }
     $("prev").onclick=()=>go(state.pageIndex-1); $("next").onclick=()=>go(state.pageIndex+1); $("layerUp").onclick=()=>goLayer(-1); $("layerDown").onclick=()=>goLayer(1); $("fit").onclick=()=>{state.fitMode="fit";render()}; $("fill").onclick=()=>{state.fitMode="fill";render()}; $("bg").onclick=()=>{state.backgroundEnabled=!state.backgroundEnabled;render()}; $("present").onclick=()=>{go(0);startPresentation(false)}; $("autoplay").onclick=()=>{go(0);startPresentation(true)}; $("autoplaySeconds").oninput=()=>{ state.autoplaySeconds=normalizeAutoplaySeconds($("autoplaySeconds").value); render(); if(playbackMode==="autoplay"&&document.body.classList.contains("presenting")) scheduleAutoplay(); };
     $("help").onclick=showHelp; $("closeHelp").onclick=hideHelp; $("downloadImages").onclick=downloadImages; $("openPages").onclick=()=>window.open("https://github.com/notoow/medical-image-presenter","_blank","noopener,noreferrer");
     $("shortcutDialog").onclick=backdropClose;
