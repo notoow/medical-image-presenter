@@ -101,6 +101,9 @@ let activeThumbnailFocusTimer = null;
 let thumbnailRailSuppressClickUntil = 0;
 let transientZoomActive = false;
 let zoomAutoResetTimer = null;
+let stageResetIndicatorTimer = null;
+let stageResetIndicatorFrame = null;
+let stageResetIndicatorDeadline = 0;
 let photoSearchActivationQuery = "";
 let photoSearchActivationIndex = -1;
 let activeStageSlotDropTarget = null;
@@ -2309,9 +2312,98 @@ function clearZoomAutoResetTimer() {
   zoomAutoResetTimer = null;
 }
 
+function getStageResetIconSvg() {
+  return `
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path d="M3 12a9 9 0 0 1 15.2-6.5L21 8"></path>
+      <path d="M21 3v5h-5"></path>
+      <path d="M21 12a9 9 0 0 1-15.2 6.5L3 16"></path>
+      <path d="M3 21v-5h5"></path>
+    </svg>
+  `;
+}
+
+function cancelStageResetIndicatorTimers() {
+  if (stageResetIndicatorTimer) {
+    window.clearTimeout(stageResetIndicatorTimer);
+    stageResetIndicatorTimer = null;
+  }
+  if (stageResetIndicatorFrame) {
+    window.cancelAnimationFrame(stageResetIndicatorFrame);
+    stageResetIndicatorFrame = null;
+  }
+}
+
+function hideStageResetIndicator() {
+  cancelStageResetIndicatorTimers();
+  els.stage?.querySelector(".stage-reset-indicator")?.classList.remove("is-visible");
+}
+
+function updateStageResetIndicatorCountdown(indicator) {
+  if (!(indicator instanceof HTMLElement)) return;
+  const output = indicator.querySelector("[data-stage-reset-countdown]");
+  const remainingMs = Math.max(0, stageResetIndicatorDeadline - performance.now());
+  if (output) output.textContent = `${(remainingMs / 1000).toFixed(1)}s`;
+  if (remainingMs <= 0) {
+    stageResetIndicatorFrame = null;
+    return;
+  }
+  stageResetIndicatorFrame = window.requestAnimationFrame(() => updateStageResetIndicatorCountdown(indicator));
+}
+
+function runStageResetAction() {
+  const hadZoom = state.zoom !== 1;
+  const slotIndex = Number(state.selectedSlotIndex);
+  const didResetSlot =
+    Number.isFinite(slotIndex) && slotIndex >= 0 && getSlotImageId(slotIndex)
+      ? resetSlotTransform(slotIndex, { recordHistory: true, notify: false })
+      : false;
+  if (hadZoom) resetZoom();
+  hideStageResetIndicator();
+  if (didResetSlot || hadZoom) {
+    showToast(didResetSlot ? "사진 위치와 확대를 기본값으로 되돌렸습니다." : "확대를 100% 화면 맞춤으로 되돌렸습니다.");
+  }
+}
+
+function ensureStageResetIndicator() {
+  if (!els.stage) return null;
+  let indicator = els.stage.querySelector(".stage-reset-indicator");
+  if (indicator instanceof HTMLButtonElement) return indicator;
+
+  indicator = document.createElement("button");
+  indicator.type = "button";
+  indicator.className = "stage-reset-indicator";
+  indicator.setAttribute("aria-label", "사진 위치와 확대를 기본값으로 되돌리기");
+  indicator.title = "사진 위치와 확대를 기본값으로 되돌리기";
+  indicator.innerHTML = `
+    <span class="stage-reset-timer" data-stage-reset-countdown>2.0s</span>
+    <span class="stage-reset-icon">${getStageResetIconSvg()}</span>
+  `;
+  indicator.addEventListener("click", runStageResetAction);
+  els.stage.append(indicator);
+  return indicator;
+}
+
+function showStageResetIndicator(duration = 2000) {
+  const indicator = ensureStageResetIndicator();
+  if (!(indicator instanceof HTMLElement)) return;
+  cancelStageResetIndicatorTimers();
+  stageResetIndicatorDeadline = performance.now() + duration;
+  indicator.style.setProperty("--stage-reset-duration", `${duration}ms`);
+  indicator.classList.remove("is-visible");
+  void indicator.offsetWidth;
+  indicator.classList.add("is-visible");
+  updateStageResetIndicatorCountdown(indicator);
+  stageResetIndicatorTimer = window.setTimeout(() => {
+    indicator.classList.remove("is-visible");
+    cancelStageResetIndicatorTimers();
+  }, duration);
+}
+
 function resetZoom({ notify = false } = {}) {
   clearZoomAutoResetTimer();
   transientZoomActive = false;
+  hideStageResetIndicator();
   if (state.zoom === 1) return;
   state.zoom = 1;
   scheduleLightweightRefresh();
@@ -2331,6 +2423,7 @@ function scheduleZoomAutoReset(delay = 2000) {
     if (!transientZoomActive || state.zoom === 1) return;
     resetZoom({ notify: true });
   }, delay);
+  showStageResetIndicator(delay);
 }
 
 function updateZoom(delta, { transient = false } = {}) {
@@ -3641,7 +3734,7 @@ function syncLayoutControls() {
   els.layoutMode.value = layout.mode;
 }
 
-function applyLayoutToPage(page, mode, rows, cols) {
+function applyLayoutToPage(page, mode, rows, cols, { layer = null } = {}) {
   if (!Number.isFinite(page) || page <= 0) {
     beginEditHistoryAction();
     state.layoutMode = createLayoutConfig(mode, rows, cols).mode;
@@ -3653,7 +3746,12 @@ function applyLayoutToPage(page, mode, rows, cols) {
   }
 
   const nextLayout = createLayoutConfig(mode, rows, cols);
-  const activeLayer = page === state.pageIndex ? getCurrentSlideLayerStatus()?.currentLayer : DEFAULT_SLIDE_LAYER;
+  const requestedLayer = Number(layer);
+  const activeLayer = Number.isInteger(requestedLayer)
+    ? clamp(requestedLayer, 1, SLIDE_LAYER_COUNT)
+    : page === state.pageIndex
+      ? getCurrentSlideLayerStatus()?.currentLayer
+      : DEFAULT_SLIDE_LAYER;
   if (activeLayer && activeLayer !== DEFAULT_SLIDE_LAYER) {
     beginEditHistoryAction();
     const layerPage = getLayerSlidePage(page, activeLayer, { create: true });
@@ -3687,6 +3785,7 @@ function applyLayoutToPage(page, mode, rows, cols) {
 
     markSlideSlotsDirty();
     markLayoutDirty();
+    if (page === state.pageIndex) state.slideLayerIndex = activeLayer;
     render();
     return;
   }
@@ -3751,8 +3850,11 @@ function applyLayoutToPage(page, mode, rows, cols) {
     ...nextTransforms,
   };
   state.selectedSlotIndex = Number.isFinite(nextSelectedSlotIndex) ? nextSelectedSlotIndex : null;
+  const layerToKeep = page === state.pageIndex ? activeLayer ?? DEFAULT_SLIDE_LAYER : state.slideLayerIndex;
   state.pageIndex = clamp(state.pageIndex, 0, Math.max(pages.length, 0));
-  resetSlideLayerAnchor(state.pageIndex);
+  if (state.pageIndex > 0) {
+    state.slideLayerIndex = clamp(Number(layerToKeep) || DEFAULT_SLIDE_LAYER, 1, SLIDE_LAYER_COUNT);
+  }
 
   markSlideSlotsDirty();
   markLayoutDirty();
@@ -3760,7 +3862,7 @@ function applyLayoutToPage(page, mode, rows, cols) {
   render();
 }
 
-function setGrid(rows, cols, mode = "custom", page = state.pageIndex) {
+function setGrid(rows, cols, mode = "custom", page = state.pageIndex, options = {}) {
   const nextLayout = createLayoutConfig(mode, rows, cols);
   if (page <= 0) {
     state.gridRows = nextLayout.rows;
@@ -3772,10 +3874,10 @@ function setGrid(rows, cols, mode = "custom", page = state.pageIndex) {
     return;
   }
 
-  applyLayoutToPage(page, nextLayout.mode, nextLayout.rows, nextLayout.cols);
+  applyLayoutToPage(page, nextLayout.mode, nextLayout.rows, nextLayout.cols, options);
 }
 
-function setLayoutPreset(mode, page = state.pageIndex) {
+function setLayoutPreset(mode, page = state.pageIndex, options = {}) {
   const preset = {
     single: [1, 1],
     pair: [1, 2],
@@ -3783,7 +3885,11 @@ function setLayoutPreset(mode, page = state.pageIndex) {
     quad: [2, 2],
   }[mode];
 
-  setGrid(preset[0], preset[1], mode, page);
+  setGrid(preset[0], preset[1], mode, page, options);
+}
+
+function getLayoutTargetLayer() {
+  return getCurrentSlideLayerStatus()?.currentLayer ?? DEFAULT_SLIDE_LAYER;
 }
 
 function addGuide(axis, percent = 50) {
@@ -4177,12 +4283,13 @@ function findNextSlotIndexByImageId(imageId, currentSlotIndex = state.selectedSl
   return slotIndices[(currentIndex + 1) % slotIndices.length];
 }
 
-function goToPageWithSelection(page, slotIndex = null) {
+function goToPageWithSelection(page, slotIndex = null, { focusThumbnail = false, preserveLayer = true } = {}) {
   const location = Number.isFinite(slotIndex) ? getSlotLocation(slotIndex) : null;
   state.pageIndex = clamp(page, 0, Math.max(getTotalPages() - 1, 0));
-  state.slideLayerIndex = location?.layer ?? DEFAULT_SLIDE_LAYER;
+  state.slideLayerIndex = location?.layer ?? (preserveLayer ? state.slideLayerIndex : DEFAULT_SLIDE_LAYER);
   state.selectedSlotIndex = Number.isFinite(slotIndex) && slotIndex >= 0 ? slotIndex : null;
   render({ refreshPhotoList: false });
+  if (focusThumbnail) focusActiveThumbnail({ pulse: true });
 }
 
 function rebuildSlotTransformsFromPages(pages) {
@@ -4702,6 +4809,7 @@ function renderThumbnails() {
     state.images.length,
     state.slideSlots.length,
     state.slidePageLayouts.length,
+    state.slideLayerIndex,
     ].join(":");
 
   if (thumbnailRenderKey !== nextKey) {
@@ -4709,6 +4817,7 @@ function renderThumbnails() {
     activeThumbnailButton = null;
     thumbnailPageButtonCache = new Map();
     unregisterRenderableImageNodesInRoot(els.thumbnailRail);
+    const thumbnailLayer = getCurrentSlideLayerStatus()?.currentLayer ?? DEFAULT_SLIDE_LAYER;
     const thumbnailHtml = `
       <div class="thumbnail-section">
         <div class="thumbnail-section-head">
@@ -4727,8 +4836,11 @@ function renderThumbnails() {
             </div>
           </button>
           ${slidePages
-            .map(
-              (page) => `
+            .map((page) => {
+              const thumbnailLayerPage =
+                thumbnailLayer !== DEFAULT_SLIDE_LAYER ? getLayerSlidePage(page.pageIndex, thumbnailLayer) : null;
+              const thumbnailLayout = thumbnailLayerPage?.layout ?? page.layout;
+              return `
                 <article
                   class="slide-thumb slide-thumb-editor"
                   data-page="${page.pageIndex}"
@@ -4753,10 +4865,10 @@ function renderThumbnails() {
                   <div class="slide-thumb-meta">
                     <span class="slide-thumb-label">#${page.pageIndex}</span>
                     <div class="slide-thumb-actions">
-                      <button class="slide-layout-chip ${page.layout.mode === "single" ? "is-active" : ""}" type="button" data-slide-layout="${page.pageIndex}:single">1</button>
-                      <button class="slide-layout-chip ${page.layout.mode === "pair" ? "is-active" : ""}" type="button" data-slide-layout="${page.pageIndex}:pair">2</button>
-                      <button class="slide-layout-chip ${page.layout.mode === "triple" ? "is-active" : ""}" type="button" data-slide-layout="${page.pageIndex}:triple">3</button>
-                      <button class="slide-layout-chip ${page.layout.mode === "quad" ? "is-active" : ""}" type="button" data-slide-layout="${page.pageIndex}:quad">4</button>
+                      <button class="slide-layout-chip ${thumbnailLayout.mode === "single" ? "is-active" : ""}" type="button" data-slide-layout="${page.pageIndex}:${thumbnailLayer}:single">1</button>
+                      <button class="slide-layout-chip ${thumbnailLayout.mode === "pair" ? "is-active" : ""}" type="button" data-slide-layout="${page.pageIndex}:${thumbnailLayer}:pair">2</button>
+                      <button class="slide-layout-chip ${thumbnailLayout.mode === "triple" ? "is-active" : ""}" type="button" data-slide-layout="${page.pageIndex}:${thumbnailLayer}:triple">3</button>
+                      <button class="slide-layout-chip ${thumbnailLayout.mode === "quad" ? "is-active" : ""}" type="button" data-slide-layout="${page.pageIndex}:${thumbnailLayer}:quad">4</button>
                     </div>
                   </div>
                   <input
@@ -4767,8 +4879,8 @@ function renderThumbnails() {
                     value="${escapeHtml(page.caption)}"
                   />
                 </article>
-              `,
-            )
+              `;
+            })
             .join("")}
           <button
             class="slide-thumb slide-thumb-add-card"
@@ -5201,6 +5313,7 @@ window.addEventListener("pointermove", (event) => {
   transform.y = nextY;
   activeSlotPan.moved = true;
   scheduleLightweightRefresh([activeSlotPan.slotIndex]);
+  showStageResetIndicator();
   if (transientZoomActive && state.zoom !== 1) scheduleZoomAutoReset();
 });
 
@@ -5374,10 +5487,15 @@ els.thumbnailRail?.addEventListener("click", (event) => {
   if (layoutButton instanceof HTMLButtonElement) {
     event.preventDefault();
     event.stopPropagation();
-    const [pageText, mode] = (layoutButton.dataset.slideLayout || "").split(":");
+    const layoutParts = (layoutButton.dataset.slideLayout || "").split(":");
+    const [pageText, layerText, modeText] = layoutParts.length >= 3
+      ? layoutParts
+      : [layoutParts[0], String(getCurrentSlideLayerStatus()?.currentLayer ?? DEFAULT_SLIDE_LAYER), layoutParts[1]];
     const page = Number(pageText);
+    const layer = Number(layerText);
+    const mode = modeText;
     if (!Number.isFinite(page) || !mode) return;
-    setLayoutPreset(mode, page);
+    setLayoutPreset(mode, page, { layer });
     return;
   }
   const deleteButton = target?.closest("[data-delete-slide]");
@@ -5404,7 +5522,7 @@ els.thumbnailRail?.addEventListener("click", (event) => {
   if (slideThumb instanceof HTMLElement) {
     const page = Number(slideThumb.dataset.page);
     if (!Number.isFinite(page)) return;
-    goToPageWithSelection(page, null);
+    goToPageWithSelection(page, null, { focusThumbnail: true });
     return;
   }
 });
@@ -5720,21 +5838,30 @@ els.photoFilterPlacedButton?.addEventListener("click", () => setPhotoFilterMode(
 els.photoFilterUnplacedButton?.addEventListener("click", () => setPhotoFilterMode("unplaced"));
 
 els.layoutMode.addEventListener("change", () => {
+  const layer = getLayoutTargetLayer();
   if (els.layoutMode.value !== "custom") {
-    setLayoutPreset(els.layoutMode.value, state.pageIndex);
+    setLayoutPreset(els.layoutMode.value, state.pageIndex, { layer });
     return;
   }
-  setGrid(Number(els.gridRows.value), Number(els.gridCols.value), "custom", state.pageIndex);
+  setGrid(Number(els.gridRows.value), Number(els.gridCols.value), "custom", state.pageIndex, { layer });
 });
 
-els.layoutOneButton.addEventListener("click", () => setLayoutPreset("single", state.pageIndex));
-els.layoutTwoButton.addEventListener("click", () => setLayoutPreset("pair", state.pageIndex));
-els.layoutThreeButton.addEventListener("click", () => setLayoutPreset("triple", state.pageIndex));
-els.layoutFourButton.addEventListener("click", () => setLayoutPreset("quad", state.pageIndex));
-els.horizontalSplitButton.addEventListener("click", () => setGrid(1, Math.max(2, Number(els.gridCols.value)), "custom", state.pageIndex));
-els.verticalSplitButton.addEventListener("click", () => setGrid(Math.max(2, Number(els.gridRows.value)), 1, "custom", state.pageIndex));
-els.gridRows.addEventListener("input", () => setGrid(Number(els.gridRows.value), Number(els.gridCols.value), "custom", state.pageIndex));
-els.gridCols.addEventListener("input", () => setGrid(Number(els.gridRows.value), Number(els.gridCols.value), "custom", state.pageIndex));
+els.layoutOneButton.addEventListener("click", () => setLayoutPreset("single", state.pageIndex, { layer: getLayoutTargetLayer() }));
+els.layoutTwoButton.addEventListener("click", () => setLayoutPreset("pair", state.pageIndex, { layer: getLayoutTargetLayer() }));
+els.layoutThreeButton.addEventListener("click", () => setLayoutPreset("triple", state.pageIndex, { layer: getLayoutTargetLayer() }));
+els.layoutFourButton.addEventListener("click", () => setLayoutPreset("quad", state.pageIndex, { layer: getLayoutTargetLayer() }));
+els.horizontalSplitButton.addEventListener("click", () =>
+  setGrid(1, Math.max(2, Number(els.gridCols.value)), "custom", state.pageIndex, { layer: getLayoutTargetLayer() }),
+);
+els.verticalSplitButton.addEventListener("click", () =>
+  setGrid(Math.max(2, Number(els.gridRows.value)), 1, "custom", state.pageIndex, { layer: getLayoutTargetLayer() }),
+);
+els.gridRows.addEventListener("input", () =>
+  setGrid(Number(els.gridRows.value), Number(els.gridCols.value), "custom", state.pageIndex, { layer: getLayoutTargetLayer() }),
+);
+els.gridCols.addEventListener("input", () =>
+  setGrid(Number(els.gridRows.value), Number(els.gridCols.value), "custom", state.pageIndex, { layer: getLayoutTargetLayer() }),
+);
 
 els.prevButton.addEventListener("click", () => goToPage(state.pageIndex - 1));
 els.nextButton.addEventListener("click", () => goToPage(state.pageIndex + 1));

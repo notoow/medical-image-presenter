@@ -1585,6 +1585,85 @@ kbd {
   pointer-events: none;
 }
 
+.stage-reset-indicator {
+  position: absolute;
+  right: clamp(0.7rem, 1.4vw, 1rem);
+  bottom: clamp(0.7rem, 1.4vw, 1rem);
+  z-index: 11;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.38rem;
+  min-height: 2.25rem;
+  border: 1px solid rgba(255, 253, 247, 0.22);
+  border-radius: 999px;
+  padding: 0.34rem 0.42rem 0.34rem 0.72rem;
+  color: rgba(255, 253, 247, 0.96);
+  background: rgba(10, 10, 10, 0.64);
+  box-shadow:
+    0 14px 34px rgba(0, 0, 0, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(0.35rem) scale(0.94);
+  transition:
+    opacity 160ms ease,
+    transform 160ms ease,
+    background 160ms ease;
+  backdrop-filter: blur(12px);
+}
+
+.stage-reset-indicator.is-visible {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0) scale(1);
+}
+
+.stage-reset-indicator:hover,
+.stage-reset-indicator:focus-visible {
+  background: rgba(18, 15, 12, 0.82);
+}
+
+.stage-reset-timer {
+  min-width: 2.4rem;
+  font-size: 0.78rem;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.stage-reset-icon {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 1.72rem;
+  height: 1.72rem;
+  border-radius: 50%;
+  color: #fff8f2;
+  background: linear-gradient(180deg, rgba(138, 75, 45, 0.94), rgba(91, 47, 27, 0.94));
+  box-shadow: 0 8px 18px rgba(18, 15, 10, 0.24);
+}
+
+.stage-reset-icon svg {
+  width: 1rem;
+  height: 1rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2.2;
+  animation: stage-reset-spin var(--stage-reset-duration, 2000ms) linear both;
+}
+
+@keyframes stage-reset-spin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(-360deg);
+  }
+}
+
 .cover-card {
   width: min(78%, 58rem);
   border: 1px solid rgba(255, 253, 247, 0.18);
@@ -2223,11 +2302,16 @@ body.presenting .guide-ruler {
 }
 
 .slide-thumb-add-card {
+  grid-template-rows: minmax(0, 1fr) auto;
+  align-items: stretch;
+  justify-items: stretch;
+  gap: 0.34rem;
   border-style: dashed;
   border-color: rgba(138, 75, 45, 0.36);
   color: rgba(58, 48, 36, 0.78);
   background: rgba(255, 253, 247, 0.74);
   cursor: pointer;
+  overflow: hidden;
 }
 
 .slide-thumb-add-card:hover,
@@ -2239,10 +2323,12 @@ body.presenting .guide-ruler {
 }
 
 .slide-thumb-add-preview {
+  align-self: center;
   display: grid;
   place-items: center;
   width: 100%;
   aspect-ratio: 16 / 9;
+  min-height: 0;
   border: 1px dashed rgba(138, 75, 45, 0.32);
   border-radius: 0.56rem;
   background:
@@ -2267,10 +2353,12 @@ body.presenting .guide-ruler {
 }
 
 .slide-thumb-add-label {
+  align-self: end;
   min-height: 1.15rem;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  width: 100%;
   border-radius: 999px;
   color: rgba(58, 48, 36, 0.78);
   font-size: 0.64rem;
