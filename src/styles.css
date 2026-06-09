@@ -2087,6 +2087,7 @@ body.presenting .guide-ruler {
   --slide-thumb-width: 6.85rem;
   --slide-thumb-height: 7.8rem;
   --slide-reorder-gap: 0.46rem;
+  container: thumbnail-rail / inline-size;
   position: relative;
   z-index: 0;
   display: grid;
@@ -2098,6 +2099,19 @@ body.presenting .guide-ruler {
   border-radius: 0.95rem;
   padding: 0.54rem;
   background: rgba(244, 239, 228, 0.72);
+}
+
+@container thumbnail-rail (max-width: 46rem) {
+  .slide-preview-row {
+    --slide-thumb-width: calc((100% - (2 * var(--slide-reorder-gap))) / 3);
+    --slide-thumb-height: 10.2rem;
+    max-height: 11rem;
+    scroll-snap-type: x mandatory;
+  }
+
+  .slide-thumb {
+    scroll-snap-align: start;
+  }
 }
 
 .thumbnail-empty {
@@ -3310,5 +3324,11 @@ body.presenting .stage {
   .empty-token,
   .photo-panel-head button {
     padding-inline: 0.62rem;
+  }
+}
+
+@media (max-width: 1440px) and (min-width: 981px) {
+  .thumbnail-rail {
+    max-height: 12.7rem;
   }
 }
