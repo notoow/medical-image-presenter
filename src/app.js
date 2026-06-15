@@ -1580,6 +1580,26 @@ function revealPanelItem(element) {
   });
 }
 
+function revealThumbnailItem(element, { behavior = "smooth" } = {}) {
+  if (!(element instanceof HTMLElement)) return;
+  const row = element.closest(".slide-preview-row");
+  if (!(row instanceof HTMLElement)) {
+    revealPanelItem(element);
+    return;
+  }
+
+  const maxScrollLeft = Math.max(0, row.scrollWidth - row.clientWidth);
+  if (maxScrollLeft <= 0) return;
+
+  const rowRect = row.getBoundingClientRect();
+  const itemRect = element.getBoundingClientRect();
+  const targetLeft = row.scrollLeft + itemRect.left - rowRect.left - (row.clientWidth - itemRect.width) / 2;
+  row.scrollTo({
+    left: clamp(targetLeft, 0, maxScrollLeft),
+    behavior,
+  });
+}
+
 function clearActiveThumbnailFocus() {
   if (activeThumbnailFocusTimer) {
     window.clearTimeout(activeThumbnailFocusTimer);
@@ -1592,7 +1612,7 @@ function focusActiveThumbnail({ pulse = false } = {}) {
   const target = thumbnailPageButtonCache.get(state.pageIndex);
   if (!(target instanceof HTMLElement)) return false;
 
-  revealPanelItem(target);
+  revealThumbnailItem(target);
   target.focus({ preventScroll: true });
   if (pulse) {
     clearActiveThumbnailFocus();
@@ -1651,6 +1671,12 @@ function updateSlideLayerIndicators() {
   nextButton.classList.toggle("is-available", status.hasNext);
   indicator?.classList.toggle("has-previous-layer", status.hasPrevious);
   indicator?.classList.toggle("has-next-layer", status.hasNext);
+  els.thumbnailRail?.querySelectorAll("[data-slide-layer-select]").forEach((button) => {
+    if (!(button instanceof HTMLButtonElement)) return;
+    const layer = Number(button.dataset.slideLayerSelect);
+    button.classList.toggle("is-active", layer === status.currentLayer);
+    button.setAttribute("aria-pressed", String(layer === status.currentLayer));
+  });
   if (output) output.textContent = `${status.currentLayer} / ${status.totalLayers}`;
 }
 
@@ -2291,11 +2317,26 @@ function goToAdjacentSlideLayer(direction = 1) {
   if (!status) return false;
 
   const nextLayer = clamp(status.currentLayer + (direction < 0 ? -1 : 1), 1, SLIDE_LAYER_COUNT);
-  if (nextLayer === status.currentLayer) return true;
+  return goToSlideLayer(nextLayer);
+}
+
+function goToSlideLayer(layer) {
+  if (state.pageIndex <= 0) return false;
+
+  const status = getCurrentSlideLayerStatus();
+  if (!status) return false;
+
+  const nextLayer = clamp(Number(layer) || DEFAULT_SLIDE_LAYER, 1, SLIDE_LAYER_COUNT);
+  if (nextLayer === status.currentLayer) {
+    focusActiveThumbnail({ pulse: true });
+    updateSlideLayerIndicators();
+    return true;
+  }
 
   state.slideLayerIndex = nextLayer;
   state.selectedSlotIndex = null;
   render({ persist: false });
+  focusActiveThumbnail({ pulse: true });
   return true;
 }
 
@@ -4825,6 +4866,21 @@ function renderThumbnails() {
           <span class="thumbnail-section-hint">선택 · 순서 변경 · 레이어 편집</span>
           <div class="slide-layer-indicator" aria-label="슬라이드 레이어 이동">
             <button type="button" data-slide-layer-prev aria-label="위 레이어" title="위 레이어">▲</button>
+            <div class="slide-layer-selector" role="group" aria-label="레이어 바로 선택">
+              ${Array.from({ length: SLIDE_LAYER_COUNT }, (_, index) => {
+                const layer = index + 1;
+                return `
+                  <button
+                    type="button"
+                    class="slide-layer-select ${layer === thumbnailLayer ? "is-active" : ""}"
+                    data-slide-layer-select="${layer}"
+                    aria-label="${layer}번 레이어 보기"
+                    aria-pressed="${layer === thumbnailLayer ? "true" : "false"}"
+                    title="${layer}번 레이어"
+                  >${layer}</button>
+                `;
+              }).join("")}
+            </div>
             <output data-slide-layer-status aria-live="polite">1 / 1</output>
             <button type="button" data-slide-layer-next aria-label="아래 레이어" title="아래 레이어">▼</button>
           </div>
@@ -4924,7 +4980,7 @@ function renderThumbnails() {
   activeThumbnailButton?.classList.remove("is-active", "is-keyboard-focus");
   activeThumbnailButton = thumbnailPageButtonCache.get(state.pageIndex) ?? null;
   activeThumbnailButton?.classList.add("is-active");
-  revealPanelItem(activeThumbnailButton);
+  revealThumbnailItem(activeThumbnailButton, { behavior: "auto" });
   syncThumbnailSlotSelection();
   syncThumbnailLayerPreview();
   window.requestAnimationFrame(updateSlideLayerIndicators);
@@ -5453,6 +5509,13 @@ els.thumbnailRail?.addEventListener("click", (event) => {
     event.preventDefault();
     event.stopPropagation();
     goToAdjacentSlideLayer(-1);
+    return;
+  }
+  const slideLayerSelectButton = target?.closest("[data-slide-layer-select]");
+  if (slideLayerSelectButton instanceof HTMLButtonElement) {
+    event.preventDefault();
+    event.stopPropagation();
+    goToSlideLayer(Number(slideLayerSelectButton.dataset.slideLayerSelect));
     return;
   }
   const slideLayerNextButton = target?.closest("[data-slide-layer-next]");
