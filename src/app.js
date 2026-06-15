@@ -7524,12 +7524,14 @@ function createStandaloneHtml(data) {
     .layer-controls button { min-width:2.35rem; padding:.48rem .58rem; }
     .layer-controls button:disabled { cursor:not-allowed; opacity:.38; transform:none; }
     .layer-status { min-width:3.4rem; color:var(--muted); text-align:center; font-weight:800; }
-    .stage { position:relative; overflow:hidden; align-self:center; justify-self:center; width:min(100%,calc((100vh - 6rem) * var(--deck-aspect-scale))); aspect-ratio:var(--deck-aspect-ratio); border-radius:1.2rem; background:#111; box-shadow:0 24px 80px rgba(0,0,0,.45); }
-    .cover { display:grid; place-items:center; padding:4rem; background:radial-gradient(circle at 20% 15%,rgba(255,255,255,.12),transparent 22rem),linear-gradient(145deg,#26231f,#080807); }
-    .cover-card { width:min(75%,58rem); border:1px solid var(--line); border-radius:2rem; padding:3rem; background:rgba(255,255,255,.07); backdrop-filter:blur(18px); }
-    .cover-logo { max-width:10rem; max-height:5rem; object-fit:contain; margin-bottom:2rem; }
-    .cover-title { margin:0; font-size:clamp(2.5rem,6vw,6rem); line-height:.9; letter-spacing:-.07em; white-space:pre-line; }
+    .stage { position:relative; container:stage / inline-size; overflow:hidden; align-self:center; justify-self:center; width:min(100%,calc((100vh - 6rem) * var(--deck-aspect-scale))); aspect-ratio:var(--deck-aspect-ratio); border-radius:1.2rem; background:#111; box-shadow:0 24px 80px rgba(0,0,0,.45); }
+    .cover { display:grid; place-items:center; padding:clamp(.85rem,3.2cqw,3.2rem); background:radial-gradient(circle at 20% 15%,rgba(255,255,255,.12),transparent 22rem),linear-gradient(145deg,#26231f,#080807); }
+    .cover-card { display:grid; align-content:center; width:min(70%,58rem); max-height:100%; overflow:hidden; border:1px solid var(--line); border-radius:clamp(1rem,3cqw,2rem); padding:clamp(.95rem,4.2cqw,3rem); background:rgba(255,255,255,.07); backdrop-filter:blur(18px); }
+    .cover-logo { width:clamp(3.2rem,13cqw,8rem); max-width:100%; max-height:clamp(3.2rem,13cqw,8rem); object-fit:contain; margin-bottom:clamp(.75rem,3cqw,2rem); }
+    .cover-title { margin:0; max-width:13ch; font-size:clamp(1.45rem,7cqw,6rem); line-height:.96; letter-spacing:0; overflow-wrap:anywhere; white-space:pre-line; }
     .cover-subtitle,.meta { color:var(--muted); }
+    .cover-subtitle { margin:clamp(.45rem,1.8cqw,1rem) 0 0; font-size:clamp(.78rem,2.2cqw,1.45rem); }
+    .meta { display:flex; flex-wrap:wrap; gap:clamp(.32rem,1.2cqw,.7rem); margin:clamp(.7rem,2.8cqw,2rem) 0 0; font-size:clamp(.62rem,1.6cqw,1rem); }
     .grid { position:absolute; inset:0; display:grid; gap:1rem; padding:1rem; }
     .single { grid-template-columns:1fr; } .pair { grid-template-columns:repeat(2,1fr); } .triple { grid-template-columns:repeat(3,1fr); } .quad { grid-template-columns:repeat(2,1fr); grid-template-rows:repeat(2,1fr); } .custom { grid-template-columns:repeat(var(--grid-cols),1fr); grid-template-rows:repeat(var(--grid-rows),1fr); }
     .card { position:relative; overflow:hidden; border:1px solid var(--line); border-radius:1rem; background:#050505; }

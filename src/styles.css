@@ -1547,6 +1547,7 @@ kbd {
 
 .stage {
   position: relative;
+  container: stage / inline-size;
   overflow: hidden;
   align-self: center;
   justify-self: center;
@@ -1563,7 +1564,7 @@ kbd {
 .stage-cover {
   display: grid;
   place-items: center;
-  padding: clamp(2rem, 6vw, 5rem);
+  padding: clamp(0.85rem, 3.2cqw, 3.2rem);
 }
 
 .stage-index-badge {
@@ -1670,49 +1671,56 @@ kbd {
 }
 
 .cover-card {
-  width: min(78%, 58rem);
+  display: grid;
+  align-content: center;
+  width: min(70%, 58rem);
+  max-height: 100%;
   border: 1px solid rgba(255, 253, 247, 0.18);
-  border-radius: 2rem;
-  padding: clamp(2rem, 5vw, 4.4rem);
+  border-radius: clamp(1rem, 3cqw, 2rem);
+  padding: clamp(0.95rem, 4.2cqw, 4.4rem);
+  overflow: hidden;
   background: rgba(255, 253, 247, 0.08);
   box-shadow: 0 20px 70px rgba(0, 0, 0, 0.24);
   backdrop-filter: blur(18px);
 }
 
 .cover-logo {
-  max-width: 7.8rem;
-  max-height: 7.8rem;
+  width: clamp(3.2rem, 13cqw, 7.8rem);
+  max-width: 100%;
+  max-height: clamp(3.2rem, 13cqw, 7.8rem);
   object-fit: contain;
-  margin-bottom: 2.3rem;
+  margin-bottom: clamp(0.75rem, 3cqw, 2.3rem);
 }
 
 .cover-title {
   margin: 0;
   max-width: 13ch;
-  font-size: clamp(2.5rem, 5.4vw, 5.4rem);
+  font-size: clamp(1.45rem, 7cqw, 5.4rem);
   line-height: 0.96;
-  letter-spacing: -0.055em;
+  letter-spacing: 0;
+  overflow-wrap: anywhere;
   white-space: pre-line;
 }
 
 .cover-subtitle {
-  margin: 1rem 0 0;
+  margin: clamp(0.45rem, 1.8cqw, 1rem) 0 0;
   color: rgba(255, 253, 247, 0.72);
-  font-size: clamp(1rem, 2vw, 1.45rem);
+  font-size: clamp(0.78rem, 2.2cqw, 1.45rem);
 }
 
 .cover-meta {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.7rem;
-  margin-top: 2rem;
+  gap: clamp(0.32rem, 1.2cqw, 0.7rem);
+  margin-top: clamp(0.7rem, 2.8cqw, 2rem);
   color: rgba(255, 253, 247, 0.78);
 }
 
 .cover-meta span {
   border: 1px solid rgba(255, 253, 247, 0.2);
   border-radius: 999px;
-  padding: 0.45rem 0.75rem;
+  padding: clamp(0.22rem, 0.9cqw, 0.45rem) clamp(0.44rem, 1.3cqw, 0.75rem);
+  font-size: clamp(0.62rem, 1.6cqw, 1rem);
 }
 
 .slide-grid {
