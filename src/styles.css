@@ -183,7 +183,7 @@ body.is-file-dragging .shell {
 
 body.is-file-dragging .drop-overlay {
   opacity: 1;
-  pointer-events: auto;
+  pointer-events: none;
 }
 
 .loading-overlay {
@@ -1759,6 +1759,7 @@ kbd {
 
 .image-card {
   position: relative;
+  margin: 0;
   overflow: hidden;
   border: 1px solid rgba(255, 253, 247, 0.18);
   border-radius: 1.15rem;
@@ -2256,15 +2257,13 @@ body.presenting .guide-ruler {
 }
 
 .slide-preview-row:focus-visible {
-  outline: 3px solid rgba(64, 210, 255, 0.72);
-  outline-offset: 3px;
-  border-radius: 0.8rem;
+  outline: none;
 }
 
 .slide-thumb:focus-visible,
 .slide-thumb.is-keyboard-focus {
-  outline: 3px solid rgba(64, 210, 255, 0.86);
-  outline-offset: 3px;
+  outline: 3px solid rgba(204, 55, 48, 0.92);
+  outline-offset: 2px;
 }
 
 .slide-preview-row.is-grabbed,
@@ -2303,15 +2302,17 @@ body.presenting .guide-ruler {
 }
 
 .slide-thumb.is-active {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(138, 75, 45, 0.16);
+  border-color: #cc3730;
+  box-shadow:
+    0 0 0 3px rgba(204, 55, 48, 0.2),
+    0 12px 24px rgba(121, 25, 20, 0.14);
 }
 
 .slide-thumb.is-keyboard-focus {
-  border-color: rgba(64, 210, 255, 0.94);
+  border-color: #cc3730;
   box-shadow:
-    0 0 0 4px rgba(64, 210, 255, 0.2),
-    0 14px 28px rgba(20, 106, 128, 0.18);
+    0 0 0 4px rgba(204, 55, 48, 0.2),
+    0 14px 28px rgba(121, 25, 20, 0.18);
 }
 
 .slide-thumb.is-reorder-target {
@@ -2595,13 +2596,6 @@ body.presenting .guide-ruler {
   min-width: 0;
   min-height: 0;
   object-fit: cover;
-}
-
-.slide-thumb-grid img.is-selected-slot,
-.slide-thumb-empty.is-selected-slot {
-  outline: 3px solid rgba(0, 255, 242, 0.88);
-  outline-offset: -3px;
-  box-shadow: inset 0 0 0 1px rgba(7, 14, 14, 0.72);
 }
 
 .slide-thumb-empty {
@@ -2891,26 +2885,38 @@ body.presenting {
 
 body.presenting .control-panel,
 body.presenting .photo-panel,
-body.presenting .deck-toolbar {
+body.presenting .deck-toolbar,
+body.presenting .thumbnail-rail {
   display: none;
 }
 
 body.presenting .shell {
   display: grid;
   grid-template-columns: 1fr;
-  min-height: 100vh;
+  min-height: var(--app-height);
+  height: var(--app-height);
   padding: 0;
+  background: #050505;
 }
 
 body.presenting .stage-wrap {
   display: grid;
+  grid-template-rows: 1fr;
+  height: var(--app-height);
+  max-height: var(--app-height);
+  min-height: var(--app-height);
+  place-items: center;
+  align-content: stretch;
+  gap: 0;
+  background: #050505;
 }
 
 body.presenting .stage {
-  width: 100vw;
-  height: 100vh;
+  width: min(100vw, calc(var(--app-height) * var(--deck-aspect-scale)));
+  height: auto;
+  max-height: var(--app-height);
   border-radius: 0;
-  aspect-ratio: auto;
+  aspect-ratio: var(--deck-aspect-ratio);
 }
 
 @media (max-width: 1440px) and (min-width: 1181px) {
@@ -3078,6 +3084,34 @@ body.presenting .stage {
 
   .stage {
     width: 100%;
+  }
+}
+
+@media (max-width: 980px) and (min-width: 681px) {
+  .deck-toolbar {
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    overflow-x: auto;
+    overflow-y: hidden;
+    overscroll-behavior-x: contain;
+    scrollbar-width: thin;
+  }
+
+  #pageStatus,
+  .page-jump-control,
+  .slide-quick-actions {
+    order: initial;
+    flex: 0 0 auto;
+    width: auto;
+  }
+
+  .slide-quick-actions {
+    min-width: max-content;
+    flex-wrap: nowrap;
+  }
+
+  .slide-quick-actions button {
+    flex: 0 0 auto;
   }
 }
 
@@ -3277,11 +3311,6 @@ body.presenting .stage {
   .photo-list-card img {
     width: 3.35rem;
     height: 2.5rem;
-  }
-
-  .layout-pair,
-  .layout-triple {
-    grid-template-columns: 1fr;
   }
 
   .stage {
