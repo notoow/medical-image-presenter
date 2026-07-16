@@ -26,6 +26,7 @@ const state = {
   slideCaptions: [],
   slidePageLayouts: [],
   slideLayerPages: {},
+  slideLayoutOverflow: {},
   slideLayerSettings: {},
   slotTransforms: {},
   selectedSlotIndex: null,
@@ -373,6 +374,26 @@ function cloneSlideLayerPages(source = state.slideLayerPages) {
   );
 }
 
+function cloneSlideLayoutOverflow(source = state.slideLayoutOverflow) {
+  const result = {};
+
+  Object.entries(source ?? {}).forEach(([key, record]) => {
+    const nextRecord = {};
+    Object.entries(record ?? {}).forEach(([offsetText, item]) => {
+      const offset = Number(offsetText);
+      if (!Number.isInteger(offset) || offset < 0 || !item?.imageId) return;
+      nextRecord[offset] = {
+        imageId: item.imageId,
+        transform: item?.transform && typeof item.transform === "object" ? { ...item.transform } : null,
+      };
+    });
+
+    if (Object.keys(nextRecord).length > 0) result[key] = nextRecord;
+  });
+
+  return result;
+}
+
 function normalizeSlideLayerNumber(layer = state.slideLayerIndex) {
   const numericLayer = Number(layer);
   return clamp(Number.isFinite(numericLayer) ? numericLayer : DEFAULT_SLIDE_LAYER, 1, SLIDE_LAYER_COUNT);
@@ -583,6 +604,7 @@ function captureEditHistorySnapshot() {
     slideCaptions: [...state.slideCaptions],
     slidePageLayouts: state.slidePageLayouts.map((layout) => createLayoutConfig(layout.mode, layout.rows, layout.cols)),
     slideLayerPages: cloneSlideLayerPages(),
+    slideLayoutOverflow: cloneSlideLayoutOverflow(),
     slideLayerSettings: cloneSlideLayerSettings(),
     slotTransforms: cloneSlotTransforms(),
     selectedSlotIndex: state.selectedSlotIndex,
@@ -631,6 +653,7 @@ function restoreEditHistorySnapshot(snapshot) {
       createLayoutConfig(layout.mode, layout.rows, layout.cols),
     );
     state.slideLayerPages = cloneSlideLayerPages(snapshot.slideLayerPages);
+    state.slideLayoutOverflow = cloneSlideLayoutOverflow(snapshot.slideLayoutOverflow);
     state.slideLayerSettings = cloneSlideLayerSettings(snapshot.slideLayerSettings);
     state.slotTransforms = cloneSlotTransforms(snapshot.slotTransforms);
     state.selectedSlotIndex = snapshot.selectedSlotIndex;
@@ -764,6 +787,201 @@ function parseSlideLayerKey(key) {
   if (!Number.isInteger(page) || page <= 0) return null;
   if (!Number.isInteger(layer) || layer < 1 || layer > SLIDE_LAYER_COUNT || layer === DEFAULT_SLIDE_LAYER) return null;
   return { page, layer };
+}
+
+function getSlideLayoutOverflowKey(page, layer) {
+  return `${Number(page)}:${normalizeSlideLayerNumber(layer)}`;
+}
+
+function parseSlideLayoutOverflowKey(key) {
+  const [pageText, layerText] = String(key).split(":");
+  const page = Number(pageText);
+  const layer = Number(layerText);
+  if (!Number.isInteger(page) || page <= 0) return null;
+  if (!Number.isInteger(layer) || layer < 1 || layer > SLIDE_LAYER_COUNT) return null;
+  return { page, layer };
+}
+
+function ensureSlideLayoutOverflowStore() {
+  if (
+    !state.slideLayoutOverflow ||
+    typeof state.slideLayoutOverflow !== "object" ||
+    Array.isArray(state.slideLayoutOverflow)
+  ) {
+    state.slideLayoutOverflow = {};
+  }
+  return state.slideLayoutOverflow;
+}
+
+function normalizeSlideLayoutOverflowRecord(record) {
+  const normalized = {};
+  Object.entries(record ?? {}).forEach(([offsetText, item]) => {
+    const offset = Number(offsetText);
+    if (!Number.isInteger(offset) || offset < 0 || !item?.imageId) return;
+    normalized[offset] = {
+      imageId: item.imageId,
+      transform: item?.transform && typeof item.transform === "object" ? { ...item.transform } : null,
+    };
+  });
+  return normalized;
+}
+
+function getSlideLayoutOverflowRecord(page, layer, { create = false } = {}) {
+  const pageNumber = Number(page);
+  const layerNumber = normalizeSlideLayerNumber(layer);
+  if (!Number.isInteger(pageNumber) || pageNumber <= 0) return null;
+
+  const store = ensureSlideLayoutOverflowStore();
+  const key = getSlideLayoutOverflowKey(pageNumber, layerNumber);
+  const normalized = normalizeSlideLayoutOverflowRecord(store[key]);
+  if (Object.keys(normalized).length === 0 && !create) {
+    delete store[key];
+    return null;
+  }
+
+  store[key] = normalized;
+  return store[key];
+}
+
+function stashSlideLayoutOverflowSlots(page, layer, slots, transforms, startOffset) {
+  const candidates = slots
+    .map((imageId, index) => ({ imageId, offset: Number(startOffset) + index, transform: transforms?.[index] ?? null }))
+    .filter(({ imageId, offset }) => Boolean(imageId) && Number.isInteger(offset) && offset >= 0);
+  if (candidates.length === 0) return 0;
+
+  const record = getSlideLayoutOverflowRecord(page, layer, { create: true });
+  if (!record) return 0;
+  candidates.forEach(({ imageId, offset, transform }) => {
+    record[offset] = {
+      imageId,
+      transform: transform && typeof transform === "object" ? { ...transform } : null,
+    };
+  });
+  return candidates.length;
+}
+
+function restoreSlideLayoutOverflowSlots(page, layer, slots, transforms) {
+  const record = getSlideLayoutOverflowRecord(page, layer);
+  if (!record) return 0;
+
+  const normalizedLayer = normalizeSlideLayerNumber(layer);
+  let restoredCount = 0;
+  Object.entries(record)
+    .sort(([left], [right]) => Number(left) - Number(right))
+    .forEach(([offsetText, item]) => {
+      const offset = Number(offsetText);
+      const image = getImageById(item?.imageId);
+      if (
+        !Number.isInteger(offset) ||
+        offset < 0 ||
+        offset >= slots.length ||
+        slots[offset] ||
+        !image ||
+        getImageLayer(image) !== normalizedLayer
+      ) {
+        return;
+      }
+
+      slots[offset] = item.imageId;
+      transforms[offset] = item?.transform && typeof item.transform === "object" ? { ...item.transform } : null;
+      delete record[offset];
+      restoredCount += 1;
+    });
+
+  if (Object.keys(record).length === 0) {
+    delete ensureSlideLayoutOverflowStore()[getSlideLayoutOverflowKey(page, normalizedLayer)];
+  }
+
+  return restoredCount;
+}
+
+function clearSlideLayoutOverflow(page, layer = null) {
+  const pageNumber = Number(page);
+  if (!Number.isInteger(pageNumber) || pageNumber <= 0) return false;
+
+  const store = ensureSlideLayoutOverflowStore();
+  let changed = false;
+  Object.keys(store).forEach((key) => {
+    const parsed = parseSlideLayoutOverflowKey(key);
+    if (!parsed || parsed.page !== pageNumber) return;
+    if (layer !== null && parsed.layer !== normalizeSlideLayerNumber(layer)) return;
+    delete store[key];
+    changed = true;
+  });
+  return changed;
+}
+
+function clearSlideLayoutOverflowForLayer(layer) {
+  const normalizedLayer = normalizeSlideLayerNumber(layer);
+  const store = ensureSlideLayoutOverflowStore();
+  let changed = false;
+  Object.keys(store).forEach((key) => {
+    const parsed = parseSlideLayoutOverflowKey(key);
+    if (!parsed || parsed.layer !== normalizedLayer) return;
+    delete store[key];
+    changed = true;
+  });
+  return changed;
+}
+
+function removeImageFromSlideLayoutOverflow(imageId) {
+  if (!imageId) return false;
+  const store = ensureSlideLayoutOverflowStore();
+  let changed = false;
+  Object.entries(store).forEach(([key, record]) => {
+    const normalized = normalizeSlideLayoutOverflowRecord(record);
+    Object.entries(normalized).forEach(([offset, item]) => {
+      if (item.imageId !== imageId) return;
+      delete normalized[offset];
+      changed = true;
+    });
+    if (Object.keys(normalized).length > 0) store[key] = normalized;
+    else delete store[key];
+  });
+  return changed;
+}
+
+function takeSlideLayoutOverflowPlacement(imageId, slotIndex) {
+  if (!imageId) return false;
+  const location = getSlotLocation(slotIndex);
+  if (!location) return false;
+
+  const record = getSlideLayoutOverflowRecord(location.page, location.layer);
+  if (!record) return false;
+
+  const matchingOffsets = Object.entries(record)
+    .filter(([, item]) => item?.imageId === imageId)
+    .map(([offsetText]) => Number(offsetText))
+    .filter((offset) => Number.isInteger(offset));
+  if (matchingOffsets.length === 0) return false;
+
+  const [closestOffset] = matchingOffsets.sort((left, right) => {
+    const leftDistance = Math.abs(left - location.offset);
+    const rightDistance = Math.abs(right - location.offset);
+    return leftDistance - rightDistance || left - right;
+  });
+  delete record[closestOffset];
+
+  if (Object.keys(record).length === 0) {
+    delete ensureSlideLayoutOverflowStore()[getSlideLayoutOverflowKey(location.page, location.layer)];
+  }
+
+  return true;
+}
+
+function getSlideLayoutOverflowPlacements() {
+  const placements = new Map();
+  Object.entries(ensureSlideLayoutOverflowStore()).forEach(([key, record]) => {
+    const parsed = parseSlideLayoutOverflowKey(key);
+    if (!parsed) return;
+    Object.entries(normalizeSlideLayoutOverflowRecord(record)).forEach(([offsetText, item]) => {
+      const offset = Number(offsetText);
+      const list = placements.get(item.imageId) ?? [];
+      list.push({ page: parsed.page, layer: parsed.layer, slot: offset + 1 });
+      placements.set(item.imageId, list);
+    });
+  });
+  return placements;
 }
 
 function getLayerSlotIndex(page, layer, offset) {
@@ -927,8 +1145,22 @@ function remapSlideLayerPages(mapper) {
     nextTransforms[getLayerSlotIndex(next.page, layerSlot.layer, layerSlot.offset)] = transform;
   });
 
+  const nextOverflow = {};
+  Object.entries(ensureSlideLayoutOverflowStore()).forEach(([key, record]) => {
+    const parsed = parseSlideLayoutOverflowKey(key);
+    if (!parsed) return;
+    const next = mapper(parsed.page, parsed.layer);
+    if (!next || !Number.isInteger(next.page) || next.page <= 0) return;
+    const nextKey = getSlideLayoutOverflowKey(next.page, parsed.layer);
+    nextOverflow[nextKey] = {
+      ...(nextOverflow[nextKey] ?? {}),
+      ...normalizeSlideLayoutOverflowRecord(record),
+    };
+  });
+
   state.slideLayerPages = nextLayerPages;
   state.slotTransforms = nextTransforms;
+  state.slideLayoutOverflow = nextOverflow;
 }
 
 function copySlideLayerPages(sourcePage, targetPage) {
@@ -946,6 +1178,13 @@ function copySlideLayerPages(sourcePage, targetPage) {
     const layerSlot = parseLayerSlotIndex(Number(key));
     if (!layerSlot || layerSlot.page !== sourcePage) return;
     state.slotTransforms[getLayerSlotIndex(targetPage, layerSlot.layer, layerSlot.offset)] = { ...transform };
+  });
+
+  Object.entries(ensureSlideLayoutOverflowStore()).forEach(([key, record]) => {
+    const parsed = parseSlideLayoutOverflowKey(key);
+    if (!parsed || parsed.page !== sourcePage) return;
+    state.slideLayoutOverflow[getSlideLayoutOverflowKey(targetPage, parsed.layer)] =
+      normalizeSlideLayoutOverflowRecord(record);
   });
 }
 
@@ -1120,12 +1359,30 @@ function hasSlidePageContent(page) {
   return Boolean(page?.slots?.some(Boolean) || page?.caption?.trim());
 }
 
+function hasSlidePageContentInAnyLayer(page) {
+  if (hasSlidePageContent(page)) return true;
+  const pageNumber = Number(page?.pageIndex);
+  if (!Number.isInteger(pageNumber) || pageNumber <= 0) return false;
+
+  const hasLayerContent = Object.entries(ensureSlideLayerPagesStore()).some(([key, record]) => {
+    const parsed = parseSlideLayerKey(key);
+    return parsed?.page === pageNumber && hasSlidePageContent(record);
+  });
+  if (hasLayerContent) return true;
+
+  return Object.entries(ensureSlideLayoutOverflowStore()).some(([key, record]) => {
+    const parsed = parseSlideLayoutOverflowKey(key);
+    return parsed?.page === pageNumber && Object.keys(normalizeSlideLayoutOverflowRecord(record)).length > 0;
+  });
+}
+
 function trimTrailingEmptySlidePages() {
   const pages = getSlidePages();
+  const originalPageCount = pages.length;
 
   while (pages.length > 0) {
     const lastPage = pages[pages.length - 1];
-    if (hasSlidePageContent(lastPage)) break;
+    if (hasSlidePageContentInAnyLayer(lastPage)) break;
     pages.pop();
   }
 
@@ -1137,6 +1394,9 @@ function trimTrailingEmptySlidePages() {
   state.slideSlots = state.slideSlots.slice(0, nextSlotLength);
   normalizeSlideCaptions(pages.length);
   rebuildSlotTransformsFromPages(pages);
+  if (pages.length < originalPageCount) {
+    remapSlideLayerPages((layerPage) => (layerPage <= pages.length ? { page: layerPage } : null));
+  }
   markSlideSlotsDirty();
   markLayoutDirty();
 }
@@ -1224,6 +1484,16 @@ function migrateImageLayerOwnership() {
     if (!parsed || !Array.isArray(record?.slots)) return;
     record.slots = record.slots.map((imageId) => ensureOwnedImage(imageId, parsed.layer));
   });
+  Object.entries(ensureSlideLayoutOverflowStore()).forEach(([key, record]) => {
+    const parsed = parseSlideLayoutOverflowKey(key);
+    if (!parsed) return;
+    const normalized = normalizeSlideLayoutOverflowRecord(record);
+    Object.values(normalized).forEach((item) => {
+      item.imageId = ensureOwnedImage(item.imageId, parsed.layer);
+    });
+    if (Object.keys(normalized).length > 0) state.slideLayoutOverflow[key] = normalized;
+    else delete state.slideLayoutOverflow[key];
+  });
 
   if (changed) {
     markImagesDirty();
@@ -1249,6 +1519,35 @@ function getUsedCounts() {
   });
   usedCountsCacheVersion = slideSlotsVersion;
   return usedCountsCache;
+}
+
+function getPhotoPlacementCounts(
+  usedCounts = getUsedCounts(),
+  overflowPlacements = getSlideLayoutOverflowPlacements(),
+) {
+  const counts = new Map(usedCounts);
+  overflowPlacements.forEach((placements, imageId) => {
+    if (!Array.isArray(placements) || placements.length === 0) return;
+    counts.set(imageId, (counts.get(imageId) ?? 0) + placements.length);
+  });
+  return counts;
+}
+
+function getCurrentPagePhotoIds(overflowPlacements = getSlideLayoutOverflowPlacements()) {
+  const currentLayer = getActiveSlideLayer();
+  const imageIds = new Set(getCurrentPageSlotMeta().slots.filter(Boolean));
+
+  overflowPlacements.forEach((placements, imageId) => {
+    if (
+      placements.some(
+        (placement) => placement.page === state.pageIndex && placement.layer === currentLayer,
+      )
+    ) {
+      imageIds.add(imageId);
+    }
+  });
+
+  return imageIds;
 }
 
 function getImagePlacements() {
@@ -1359,6 +1658,29 @@ function ensureSlideSlots() {
       slots: normalized.slots,
       caption: normalized.caption,
     };
+  });
+
+  const pageCount = getSlidePageCount();
+  Object.entries(ensureSlideLayoutOverflowStore()).forEach(([key, record]) => {
+    const parsed = parseSlideLayoutOverflowKey(key);
+    if (!parsed || parsed.page > pageCount) {
+      delete state.slideLayoutOverflow[key];
+      changed = true;
+      return;
+    }
+
+    const normalized = normalizeSlideLayoutOverflowRecord(record);
+    Object.entries(normalized).forEach(([offset, item]) => {
+      const image = imageByIdIndex.get(item.imageId);
+      if (image && getImageLayer(image) === parsed.layer) return;
+      delete normalized[offset];
+      changed = true;
+    });
+    if (Object.keys(normalized).length > 0) state.slideLayoutOverflow[key] = normalized;
+    else {
+      delete state.slideLayoutOverflow[key];
+      if (Object.keys(record ?? {}).length > 0) changed = true;
+    }
   });
 
   if (changed) {
@@ -2229,10 +2551,17 @@ function updatePhotoFilterUi() {
   }
 }
 
-function updatePhotoFilterCounts(usedCounts = getUsedCounts()) {
+function updatePhotoFilterCounts(
+  usedCounts = getUsedCounts(),
+  overflowPlacements = getSlideLayoutOverflowPlacements(),
+) {
   const layerImages = getImagesForLayer();
-  const currentCount = new Set(getCurrentPageSlotMeta().slots.filter(Boolean)).size;
-  const placedCount = layerImages.reduce((count, image) => count + ((usedCounts.get(image.id) ?? 0) > 0 ? 1 : 0), 0);
+  const placementCounts = getPhotoPlacementCounts(usedCounts, overflowPlacements);
+  const currentCount = getCurrentPagePhotoIds(overflowPlacements).size;
+  const placedCount = layerImages.reduce(
+    (count, image) => count + ((placementCounts.get(image.id) ?? 0) > 0 ? 1 : 0),
+    0,
+  );
   const labels = {
     all: `전체 ${layerImages.length}`,
     current: `현재 ${currentCount}`,
@@ -2294,17 +2623,18 @@ function resetPhotoFilters() {
   showToast("사진 검색과 필터를 초기화했습니다.");
 }
 
-function getFilteredImages(usedCounts = getUsedCounts()) {
+function getFilteredImages(
+  usedCounts = getUsedCounts(),
+  overflowPlacements = getSlideLayoutOverflowPlacements(),
+) {
   const query = state.photoSearchQuery.trim().toLocaleLowerCase("ko-KR");
-  const currentPageImageIds =
-    state.photoFilterMode === "current"
-      ? new Set(getCurrentPageSlotMeta().slots.filter(Boolean))
-      : null;
+  const placementCounts = getPhotoPlacementCounts(usedCounts, overflowPlacements);
+  const currentPageImageIds = state.photoFilterMode === "current" ? getCurrentPagePhotoIds(overflowPlacements) : null;
   return getImagesForLayer().filter((image) => {
-    const usedCount = usedCounts.get(image.id) ?? 0;
+    const placementCount = placementCounts.get(image.id) ?? 0;
     if (state.photoFilterMode === "current" && !currentPageImageIds?.has(image.id)) return false;
-    if (state.photoFilterMode === "placed" && usedCount === 0) return false;
-    if (state.photoFilterMode === "unplaced" && usedCount > 0) return false;
+    if (state.photoFilterMode === "placed" && placementCount === 0) return false;
+    if (state.photoFilterMode === "unplaced" && placementCount > 0) return false;
     if (!query) return true;
     return image.name.toLocaleLowerCase("ko-KR").includes(query);
   });
@@ -2583,6 +2913,7 @@ function goToPage(nextPage, { preserveSlideLayerAnchor = true, focusThumbnail = 
   }
   if (state.pageIndex !== previousPage) state.selectedSlotIndex = null;
   render({ refreshPhotoList: false });
+  renderPhotoList();
   if (focusThumbnail) focusActiveThumbnail({ pulse: true });
   if (presentationPlaybackMode === "autoplay" && isPresenting()) {
     scheduleAutoplayAdvance();
@@ -3045,7 +3376,8 @@ function getImageFiles(fileList) {
 }
 
 function getDuplicateKey(item) {
-  return `${item.name}::${item.size}`;
+  const modifiedAt = Number(item?.modifiedAt ?? item?.lastModified);
+  return `${item?.name ?? ""}::${Number(item?.size) || 0}::${Number.isFinite(modifiedAt) ? modifiedAt : ""}`;
 }
 
 function formatBytes(bytes) {
@@ -3149,7 +3481,11 @@ async function loadImageFiles(fileList, { targetSlotIndex = null } = {}) {
       state.images = [...state.images, ...addedImages];
       markImagesDirty();
     }
-    const placement = autoPlaceUploadedImages(placementImageIds, { layer: uploadLayer, targetSlotIndex });
+    const placement = autoPlaceUploadedImages(placementImageIds, {
+      layer: uploadLayer,
+      targetSlotIndex,
+      replaceTargetSlot: targetSlotIndex !== null && targetSlotIndex !== undefined && Number.isFinite(Number(targetSlotIndex)),
+    });
     const placedLocation = Number.isFinite(placement.firstSlotIndex)
       ? getSlotLocation(placement.firstSlotIndex)
       : null;
@@ -3164,7 +3500,11 @@ async function loadImageFiles(fileList, { targetSlotIndex = null } = {}) {
     render();
     warmPreviewCache(addedImages);
     queuePersistAssets();
-    if (placement.filledEmptyCount > 0 && placement.appendedCount > 0) {
+    if (placement.replacedTargetCount > 0 && placement.appendedCount > 0) {
+      showToast(`놓은 칸을 바꾸고 빈칸 ${placement.filledEmptyCount}곳을 채운 뒤 ${placement.appendedCount}장을 이어 배치했습니다.`);
+    } else if (placement.replacedTargetCount > 0) {
+      showToast("놓은 칸의 사진을 바꿨습니다.");
+    } else if (placement.filledEmptyCount > 0 && placement.appendedCount > 0) {
       showToast(`빈칸 ${placement.filledEmptyCount}곳을 먼저 채우고 ${placement.appendedCount}장을 이어 배치했습니다.`);
     } else if (reusedCount > 0 && addedImages.length === 0) {
       showToast(`기존 사진 ${reusedCount}장을 현재 레이어의 빈칸에 배치했습니다.`);
@@ -3186,7 +3526,10 @@ function hasDraggedFiles(event) {
 }
 
 function getStageSlotIndexAtPoint(clientX, clientY) {
+  const hadFileDropOverlay = document.body.classList.contains("is-file-dragging");
+  if (hadFileDropOverlay) document.body.classList.remove("is-file-dragging");
   const elements = document.elementsFromPoint(clientX, clientY);
+  if (hadFileDropOverlay) document.body.classList.add("is-file-dragging");
   for (const element of elements) {
     const slot = element instanceof Element ? element.closest("[data-slot-index]") : null;
     if (!(slot instanceof HTMLElement) || !els.stage?.contains(slot)) continue;
@@ -4108,9 +4451,32 @@ function applyLayoutToPage(page, mode, rows, cols, { layer = null } = {}) {
       nextPageSize > previousPageSize
         ? [...layerPage.slots, ...Array(nextPageSize - previousPageSize).fill(null)]
         : layerPage.slots.slice(0, nextPageSize);
+    const nextTransforms = Array.from({ length: Math.max(nextPageSize, previousPageSize) }, (_, offset) => {
+      const transform = state.slotTransforms[getLayerSlotIndex(page, activeLayer, offset)];
+      return transform ? { ...transform } : null;
+    });
+    const stashedCount =
+      nextPageSize < previousPageSize
+        ? stashSlideLayoutOverflowSlots(
+            page,
+            activeLayer,
+            layerPage.slots.slice(nextPageSize),
+            nextTransforms.slice(nextPageSize, previousPageSize),
+            nextPageSize,
+          )
+        : 0;
+    const restoredCount =
+      nextPageSize > previousPageSize
+        ? restoreSlideLayoutOverflowSlots(page, activeLayer, nextSlots, nextTransforms)
+        : 0;
 
     for (let offset = nextPageSize; offset < previousPageSize; offset += 1) {
       delete state.slotTransforms[getLayerSlotIndex(page, activeLayer, offset)];
+    }
+    for (let offset = previousPageSize; offset < nextPageSize; offset += 1) {
+      const slotIndex = getLayerSlotIndex(page, activeLayer, offset);
+      if (nextTransforms[offset]) state.slotTransforms[slotIndex] = { ...nextTransforms[offset] };
+      else delete state.slotTransforms[slotIndex];
     }
 
     state.slideLayerPages[getSlideLayerKey(page, activeLayer)] = {
@@ -4132,6 +4498,11 @@ function applyLayoutToPage(page, mode, rows, cols, { layer = null } = {}) {
     markLayoutDirty();
     if (page === state.pageIndex) state.slideLayerIndex = activeLayer;
     render();
+    if (stashedCount > 0) {
+      showToast(`사진 ${stashedCount}장을 분할 보관했습니다. 칸을 다시 늘리면 원래 위치로 복원됩니다.`);
+    } else if (restoredCount > 0) {
+      showToast(`분할 보관 사진 ${restoredCount}장을 원래 칸에 복원했습니다.`);
+    }
     return;
   }
 
@@ -4157,16 +4528,23 @@ function applyLayoutToPage(page, mode, rows, cols, { layer = null } = {}) {
       : null;
   const nextPageSize = getPageSizeForLayout(nextLayout);
   const currentPageSize = targetPage.slots.length;
+  let stashedCount = 0;
+  let restoredCount = 0;
 
   if (nextPageSize > currentPageSize) {
     targetPage.slots.push(...Array(nextPageSize - currentPageSize).fill(null));
     targetPage.transforms.push(...Array(nextPageSize - currentPageSize).fill(null));
+    restoredCount = restoreSlideLayoutOverflowSlots(page, DEFAULT_SLIDE_LAYER, targetPage.slots, targetPage.transforms);
   } else if (nextPageSize < currentPageSize) {
+    stashedCount = stashSlideLayoutOverflowSlots(
+      page,
+      DEFAULT_SLIDE_LAYER,
+      targetPage.slots.slice(nextPageSize),
+      targetPage.transforms.slice(nextPageSize),
+      nextPageSize,
+    );
     targetPage.slots = targetPage.slots.slice(0, nextPageSize);
     targetPage.transforms = targetPage.transforms.slice(0, nextPageSize);
-    while (pages.length > page && !hasSlidePageContent(pages[pages.length - 1])) {
-      pages.pop();
-    }
   }
 
   targetPage.layout = nextLayout;
@@ -4205,6 +4583,11 @@ function applyLayoutToPage(page, mode, rows, cols, { layer = null } = {}) {
   markLayoutDirty();
   normalizeSlideCaptions();
   render();
+  if (stashedCount > 0) {
+    showToast(`사진 ${stashedCount}장을 분할 보관했습니다. 칸을 다시 늘리면 원래 위치로 복원됩니다.`);
+  } else if (restoredCount > 0) {
+    showToast(`분할 보관 사진 ${restoredCount}장을 원래 칸에 복원했습니다.`);
+  }
 }
 
 function setGrid(rows, cols, mode = "custom", page = state.pageIndex, options = {}) {
@@ -4297,6 +4680,7 @@ function setSlot(slotIndex, imageId) {
 
   beginEditHistoryAction();
   if (!writeSlotImageId(normalizedSlotIndex, imageId)) return;
+  if (imageId) takeSlideLayoutOverflowPlacement(imageId, normalizedSlotIndex);
   if (!imageId) delete state.slotTransforms[normalizedSlotIndex];
   markSlideSlotsDirty();
   if (imageId) state.selectedSlotIndex = normalizedSlotIndex;
@@ -4400,12 +4784,16 @@ function appendSlidePageForLayer(layer, preferredLayout = getDefaultLayoutConfig
   return Array.from({ length: targetPageSize }, (_, offset) => getLayerSlotIndex(page, normalizedLayer, offset));
 }
 
-function autoPlaceUploadedImages(imageIds, { layer = getActiveSlideLayer(), targetSlotIndex = null } = {}) {
+function autoPlaceUploadedImages(
+  imageIds,
+  { layer = getActiveSlideLayer(), targetSlotIndex = null, replaceTargetSlot = false } = {},
+) {
   if (!Array.isArray(imageIds) || imageIds.length === 0) {
     return {
       firstSlotIndex: null,
       filledEmptyCount: 0,
       appendedCount: 0,
+      replacedTargetCount: 0,
     };
   }
 
@@ -4431,12 +4819,33 @@ function autoPlaceUploadedImages(imageIds, { layer = getActiveSlideLayer(), targ
   let firstSlotIndex = null;
   let filledEmptyCount = 0;
   let appendedCount = 0;
+  let replacedTargetCount = 0;
   const remainingImageIds = [...imageIds];
+
+  const normalizedTargetSlotIndex = normalizeSlotIndex(targetSlotIndex);
+  const targetLocation =
+    normalizedTargetSlotIndex === null ? null : getSlotLocation(normalizedTargetSlotIndex);
+  if (
+    replaceTargetSlot &&
+    targetLocation?.layer === normalizedLayer &&
+    remainingImageIds.length > 0
+  ) {
+    const imageId = remainingImageIds.shift();
+    const wasFilled = Boolean(getSlotImageId(normalizedTargetSlotIndex));
+    writeSlotImageId(normalizedTargetSlotIndex, imageId);
+    takeSlideLayoutOverflowPlacement(imageId, normalizedTargetSlotIndex);
+    const targetEmptySlotPosition = emptySlotIndices.indexOf(normalizedTargetSlotIndex);
+    if (targetEmptySlotPosition >= 0) emptySlotIndices.splice(targetEmptySlotPosition, 1);
+    firstSlotIndex = normalizedTargetSlotIndex;
+    if (wasFilled) replacedTargetCount = 1;
+    else filledEmptyCount = 1;
+  }
 
   while (emptySlotIndices.length > 0 && remainingImageIds.length > 0) {
     const slotIndex = emptySlotIndices.shift();
     const imageId = remainingImageIds.shift();
     writeSlotImageId(slotIndex, imageId);
+    takeSlideLayoutOverflowPlacement(imageId, slotIndex);
     if (!Number.isFinite(firstSlotIndex)) firstSlotIndex = slotIndex;
     filledEmptyCount += 1;
   }
@@ -4450,6 +4859,7 @@ function autoPlaceUploadedImages(imageIds, { layer = getActiveSlideLayer(), targ
       if (remainingImageIds.length === 0) break;
       const imageId = remainingImageIds.shift();
       writeSlotImageId(slotIndex, imageId);
+      takeSlideLayoutOverflowPlacement(imageId, slotIndex);
       if (!Number.isFinite(firstSlotIndex)) firstSlotIndex = slotIndex;
       appendedCount += 1;
     }
@@ -4463,6 +4873,7 @@ function autoPlaceUploadedImages(imageIds, { layer = getActiveSlideLayer(), targ
     firstSlotIndex,
     filledEmptyCount,
     appendedCount,
+    replacedTargetCount,
   };
 }
 
@@ -4486,6 +4897,7 @@ function assignImageToSlot(slotIndex, imageId, { advance = false } = {}) {
 
   beginEditHistoryAction();
   if (!writeSlotImageId(normalizedSlotIndex, imageId)) return;
+  takeSlideLayoutOverflowPlacement(imageId, normalizedSlotIndex);
   markSlideSlotsDirty();
 
   if (advance) {
@@ -4570,6 +4982,7 @@ function clearSlideSlots() {
       Object.entries(state.slotTransforms).filter(([key]) => parseLayerSlotIndex(Number(key))?.layer !== activeLayer),
     );
   }
+  clearSlideLayoutOverflowForLayer(activeLayer);
 
   markSlideSlotsDirty();
   markLayoutDirty();
@@ -4602,6 +5015,7 @@ function resetAllPhotosAndSlides() {
   state.slideCaptions = [];
   state.slidePageLayouts = [];
   state.slideLayerPages = {};
+  state.slideLayoutOverflow = {};
   state.slideLayerSettings = {};
   state.slotTransforms = {};
   state.selectedSlotIndex = null;
@@ -4742,6 +5156,26 @@ function captureSlidePageSnapshot(page = state.pageIndex) {
   if (!Number.isFinite(pageIndex) || pageIndex < 0 || pageIndex >= pages.length) return null;
 
   const sourcePage = pages[pageIndex];
+  const layerPages = Object.entries(ensureSlideLayerPagesStore())
+    .map(([key, record]) => {
+      const parsed = parseSlideLayerKey(key);
+      if (!parsed || parsed.page !== sourcePage.pageIndex) return null;
+      const normalized = normalizeLayerSlideRecord(record, sourcePage.layout);
+      return {
+        layer: parsed.layer,
+        layout: createLayoutConfig(normalized.layout.mode, normalized.layout.rows, normalized.layout.cols),
+        slots: [...normalized.slots],
+        caption: normalized.caption,
+        transforms: Array.from({ length: normalized.pageSize }, (_, offset) => {
+          const transform = state.slotTransforms[getLayerSlotIndex(sourcePage.pageIndex, parsed.layer, offset)];
+          return transform ? { ...transform } : null;
+        }),
+        overflow: normalizeSlideLayoutOverflowRecord(getSlideLayoutOverflowRecord(sourcePage.pageIndex, parsed.layer)),
+      };
+    })
+    .filter(Boolean)
+    .sort((left, right) => left.layer - right.layer);
+
   return {
     layout: createLayoutConfig(sourcePage.layout.mode, sourcePage.layout.rows, sourcePage.layout.cols),
     pageSize: sourcePage.pageSize,
@@ -4751,6 +5185,10 @@ function captureSlidePageSnapshot(page = state.pageIndex) {
       const transform = state.slotTransforms[sourcePage.start + offset];
       return transform ? { ...transform } : null;
     }),
+    overflow: normalizeSlideLayoutOverflowRecord(
+      getSlideLayoutOverflowRecord(sourcePage.pageIndex, DEFAULT_SLIDE_LAYER),
+    ),
+    layerPages,
   };
 }
 
@@ -4835,6 +5273,34 @@ function pasteSlidePageAfter(page = state.pageIndex) {
     slots: [...slideClipboard.slots],
     caption: slideClipboard.caption,
     transforms: slideClipboard.transforms.map((transform) => (transform ? { ...transform } : null)),
+    overflow: normalizeSlideLayoutOverflowRecord(slideClipboard.overflow),
+    layerPages: Array.isArray(slideClipboard.layerPages)
+      ? slideClipboard.layerPages
+          .map((layerPage) => {
+            const layer = Number(layerPage?.layer);
+            if (!Number.isInteger(layer) || layer < 1 || layer > SLIDE_LAYER_COUNT || layer === DEFAULT_SLIDE_LAYER) {
+              return null;
+            }
+            const layout = createLayoutConfig(
+              layerPage?.layout?.mode,
+              layerPage?.layout?.rows,
+              layerPage?.layout?.cols,
+            );
+            const pageSize = getPageSizeForLayout(layout);
+            return {
+              layer,
+              layout,
+              slots: Array.from({ length: pageSize }, (_, offset) => layerPage?.slots?.[offset] ?? null),
+              caption: typeof layerPage?.caption === "string" ? layerPage.caption : "",
+              transforms: Array.from({ length: pageSize }, (_, offset) => {
+                const transform = layerPage?.transforms?.[offset];
+                return transform && typeof transform === "object" ? { ...transform } : null;
+              }),
+              overflow: normalizeSlideLayoutOverflowRecord(layerPage?.overflow),
+            };
+          })
+          .filter(Boolean)
+      : [],
   };
 
   const nextPages = [...pages];
@@ -4866,6 +5332,26 @@ function pasteSlidePageAfter(page = state.pageIndex) {
     ...nextTransforms,
   };
   remapSlideLayerPages((layerPage) => (layerPage >= pageNumber + 1 ? { page: layerPage + 1 } : { page: layerPage }));
+  if (Object.keys(snapshot.overflow).length > 0) {
+    state.slideLayoutOverflow[getSlideLayoutOverflowKey(pageNumber + 1, DEFAULT_SLIDE_LAYER)] = snapshot.overflow;
+  }
+  snapshot.layerPages.forEach((layerPage) => {
+    const targetKey = getSlideLayerKey(pageNumber + 1, layerPage.layer);
+    state.slideLayerPages[targetKey] = {
+      layout: createLayoutConfig(layerPage.layout.mode, layerPage.layout.rows, layerPage.layout.cols),
+      slots: [...layerPage.slots],
+      caption: layerPage.caption,
+    };
+    layerPage.transforms.forEach((transform, offset) => {
+      const slotIndex = getLayerSlotIndex(pageNumber + 1, layerPage.layer, offset);
+      if (transform) state.slotTransforms[slotIndex] = { ...transform };
+      else delete state.slotTransforms[slotIndex];
+    });
+    clearSlideLayoutOverflow(pageNumber + 1, layerPage.layer);
+    if (Object.keys(layerPage.overflow).length > 0) {
+      state.slideLayoutOverflow[getSlideLayoutOverflowKey(pageNumber + 1, layerPage.layer)] = layerPage.overflow;
+    }
+  });
 
   markSlideSlotsDirty();
   markLayoutDirty();
@@ -4875,12 +5361,17 @@ function pasteSlidePageAfter(page = state.pageIndex) {
   showToast("복사한 슬라이드를 뒤에 붙여넣었습니다.");
 }
 
-function clearSlidePage(page = state.pageIndex) {
-  if (Number(page) === state.pageIndex && !isDefaultSlideLayer()) {
-    const pageMeta = getCurrentPageSlotMeta();
+function clearSlidePage(page = state.pageIndex, { layer = getActiveSlideLayer() } = {}) {
+  const targetPage = Number(page);
+  if (!Number.isInteger(targetPage) || targetPage <= 0) return;
+
+  const targetLayer = normalizeSlideLayerNumber(layer);
+  if (targetLayer !== DEFAULT_SLIDE_LAYER) {
+    const layerPage = getLayerSlidePage(targetPage, targetLayer);
+    if (!layerPage) return;
     beginEditHistoryAction();
     let changed = false;
-    pageMeta.slotIndices.forEach((slotIndex) => {
+    Array.from({ length: layerPage.pageSize }, (_, offset) => getLayerSlotIndex(targetPage, targetLayer, offset)).forEach((slotIndex) => {
       if (getSlotImageId(slotIndex)) {
         writeSlotImageId(slotIndex, null);
         changed = true;
@@ -4890,15 +5381,19 @@ function clearSlidePage(page = state.pageIndex) {
         changed = true;
       }
     });
-    if (!changed) return;
-    state.selectedSlotIndex = null;
+    const clearedOverflow = clearSlideLayoutOverflow(targetPage, targetLayer);
+    if (!changed && !clearedOverflow) return;
+    const selectedLocation = getSlotLocation(state.selectedSlotIndex);
+    if (selectedLocation?.page === targetPage && selectedLocation.layer === targetLayer) {
+      state.selectedSlotIndex = null;
+    }
     markSlideSlotsDirty();
     render();
-    showToast("현재 레이어의 사진을 비웠습니다.");
+    showToast(`${targetLayer}번 레이어의 사진을 비웠습니다.`);
     return;
   }
 
-  const pageMeta = getSlidePages().find((entry) => entry.pageIndex === Number(page));
+  const pageMeta = getSlidePages().find((entry) => entry.pageIndex === targetPage);
   if (!pageMeta) return;
 
   beginEditHistoryAction();
@@ -4915,8 +5410,9 @@ function clearSlidePage(page = state.pageIndex) {
       changed = true;
     }
   }
+  const clearedOverflow = clearSlideLayoutOverflow(page, DEFAULT_SLIDE_LAYER);
 
-  if (!changed) return;
+  if (!changed && !clearedOverflow) return;
 
   if (Number.isFinite(state.selectedSlotIndex)) {
     const selectedSlotIndex = Number(state.selectedSlotIndex);
@@ -5145,12 +5641,11 @@ function removeImageFromLibrary(imageId) {
       slots: nextSlots,
     };
   });
+  const overflowChanged = removeImageFromSlideLayoutOverflow(imageId);
 
-  if (defaultSlotsChanged) {
+  if (defaultSlotsChanged || slotsChanged || overflowChanged) {
     markSlideSlotsDirty();
     trimTrailingEmptySlidePages();
-  } else if (slotsChanged) {
-    markSlideSlotsDirty();
   }
 
   const nextTransforms = {};
@@ -5380,9 +5875,10 @@ function renderPhotoList() {
 
   const usedCounts = getUsedCounts();
   const placements = getImagePlacements();
-  const filteredImages = getFilteredImages(usedCounts);
-  updatePhotoFilterCounts(usedCounts);
-  const currentPageImageIds = new Set(getCurrentPageSlotMeta().slots.filter(Boolean));
+  const overflowPlacements = getSlideLayoutOverflowPlacements();
+  const filteredImages = getFilteredImages(usedCounts, overflowPlacements);
+  updatePhotoFilterCounts(usedCounts, overflowPlacements);
+  const currentPageImageIds = getCurrentPagePhotoIds(overflowPlacements);
   updatePhotoFilterSummary(filteredImages.length, layerImages.length);
   const nextKey = [
     imagesVersion,
@@ -5424,16 +5920,35 @@ function renderPhotoList() {
     const usedCount = usedCounts.get(image.id) ?? 0;
     const isOnCurrentPage = currentPageImageIds.has(image.id);
     const placementList = placements.get(image.id) ?? [];
+    const overflowList = overflowPlacements.get(image.id) ?? [];
     const firstPlacement = placementList[0];
+    const firstOverflow = overflowList[0];
     const placementText =
       placementList.length === 0
         ? "미배치"
         : placementList.length === 1
           ? `${firstPlacement.page}페이지 ${firstPlacement.layer ?? DEFAULT_SLIDE_LAYER}번 레이어 ${firstPlacement.slot}칸`
           : `${firstPlacement.page}페이지 ${firstPlacement.layer ?? DEFAULT_SLIDE_LAYER}번 레이어 ${firstPlacement.slot}칸 외 ${placementList.length - 1}곳`;
+    const overflowText =
+      overflowList.length === 0
+        ? ""
+        : ` · 분할 보관 ${overflowList.length}`;
+    const storedPlacementText =
+      overflowList.length === 0
+        ? ""
+        : overflowList.length === 1
+          ? `${firstOverflow.page}페이지 ${firstOverflow.layer}번 레이어 ${firstOverflow.slot}칸에서 분할 보관`
+          : `${firstOverflow.page}페이지 ${firstOverflow.layer}번 레이어 ${firstOverflow.slot}칸 외 ${overflowList.length - 1}곳에서 분할 보관`;
+    const photoStatus =
+      usedCount > 0
+        ? `${isOnCurrentPage ? "현재 슬라이드 · " : ""}슬라이드 포함 ${usedCount} · ${placementText}${overflowText}`
+        : overflowList.length > 0
+          ? `${isOnCurrentPage ? "현재 슬라이드 · " : ""}${storedPlacementText}`
+          : "미배치";
+    const statusBadge = usedCount > 0 ? "배치됨" : overflowList.length > 0 ? "보관됨" : "미배치";
     return `
       <article
-        class="photo-list-card ${usedCount > 0 ? "is-in-slide" : "is-unused"} ${selectedSlotImageId === image.id ? "is-active" : ""} ${isOnCurrentPage ? "is-on-current-slide" : ""}"
+        class="photo-list-card ${usedCount > 0 ? "is-in-slide" : "is-unused"} ${overflowList.length > 0 ? "is-layout-overflow" : ""} ${selectedSlotImageId === image.id ? "is-active" : ""} ${isOnCurrentPage ? "is-on-current-slide" : ""}"
         draggable="true"
         data-image-id="${image.id}"
         data-index="${originalIndex}"
@@ -5443,9 +5958,9 @@ function renderPhotoList() {
         <div>
           <strong>${index + 1}</strong>
           <span>${highlightSearchMatch(image.name, state.photoSearchQuery)}</span>
-          <em>${usedCount > 0 ? `${isOnCurrentPage ? "현재 슬라이드 · " : ""}슬라이드 포함 ${usedCount} · ${placementText}` : "미배치"}</em>
+          <em>${photoStatus}</em>
         </div>
-        <b>${usedCount > 0 ? "배치됨" : "미배치"}</b>
+        <b>${statusBadge}</b>
         ${isOnCurrentPage ? '<mark class="photo-list-current-badge">현재</mark>' : ""}
         <button class="photo-list-remove" type="button" data-remove-image-id="${image.id}" aria-label="${escapeHtml(image.name)} 삭제">X</button>
       </article>
@@ -5495,6 +6010,42 @@ function replaceSlideLayerSlotOrder(layer, imageIds) {
   markSlideSlotsDirty();
 }
 
+function getAdjustedImageExportEntries(layer = getActiveSlideLayer()) {
+  const normalizedLayer = normalizeSlideLayerNumber(layer);
+  const liveEntries = getSlideLayerSlotIndices(normalizedLayer)
+    .map((slotIndex) => {
+      const location = getSlotLocation(slotIndex);
+      return {
+        item: getImageById(getSlotImageId(slotIndex)),
+        slotIndex,
+        page: location?.page ?? Number.MAX_SAFE_INTEGER,
+        offset: location?.offset ?? Number.MAX_SAFE_INTEGER,
+        storedTransform: null,
+      };
+    })
+    .filter(({ item }) => Boolean(item));
+  const overflowEntries = Object.entries(ensureSlideLayoutOverflowStore()).flatMap(([key, record]) => {
+    const parsed = parseSlideLayoutOverflowKey(key);
+    if (!parsed || parsed.layer !== normalizedLayer) return [];
+    return Object.entries(normalizeSlideLayoutOverflowRecord(record)).map(([offsetText, item]) => ({
+      item: getImageById(item.imageId),
+      slotIndex: null,
+      page: parsed.page,
+      offset: Number(offsetText),
+      storedTransform: item.transform,
+    }));
+  });
+
+  return [...liveEntries, ...overflowEntries]
+    .filter(({ item }) => Boolean(item))
+    .sort(
+      (left, right) =>
+        left.page - right.page ||
+        left.offset - right.offset ||
+        Number(Boolean(left.storedTransform)) - Number(Boolean(right.storedTransform)),
+    );
+}
+
 async function downloadAdjustedImages() {
   const activeLayer = getActiveSlideLayer();
   if (getImagesForLayer(activeLayer).length === 0) {
@@ -5504,13 +6055,13 @@ async function downloadAdjustedImages() {
 
   const { brightness, contrast, saturate, hue } = state.filters;
 
-  const orderedImages = getSlideLayerSlotIndices(activeLayer)
-    .map((slotIndex) => ({ item: getImageById(getSlotImageId(slotIndex)), slotIndex }))
-    .filter(({ item }) => Boolean(item));
+  const orderedImages = getAdjustedImageExportEntries(activeLayer);
 
-  for (const [index, { item, slotIndex }] of orderedImages.entries()) {
+  for (const [index, { item, slotIndex, storedTransform }] of orderedImages.entries()) {
     const image = await imageFromDataUrl(item.url);
-    const transform = getSlotTransform(slotIndex);
+    const transform = storedTransform
+      ? { ...DEFAULT_SLOT_TRANSFORM, ...storedTransform }
+      : getSlotTransform(slotIndex);
     const cropLeftPx = Math.round(image.naturalWidth * ((state.crop.left + transform.cropLeft) / 100));
     const cropRightPx = Math.round(image.naturalWidth * ((state.crop.right + transform.cropRight) / 100));
     const cropTopPx = Math.round(image.naturalHeight * ((state.crop.top + transform.cropTop) / 100));
@@ -5836,6 +6387,8 @@ els.stage?.addEventListener("dragover", (event) => {
     const dragMode = event.dataTransfer?.getData("application/x-medical-slot-drag-mode");
     event.dataTransfer.dropEffect = dragMode === "copy" ? "copy" : "move";
   } else if (Array.from(event.dataTransfer?.types ?? []).includes("application/x-medical-presenter")) {
+    event.dataTransfer.dropEffect = "copy";
+  } else if (hasDraggedFiles(event)) {
     event.dataTransfer.dropEffect = "copy";
   }
   if (activeStageSlotDropTarget === target) return;
@@ -6844,6 +7397,7 @@ function getPresentationData() {
     slideCaptions: state.slideCaptions,
     slidePageLayouts: state.slidePageLayouts,
     slideLayerPages: state.slideLayerPages,
+    slideLayoutOverflow: cloneSlideLayoutOverflow(),
     slideLayerSettings: cloneSlideLayerSettings(),
     slideLayerIndex: state.slideLayerIndex,
     slotTransforms: state.slotTransforms,
@@ -6886,6 +7440,7 @@ function getSettingsData() {
     slideCaptions: state.slideCaptions,
     slidePageLayouts: state.slidePageLayouts,
     slideLayerPages: state.slideLayerPages,
+    slideLayoutOverflow: cloneSlideLayoutOverflow(),
     slideLayerSettings: cloneSlideLayerSettings(),
     slideLayerIndex: state.slideLayerIndex,
     slotTransforms: state.slotTransforms,
@@ -7777,6 +8332,10 @@ function applyPersistedState() {
       data.slideLayerPages && typeof data.slideLayerPages === "object"
         ? cloneSlideLayerPages(data.slideLayerPages)
         : state.slideLayerPages;
+    state.slideLayoutOverflow =
+      data.slideLayoutOverflow && typeof data.slideLayoutOverflow === "object"
+        ? cloneSlideLayoutOverflow(data.slideLayoutOverflow)
+        : state.slideLayoutOverflow;
     state.slotTransforms = data.slotTransforms ?? state.slotTransforms;
     state.selectedSlotIndex = data.selectedSlotIndex ?? state.selectedSlotIndex;
     state.layoutMode = data.layoutMode ?? state.layoutMode;
@@ -8079,6 +8638,7 @@ function createStandaloneHtml(data) {
     const LAYER_SLOT_LAYER_FACTOR = 100;
     const state = { ...data, pageIndex: 0, slideLayerIndex: DEFAULT_SLIDE_LAYER, autoplaySeconds: Number(data.autoplaySeconds ?? 3) || 3 };
     state.slideLayerPages = state.slideLayerPages && typeof state.slideLayerPages === "object" && !Array.isArray(state.slideLayerPages) ? state.slideLayerPages : {};
+    state.slideLayoutOverflow = state.slideLayoutOverflow && typeof state.slideLayoutOverflow === "object" && !Array.isArray(state.slideLayoutOverflow) ? state.slideLayoutOverflow : {};
     state.slideLayerSettings = state.slideLayerSettings && typeof state.slideLayerSettings === "object" && !Array.isArray(state.slideLayerSettings) ? state.slideLayerSettings : {};
     const exportSizes = { "1920x1080": { width:1920, height:1080 }, "2560x1440": { width:2560, height:1440 }, "3840x2160": { width:3840, height:2160 } };
     const exportSize = () => {
@@ -8124,6 +8684,45 @@ function createStandaloneHtml(data) {
       });
     };
     const layerKey = (page, layer) => String(Number(page)) + ":" + String(Number(layer));
+    const normalizeOverflowRecord = (record) => {
+      const next = {};
+      Object.entries(record || {}).forEach(([offsetText, item]) => {
+        const offset = Number(offsetText);
+        if (!Number.isInteger(offset) || offset < 0 || !item?.imageId) return;
+        next[offset] = { imageId:item.imageId, transform:item.transform && typeof item.transform === "object" ? { ...item.transform } : null };
+      });
+      return next;
+    };
+    const overflowRecord = (page, layer, create=false) => {
+      const key = layerKey(page, layer);
+      const normalized = normalizeOverflowRecord(state.slideLayoutOverflow[key]);
+      if (!Object.keys(normalized).length && !create) { delete state.slideLayoutOverflow[key]; return null; }
+      state.slideLayoutOverflow[key] = normalized;
+      return state.slideLayoutOverflow[key];
+    };
+    const imageMatchesLayer = (imageId, layer) => {
+      const image = state.images.find((item) => item.id === imageId);
+      const imageLayer = Math.min(Math.max(Number(image?.layer ?? DEFAULT_SLIDE_LAYER) || DEFAULT_SLIDE_LAYER,1),SLIDE_LAYER_COUNT);
+      return Boolean(image && imageLayer === layer);
+    };
+    const stashOverflow = (page, layer, slots, transforms, startOffset) => {
+      const candidates = slots.map((imageId,index)=>({ imageId, offset:Number(startOffset)+index, transform:transforms?.[index]||null })).filter((item)=>item.imageId && Number.isInteger(item.offset) && item.offset>=0);
+      if (!candidates.length) return;
+      const record = overflowRecord(page, layer, true);
+      candidates.forEach((item)=>{ record[item.offset] = { imageId:item.imageId, transform:item.transform && typeof item.transform === "object" ? { ...item.transform } : null }; });
+    };
+    const restoreOverflow = (page, layer, slots, transforms) => {
+      const record = overflowRecord(page, layer);
+      if (!record) return;
+      Object.entries(record).sort(([left],[right])=>Number(left)-Number(right)).forEach(([offsetText,item])=>{
+        const offset = Number(offsetText);
+        if (!Number.isInteger(offset) || offset < 0 || offset >= slots.length || slots[offset] || !imageMatchesLayer(item.imageId, layer)) return;
+        slots[offset] = item.imageId;
+        transforms[offset] = item.transform && typeof item.transform === "object" ? { ...item.transform } : null;
+        delete record[offset];
+      });
+      if (!Object.keys(record).length) delete state.slideLayoutOverflow[layerKey(page, layer)];
+    };
     const layerSlotIndex = (page, layer, offset) => LAYER_SLOT_BASE + Number(page) * LAYER_SLOT_PAGE_FACTOR + Number(layer) * LAYER_SLOT_LAYER_FACTOR + Number(offset);
     const parseLayerSlotIndex = (slotIndex) => {
       const raw = Number(slotIndex);
@@ -8180,8 +8779,12 @@ function createStandaloneHtml(data) {
         const layer=currentLayer();
         const target=layerPage(page, layer, { create:true });
         if(!target) return;
+        const previousSize=target.slots.length;
         const nextSize=layoutSize(next);
-        const slots=nextSize>target.slots.length ? [...target.slots, ...Array(nextSize-target.slots.length).fill(null)] : target.slots.slice(0,nextSize);
+        const slots=nextSize>previousSize ? [...target.slots, ...Array(nextSize-previousSize).fill(null)] : target.slots.slice(0,nextSize);
+        const transforms=Array.from({length:Math.max(previousSize,nextSize)},(_,offset)=>{ const transform=state.slotTransforms?.[layerSlotIndex(page,layer,offset)]; return transform ? {...transform} : null; });
+        if(nextSize<previousSize) stashOverflow(page,layer,target.slots.slice(nextSize),transforms.slice(nextSize,previousSize),nextSize);
+        if(nextSize>previousSize) restoreOverflow(page,layer,slots,transforms);
         state.slideLayerPages[layerKey(page, layer)] = { layout: next, slots, caption: target.caption };
         const nextTransforms={};
         Object.entries(state.slotTransforms||{}).forEach(([key, transform]) => {
@@ -8189,13 +8792,16 @@ function createStandaloneHtml(data) {
           if (parsed && parsed.page === page && parsed.layer === layer && parsed.offset >= nextSize) return;
           nextTransforms[key] = transform;
         });
+        for(let offset=0;offset<nextSize;offset+=1){ if(transforms[offset]) nextTransforms[layerSlotIndex(page,layer,offset)]={...transforms[offset]}; }
         state.slotTransforms=nextTransforms;
       } else if(state.pageIndex>0){
         const pages=slidePages().map((page)=>({ pageIndex:page.pageIndex,start:page.start,pageSize:page.pageSize,layout:normalizeLayout(page.layout),caption:page.caption,slots:[...page.slots],transforms:Array.from({length:page.pageSize},(_,offset)=>{ const transform=state.slotTransforms?.[page.start+offset]; return transform ? {...transform} : null; }) }));
         const target=pages[state.pageIndex-1];
         if(!target) return;
+        const currentSize=target.slots.length;
         const nextSize=layoutSize(next);
-        if(nextSize>target.slots.length){ target.slots.push(...Array(nextSize-target.slots.length).fill(null)); target.transforms.push(...Array(nextSize-target.transforms.length).fill(null)); } else if(nextSize<target.slots.length){ target.slots=target.slots.slice(0,nextSize); target.transforms=target.transforms.slice(0,nextSize); }
+        if(nextSize>currentSize){ target.slots.push(...Array(nextSize-currentSize).fill(null)); target.transforms.push(...Array(nextSize-target.transforms.length).fill(null)); restoreOverflow(state.pageIndex,DEFAULT_SLIDE_LAYER,target.slots,target.transforms); }
+        else if(nextSize<currentSize){ stashOverflow(state.pageIndex,DEFAULT_SLIDE_LAYER,target.slots.slice(nextSize),target.transforms.slice(nextSize),nextSize); target.slots=target.slots.slice(0,nextSize); target.transforms=target.transforms.slice(0,nextSize); }
         target.layout=next;
         target.pageSize=nextSize;
         state.slideSlots=pages.flatMap((page)=>page.slots);
@@ -8231,6 +8837,23 @@ function createStandaloneHtml(data) {
     function renderSlide(){ const meta=currentPageMeta(); const layout=meta.layout; const cls=layout.mode==="custom"?"custom":layout.mode; const caption=(meta.caption||"").trim(); const emptySlide = meta.slots.length > 0 && meta.slots.every((id)=>!id); const badge=\`<div class="layer-badge">\${currentLayer()} / \${SLIDE_LAYER_COUNT}</div>\`; $("stage").className="stage"; $("stage").innerHTML=\`\${badge}<div class="grid \${cls}" style="--grid-cols:\${layout.cols||2};--grid-rows:\${layout.rows||1}">\${meta.slots.map((id,offset)=>card(getImage(id),meta.slotIndices?.[offset] ?? meta.start+offset)).join("")}</div>\${!emptySlide && caption ? \`<div class="slide-caption">\${esc(caption)}</div>\` : ""}\${emptySlide && caption ? \`<div class="empty-slide-caption">\${esc(caption)}</div>\` : ""}\`; }
     function orderedImageSlots(){ const defaultSlots = (state.slideSlots?.length?state.slideSlots:state.images.map((image)=>image.id)).map((id,slotIndex)=>({ id, slotIndex })); const layerSlots = Object.entries(state.slideLayerPages||{}).flatMap(([key, record])=>{ const [page, layer] = key.split(":").map(Number); if(!Number.isInteger(page)||!Number.isInteger(layer)||layer===DEFAULT_SLIDE_LAYER) return []; const slots = Array.isArray(record?.slots) ? record.slots : []; return slots.map((id,offset)=>({ id, slotIndex: layerSlotIndex(page, layer, offset) })); }); return [...defaultSlots, ...layerSlots].map(({id,slotIndex})=>({ item:getImage(id), slotIndex })).filter(({item})=>Boolean(item)); }
     async function downloadImages(){ if(!state.images.length){ alert("먼저 사진을 넣어주세요."); return; } const ordered = orderedImageSlots(); for(const [index,{item,slotIndex}] of ordered.entries()){ const image = await imageFromUrl(item.url); const t = slotTransform(slotIndex); const c = state.crop||{left:0,right:0,top:0,bottom:0}; const cropLeftPx = Math.round(image.naturalWidth * (((c.left||0)+t.cropLeft) / 100)); const cropRightPx = Math.round(image.naturalWidth * (((c.right||0)+t.cropRight) / 100)); const cropTopPx = Math.round(image.naturalHeight * (((c.top||0)+t.cropTop) / 100)); const cropBottomPx = Math.round(image.naturalHeight * (((c.bottom||0)+t.cropBottom) / 100)); const sourceWidth = Math.max(1, image.naturalWidth - cropLeftPx - cropRightPx); const sourceHeight = Math.max(1, image.naturalHeight - cropTopPx - cropBottomPx); const canvas = document.createElement("canvas"); canvas.width = sourceWidth; canvas.height = sourceHeight; const ctx = canvas.getContext("2d"); ctx.filter = filter(); ctx.drawImage(image,cropLeftPx,cropTopPx,sourceWidth,sourceHeight,0,0,sourceWidth,sourceHeight); await new Promise((resolve)=>{ canvas.toBlob((blob)=>{ if(!blob){ resolve(); return; } const url = URL.createObjectURL(blob); const link = document.createElement("a"); link.href = url; link.download = \`\${String(index+1).padStart(3,"0")}-\${item.name.replace(/\\.[^.]+$/,"")}.png\`; document.body.append(link); link.click(); link.remove(); URL.revokeObjectURL(url); setTimeout(resolve,120); }, "image/png"); }); } }
+    const baseOrderedImageSlots = orderedImageSlots;
+    orderedImageSlots = () => {
+      const overflowSlots = Object.entries(state.slideLayoutOverflow || {}).flatMap(([key, record]) => {
+        const [page, layer] = key.split(":").map(Number);
+        if (!Number.isInteger(page) || !Number.isInteger(layer)) return [];
+        return Object.entries(normalizeOverflowRecord(record)).map(([offsetText, item]) => {
+          const offset = Number(offsetText);
+          const slotIndex = -(LAYER_SLOT_BASE + page * LAYER_SLOT_PAGE_FACTOR + layer * LAYER_SLOT_LAYER_FACTOR + offset + 1);
+          if (item.transform && typeof item.transform === "object") {
+            state.slotTransforms ||= {};
+            state.slotTransforms[slotIndex] = { ...item.transform };
+          }
+          return { item:getImage(item.imageId), slotIndex };
+        });
+      });
+      return [...baseOrderedImageSlots(), ...overflowSlots].filter(({ item }) => Boolean(item));
+    };
     function isZoomInKey(e){ return e.key==="+" || e.key==="=" || e.code==="NumpadAdd"; }
     function isZoomOutKey(e){ return e.key==="-" || e.key==="_" || e.code==="NumpadSubtract"; }
     function stopAutoplay(){ if(!autoplayTimer) return; window.clearTimeout(autoplayTimer); autoplayTimer=null; }

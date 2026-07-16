@@ -158,9 +158,8 @@ input[type="range"] {
 }
 
 body.is-file-dragging .shell {
-  filter: blur(14px) saturate(0.72) brightness(0.9);
+  filter: saturate(0.76) brightness(0.9);
   transform: scale(0.985);
-  pointer-events: none;
 }
 
 .drop-overlay {
@@ -184,6 +183,7 @@ body.is-file-dragging .shell {
 body.is-file-dragging .drop-overlay {
   opacity: 1;
   pointer-events: none;
+  backdrop-filter: none;
 }
 
 .loading-overlay {
@@ -767,6 +767,11 @@ body.is-file-dragging .drop-card {
   background: rgba(255, 253, 247, 0.72);
 }
 
+.photo-list-card.is-layout-overflow {
+  border-color: rgba(154, 116, 42, 0.42);
+  background: rgba(255, 248, 224, 0.78);
+}
+
 .photo-list-card:hover,
 .photo-list-card.is-reorder-target {
   border-color: rgba(138, 75, 45, 0.5);
@@ -849,6 +854,12 @@ body.is-file-dragging .drop-card {
 .photo-list-card.is-unused b {
   color: #43584e;
   border-color: rgba(67, 88, 78, 0.18);
+}
+
+.photo-list-card.is-layout-overflow b {
+  color: #75521d;
+  border-color: rgba(117, 82, 29, 0.22);
+  background: rgba(255, 236, 184, 0.7);
 }
 
 .photo-list-current-badge {
@@ -1434,6 +1445,8 @@ kbd {
   position: relative;
   z-index: 1;
   isolation: isolate;
+  container-type: inline-size;
+  container-name: stage-wrap;
   display: grid;
   grid-template-rows: auto minmax(0, auto) auto;
   align-content: start;
@@ -1456,6 +1469,74 @@ kbd {
   background: rgba(244, 239, 228, 0.7);
   box-shadow: 0 16px 50px rgba(18, 15, 10, 0.12);
   overflow: hidden;
+}
+
+@container stage-wrap (max-width: 47rem) {
+  .deck-toolbar {
+    display: grid;
+    grid-template-columns: auto auto minmax(0, 1fr) auto;
+    align-items: center;
+    justify-content: stretch;
+    gap: 0.4rem;
+    padding: 0.48rem;
+    overflow: visible;
+  }
+
+  #prevButton {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  #pageStatus {
+    grid-column: 2 / 4;
+    grid-row: 1;
+    min-width: 0;
+    width: 100%;
+  }
+
+  #pageStatus .status-secondary {
+    max-width: 100%;
+  }
+
+  #nextButton {
+    grid-column: 4;
+    grid-row: 1;
+  }
+
+  #undoButton {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  #redoButton {
+    grid-column: 2;
+    grid-row: 2;
+  }
+
+  .page-jump-control {
+    grid-column: 3 / -1;
+    grid-row: 2;
+    justify-self: stretch;
+    width: 100%;
+  }
+
+  .slide-quick-actions {
+    grid-column: 1 / -1;
+    grid-row: 3;
+    width: 100%;
+    min-width: 0;
+    flex: 1 1 100%;
+    justify-content: flex-start;
+    overflow-x: auto;
+    overflow-y: hidden;
+    overscroll-behavior-x: contain;
+    scroll-snap-type: x proximity;
+    padding: 0.06rem 0 0.2rem;
+  }
+
+  .slide-quick-actions button {
+    scroll-snap-align: start;
+  }
 }
 
 .deck-toolbar button {
