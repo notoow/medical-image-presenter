@@ -38,6 +38,7 @@ const state = {
   layoutMode: "pair",
   gridRows: 1,
   gridCols: 2,
+  layoutDraft: null,
   sortMode: "name-asc",
   photoSearchQuery: "",
   photoFilterMode: "all",
@@ -204,6 +205,7 @@ const els = {
   layoutTwoButton: document.querySelector("#layoutTwoButton"),
   layoutThreeButton: document.querySelector("#layoutThreeButton"),
   layoutFourButton: document.querySelector("#layoutFourButton"),
+  applyLayoutToLayerButton: document.querySelector("#applyLayoutToLayerButton"),
   applyLayoutToAllLayersButton: document.querySelector("#applyLayoutToAllLayersButton"),
   gridRows: document.querySelector("#gridRows"),
   gridCols: document.querySelector("#gridCols"),
@@ -4436,9 +4438,35 @@ function bindSlotTransform(input, output, key, suffix = "%") {
 
 function syncLayoutControls() {
   const layout = state.pageIndex > 0 ? getCurrentPageSlotMeta().layout : getPageLayout(state.pageIndex);
+  state.layoutDraft = createLayoutConfig(layout.mode, layout.rows, layout.cols);
+  syncLayoutDraftControls();
+}
+
+function syncLayoutDraftControls() {
+  const layout = state.layoutDraft ?? getDefaultLayoutConfig();
   els.gridRows.value = layout.rows;
   els.gridCols.value = layout.cols;
   els.layoutMode.value = layout.mode;
+  const presetByMode = {
+    single: els.layoutOneButton,
+    pair: els.layoutTwoButton,
+    triple: els.layoutThreeButton,
+    quad: els.layoutFourButton,
+  };
+  Object.entries(presetByMode).forEach(([mode, button]) => {
+    button?.classList.toggle("is-active", layout.mode === mode);
+    button?.setAttribute("aria-pressed", String(layout.mode === mode));
+  });
+}
+
+function setLayoutDraft(mode, rows, cols) {
+  state.layoutDraft = createLayoutConfig(mode, rows, cols);
+  syncLayoutDraftControls();
+}
+
+function getLayoutDraft() {
+  const draft = state.layoutDraft ?? (state.pageIndex > 0 ? getCurrentPageSlotMeta().layout : getDefaultLayoutConfig());
+  return createLayoutConfig(draft.mode, draft.rows, draft.cols);
 }
 
 function applyLayoutToPage(page, mode, rows, cols, { layer = null, recordHistory = true, renderAfter = true, announce = true } = {}) {
@@ -4624,9 +4652,26 @@ function setGrid(rows, cols, mode = "custom", page = state.pageIndex, options = 
   applyLayoutToPage(page, nextLayout.mode, nextLayout.rows, nextLayout.cols, options);
 }
 
-function applyCurrentLayoutToAllLayers() {
+function applyLayoutDraft(scope = "layer") {
+  const layout = getLayoutDraft();
+  if (state.pageIndex <= 0) {
+    setGrid(layout.rows, layout.cols, layout.mode, 0);
+    return;
+  }
+
+  if (scope === "layer") {
+    applyLayoutToPage(state.pageIndex, layout.mode, layout.rows, layout.cols, {
+      layer: getLayoutTargetLayer(),
+    });
+    showToast("선택한 분할을 이 레이어에 적용했습니다.");
+    return;
+  }
+
+  applyLayoutToAllLayers(layout);
+}
+
+function applyLayoutToAllLayers(layout = getLayoutDraft()) {
   if (state.pageIndex <= 0) return;
-  const layout = getCurrentPageSlotMeta().layout;
   beginEditHistoryAction();
   Array.from({ length: SLIDE_LAYER_COUNT }, (_, index) => index + 1).forEach((layer) => {
     applyLayoutToPage(state.pageIndex, layout.mode, layout.rows, layout.cols, {
@@ -4637,7 +4682,7 @@ function applyCurrentLayoutToAllLayers() {
     });
   });
   render();
-  showToast("현재 분할을 모든 레이어에 적용했습니다.");
+  showToast("선택한 분할을 전체 레이어에 적용했습니다.");
 }
 
 function setLayoutPreset(mode, page = state.pageIndex, options = {}) {
@@ -6999,30 +7044,36 @@ els.photoFilterPlacedButton?.addEventListener("click", () => setPhotoFilterMode(
 els.photoFilterUnplacedButton?.addEventListener("click", () => setPhotoFilterMode("unplaced"));
 
 els.layoutMode.addEventListener("change", () => {
-  const layer = getLayoutTargetLayer();
   if (els.layoutMode.value !== "custom") {
-    setLayoutPreset(els.layoutMode.value, state.pageIndex, { layer });
+    const preset = {
+      single: [1, 1],
+      pair: [1, 2],
+      triple: [1, 3],
+      quad: [2, 2],
+    }[els.layoutMode.value];
+    setLayoutDraft(els.layoutMode.value, preset[0], preset[1]);
     return;
   }
-  setGrid(Number(els.gridRows.value), Number(els.gridCols.value), "custom", state.pageIndex, { layer });
+  setLayoutDraft("custom", Number(els.gridRows.value), Number(els.gridCols.value));
 });
 
-els.layoutOneButton.addEventListener("click", () => setLayoutPreset("single", state.pageIndex, { layer: getLayoutTargetLayer() }));
-els.layoutTwoButton.addEventListener("click", () => setLayoutPreset("pair", state.pageIndex, { layer: getLayoutTargetLayer() }));
-els.layoutThreeButton.addEventListener("click", () => setLayoutPreset("triple", state.pageIndex, { layer: getLayoutTargetLayer() }));
-els.layoutFourButton.addEventListener("click", () => setLayoutPreset("quad", state.pageIndex, { layer: getLayoutTargetLayer() }));
-els.applyLayoutToAllLayersButton?.addEventListener("click", applyCurrentLayoutToAllLayers);
+els.layoutOneButton.addEventListener("click", () => setLayoutDraft("single", 1, 1));
+els.layoutTwoButton.addEventListener("click", () => setLayoutDraft("pair", 1, 2));
+els.layoutThreeButton.addEventListener("click", () => setLayoutDraft("triple", 1, 3));
+els.layoutFourButton.addEventListener("click", () => setLayoutDraft("quad", 2, 2));
+els.applyLayoutToLayerButton?.addEventListener("click", () => applyLayoutDraft("layer"));
+els.applyLayoutToAllLayersButton?.addEventListener("click", () => applyLayoutDraft("all"));
 els.horizontalSplitButton.addEventListener("click", () =>
-  setGrid(1, Math.max(2, Number(els.gridCols.value)), "custom", state.pageIndex, { layer: getLayoutTargetLayer() }),
+  setLayoutDraft("custom", 1, Math.max(2, Number(els.gridCols.value))),
 );
 els.verticalSplitButton.addEventListener("click", () =>
-  setGrid(Math.max(2, Number(els.gridRows.value)), 1, "custom", state.pageIndex, { layer: getLayoutTargetLayer() }),
+  setLayoutDraft("custom", Math.max(2, Number(els.gridRows.value)), 1),
 );
 els.gridRows.addEventListener("input", () =>
-  setGrid(Number(els.gridRows.value), Number(els.gridCols.value), "custom", state.pageIndex, { layer: getLayoutTargetLayer() }),
+  setLayoutDraft("custom", Number(els.gridRows.value), Number(els.gridCols.value)),
 );
 els.gridCols.addEventListener("input", () =>
-  setGrid(Number(els.gridRows.value), Number(els.gridCols.value), "custom", state.pageIndex, { layer: getLayoutTargetLayer() }),
+  setLayoutDraft("custom", Number(els.gridRows.value), Number(els.gridCols.value)),
 );
 
 els.prevButton.addEventListener("click", () => goToPage(state.pageIndex - 1));

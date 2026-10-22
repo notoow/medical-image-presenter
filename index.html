@@ -162,7 +162,11 @@
             <button id="layoutThreeButton" type="button">3분할</button>
             <button id="layoutFourButton" type="button">4분할</button>
           </div>
-          <button id="applyLayoutToAllLayersButton" class="subtle layout-all-layers" type="button">현재 분할을 모든 레이어에 적용</button>
+          <div class="layout-apply-actions" role="group" aria-label="분할 적용 범위">
+            <button id="applyLayoutToLayerButton" class="layout-apply-layer" type="button">이 레이어에 적용</button>
+            <button id="applyLayoutToAllLayersButton" class="layout-apply-all" type="button">전체 레이어에 적용</button>
+          </div>
+          <p class="layout-apply-hint">분할을 고른 뒤 적용 범위를 선택하세요.</p>
           <div class="grid-controls">
             <label>
               가로 칸
