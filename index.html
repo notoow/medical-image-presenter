@@ -65,11 +65,52 @@
   </head>
   <body>
     <main class="shell">
+      <header class="app-topbar" aria-label="편집기 명령">
+        <div class="app-topbar-brand" aria-label="notoow Medical Image Presenter">
+          <img src="./brand/notoow-2d.png" alt="" width="28" height="28" />
+          <span>notoow</span>
+          <small>Medical Image Presenter</small>
+        </div>
+        <div class="app-topbar-context" aria-live="polite">
+          <strong id="topPageStatus">커버</strong>
+          <span id="topLayerStatus">1번 레이어</span>
+        </div>
+        <div class="app-topbar-actions">
+          <button id="topUndoButton" class="topbar-icon-button" type="button" aria-label="되돌리기" title="되돌리기">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 7 4 12l5 5v-3h6a4 4 0 1 0-4-4H9v-3Z"/></svg>
+          </button>
+          <button id="topRedoButton" class="topbar-icon-button" type="button" aria-label="다시하기" title="다시하기">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 7 5 5-5 5v-3H9a4 4 0 1 1 4-4h2v-3Z"/></svg>
+          </button>
+          <span class="topbar-action-divider" aria-hidden="true"></span>
+          <button id="topPrevButton" class="topbar-icon-button" type="button" aria-label="이전 슬라이드" title="이전 슬라이드">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14.5 5.5-6 6.5 6 6.5"/></svg>
+          </button>
+          <button id="topNextButton" class="topbar-icon-button" type="button" aria-label="다음 슬라이드" title="다음 슬라이드">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9.5 5.5 6 6.5-6 6.5"/></svg>
+          </button>
+          <button id="topAddSlideButton" class="topbar-primary" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+            <span>슬라이드</span>
+          </button>
+          <button id="topPresentButton" class="topbar-action" type="button">발표</button>
+          <button id="topExportButton" class="topbar-action" type="button">내보내기</button>
+        </div>
+      </header>
+
       <aside class="control-panel" aria-label="Presentation controls">
         <div class="brand-block">
           <p class="eyebrow">Local-first clinical deck</p>
           <h1><img src="./brand/notoow-2d.png" alt="" width="32" height="34" style="vertical-align: middle; object-fit: contain; margin-right: 8px;" />notoow</h1>
           <p class="muted">사진은 브라우저 안에서만 미리보기 처리됩니다. 원본 파일은 수정하지 않습니다.</p>
+        </div>
+
+        <div class="inspector-panel-head">
+          <div>
+            <p>속성</p>
+            <strong id="inspectorContext">커버 편집</strong>
+          </div>
+          <span>선택 항목</span>
         </div>
 
         <section class="panel-section">
@@ -128,24 +169,7 @@
         </section>
 
         <section class="panel-section">
-          <h2>사진</h2>
-          <label class="custom-file file-drop">
-            <span>사진 여러 장 선택</span>
-            <input id="imageInput" type="file" accept="image/*" multiple />
-            <span class="file-control" aria-hidden="true">
-              <span class="file-button">사진 선택</span>
-              <span id="imageFileName" class="file-name">선택된 사진 없음</span>
-            </span>
-          </label>
-          <label>
-            정렬
-            <select id="sortMode">
-              <option value="name-asc">이름순</option>
-              <option value="date-asc">생성 날짜 오래된순</option>
-              <option value="date-desc">생성 날짜 최신순</option>
-              <option value="manual">수동 순서</option>
-            </select>
-          </label>
+          <h2>슬라이드 구성</h2>
           <label>
             페이지 구성
             <select id="layoutMode">
@@ -453,17 +477,34 @@
       <aside id="photoPanel" class="photo-panel" aria-label="2번 레이어 사진 목록">
         <div class="photo-panel-head">
           <div>
-            <p class="eyebrow">Photo tray</p>
-            <h2 id="photoPanelTitle">2번 레이어 사진 목록</h2>
+            <p class="eyebrow">Media library</p>
+            <h2 id="photoPanelTitle">사진 라이브러리</h2>
           </div>
           <button id="addEmptySlotButton" type="button">빈 슬라이드 추가</button>
         </div>
-        <button id="resetAllButton" class="wide-button danger-button" type="button">초기화</button>
-        <button id="clearSlideSlotsButton" class="wide-button subtle" type="button">슬라이드 비우기</button>
-        <p class="hint-text">
-          사진을 중앙 슬라이드 칸으로 끌어 놓아 배치하세요. 빈칸 카드를 끌어 놓으면 해당 칸을 비울 수 있고, 같은 사진이 여러 칸에 있으면 목록에서 연속 클릭해 위치를 순환해서 볼 수 있습니다.
-        </p>
-        <button id="emptySlotToken" class="empty-token" type="button" draggable="true">빈칸</button>
+        <label class="custom-file media-upload-control">
+          <input id="imageInput" type="file" accept="image/*" multiple />
+          <span class="file-control" aria-hidden="true">
+            <span class="file-button">사진 추가</span>
+            <span id="imageFileName" class="file-name">현재 레이어에 추가</span>
+          </span>
+        </label>
+        <div class="media-library-actions">
+          <label class="media-sort-control">
+            <span>정렬</span>
+            <select id="sortMode" aria-label="사진 정렬">
+              <option value="name-asc">이름순</option>
+              <option value="date-asc">생성 날짜 오래된순</option>
+              <option value="date-desc">생성 날짜 최신순</option>
+              <option value="manual">수동 순서</option>
+            </select>
+          </label>
+          <button id="emptySlotToken" class="empty-token" type="button" draggable="true">빈칸</button>
+        </div>
+        <div class="media-library-slide-actions">
+          <button id="clearSlideSlotsButton" class="subtle" type="button">현재 슬라이드 비우기</button>
+          <button id="resetAllButton" class="subtle danger-button" type="button">전체 초기화</button>
+        </div>
         <div class="photo-filter-panel" aria-label="사진 검색 및 필터">
           <div class="photo-filter-head">
             <strong>사진 필터</strong>
@@ -485,6 +526,7 @@
             <button id="photoFilterUnplacedButton" type="button">미배치</button>
           </div>
         </div>
+        <p class="media-library-hint">카드를 끌어 다른 레이어 섹션에 놓으면 해당 레이어용 사진으로 복사됩니다.</p>
         <div id="photoListPanel" class="photo-list-panel"></div>
         <section class="music-panel" aria-label="배경 음악">
           <div class="music-panel-head">
