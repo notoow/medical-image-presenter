@@ -2737,52 +2737,20 @@ body.presenting .guide-ruler {
 }
 
 .slide-thumb-meta {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  align-items: center;
-  gap: 0.2rem;
-  min-width: 0;
-}
-
-.slide-thumb-actions {
   display: flex;
   align-items: center;
-  gap: 0.1rem;
-  justify-content: flex-end;
   min-width: 0;
-  overflow: hidden;
 }
 
 .slide-thumb-label {
-  min-width: 1rem;
-  padding: 0.12rem 0.2rem;
+  min-width: 1.14rem;
+  padding: 0.14rem 0.24rem;
+  border-radius: 0.26rem;
   color: #fff8f2;
-  background: transparent;
+  background: rgba(255, 253, 247, 0.12);
   font-size: 0.6rem;
   font-weight: 800;
-  letter-spacing: -0.02em;
   text-align: center;
-}
-
-.slide-layout-chip {
-  display: inline-grid;
-  place-items: center;
-  width: 1.08rem;
-  height: 1.08rem;
-  min-width: 1.08rem;
-  border: 1px solid rgba(255, 253, 247, 0.18);
-  border-radius: 999px;
-  padding: 0;
-  color: rgba(255, 253, 247, 0.76);
-  background: rgba(255, 253, 247, 0.08);
-  font-size: 0.56rem;
-  font-weight: 800;
-}
-
-.slide-layout-chip.is-active {
-  border-color: rgba(211, 138, 93, 0.94);
-  color: #fff7f1;
-  background: rgba(138, 75, 45, 0.92);
 }
 
 .slide-caption-input {
@@ -3805,12 +3773,15 @@ body.presenting .stage {
 .media-library-actions,
 .media-library-slide-actions,
 .media-library-hint,
-.photo-layer-section,
-.photo-layer-section-head,
-.photo-layer-switch,
-.photo-layer-drop,
-.photo-layer-cards,
-.photo-layer-empty-drop {
+.photo-section,
+.photo-section-head,
+.photo-section-name,
+.photo-section-tools,
+.photo-section-upload,
+.photo-section-add,
+.photo-section-drop,
+.photo-section-cards,
+.photo-section-empty-drop {
   min-width: 0;
 }
 
@@ -3863,108 +3834,158 @@ body.presenting .stage {
   line-height: 1.4;
 }
 
-.photo-layer-section {
+.photo-section {
   display: grid;
   gap: 0.28rem;
-  border: 1px solid transparent;
-  border-radius: 0.55rem;
-  padding: 0.28rem;
-  transition: border-color 150ms ease, background 150ms ease, box-shadow 150ms ease;
+  position: relative;
+  border-top: 1px solid rgba(35, 48, 52, 0.13);
+  padding: 0.56rem 0 0.18rem;
+  transition: background 150ms ease, box-shadow 150ms ease;
 }
 
-.photo-layer-section.is-active-layer {
-  border-color: rgba(22, 142, 149, 0.36);
-  background: rgba(22, 142, 149, 0.045);
+.photo-section:first-child {
+  border-top: 0;
+  padding-top: 0;
 }
 
-.photo-layer-section.is-library-drop-target {
-  border-color: rgba(226, 77, 58, 0.72);
-  background: rgba(226, 77, 58, 0.06);
-  box-shadow: 0 0 0 3px rgba(226, 77, 58, 0.1);
+.photo-section.is-library-drop-target {
+  background: rgba(226, 77, 58, 0.055);
+  box-shadow: inset 0 0 0 1px rgba(226, 77, 58, 0.58);
 }
 
-.photo-layer-section-head {
+.photo-section-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 0.4rem;
-  padding: 0 0.08rem;
+  padding: 0 0.08rem 0.08rem;
 }
 
-.photo-layer-switch {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.34rem;
+.photo-section-name {
+  width: 100%;
   min-width: 0;
-  border: 0;
-  border-radius: 0.35rem;
-  padding: 0.22rem 0.28rem;
+  overflow: hidden;
+  border: 1px solid transparent;
+  border-radius: 0.28rem;
+  padding: 0.14rem 0.24rem;
   color: var(--ink);
   background: transparent;
   font-size: 0.76rem;
   font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.photo-layer-switch:hover,
-.photo-layer-switch[aria-pressed="true"] {
-  color: #08767d;
-  background: rgba(22, 142, 149, 0.09);
+.photo-section-name:hover,
+.photo-section-name:focus {
+  border-color: rgba(22, 142, 149, 0.3);
+  outline: none;
+  background: rgba(22, 142, 149, 0.05);
 }
 
-.photo-layer-switch strong {
-  display: inline-grid;
-  place-items: center;
-  min-width: 1.2rem;
-  height: 1.2rem;
-  border-radius: 999px;
-  padding: 0 0.28rem;
-  color: #ffffff;
-  background: #168e95;
-  font-size: 0.64rem;
-  font-variant-numeric: tabular-nums;
+.photo-section-tools {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+  flex: 0 0 auto;
 }
 
-.photo-layer-section-head > span {
+.photo-section-tools > span {
   color: var(--muted);
   font-size: 0.65rem;
   font-weight: 700;
   white-space: nowrap;
 }
 
-.photo-layer-drop {
+.photo-section-upload,
+.photo-section-add {
+  display: inline-grid;
+  width: 1.28rem;
+  min-width: 1.28rem;
+  height: 1.28rem;
+  place-items: center;
+  border: 1px solid rgba(22, 142, 149, 0.32);
+  border-radius: 50%;
+  padding: 0;
+  color: #08767d;
+  background: #ffffff;
+  font-size: 0.92rem;
+  font-weight: 800;
+  line-height: 1;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 150ms ease, background 150ms ease, color 150ms ease;
+}
+
+.photo-section-upload svg {
+  width: 0.8rem;
+  height: 0.8rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+}
+
+.photo-section:hover .photo-section-upload,
+.photo-section:focus-within .photo-section-upload,
+.photo-section:hover .photo-section-add,
+.photo-section:focus-within .photo-section-add {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.photo-section-upload:hover,
+.photo-section-upload:focus-visible,
+.photo-section-add:hover,
+.photo-section-add:focus-visible {
+  color: #ffffff;
+  background: #168e95;
+}
+
+.photo-section-drop {
   display: grid;
   height: 0.3rem;
   place-items: center;
   overflow: hidden;
   border: 1px dashed transparent;
-  border-radius: 0.34rem;
+  border-radius: 0.28rem;
   color: transparent;
   font-size: 0.64rem;
   font-weight: 800;
   transition: height 150ms ease, color 150ms ease, border-color 150ms ease, background 150ms ease;
 }
 
-.photo-layer-section:hover .photo-layer-drop,
-.photo-layer-section:focus-within .photo-layer-drop,
-.photo-layer-section.is-library-drop-target .photo-layer-drop {
+.photo-section:hover .photo-section-drop,
+.photo-section:focus-within .photo-section-drop,
+.photo-section.is-library-drop-target .photo-section-drop,
+body.is-photo-section-file-dragging .photo-section .photo-section-drop {
   height: 1.45rem;
   border-color: rgba(22, 142, 149, 0.32);
   color: #08767d;
   background: rgba(22, 142, 149, 0.05);
 }
 
-.photo-layer-section.is-library-drop-target .photo-layer-drop {
+.photo-section.is-library-drop-target .photo-section-drop {
   border-color: rgba(226, 77, 58, 0.62);
   color: #b93628;
   background: rgba(226, 77, 58, 0.08);
 }
 
-.photo-layer-cards {
+@media (hover: none) {
+  .photo-section-upload,
+  .photo-section-add {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
+.photo-section-cards {
   display: grid;
   gap: 0.34rem;
 }
 
-.photo-layer-empty-drop {
+.photo-section-empty-drop {
   display: grid;
   min-height: 2.25rem;
   place-items: center;
@@ -4002,7 +4023,7 @@ body.presenting .stage {
     grid-template-rows: 3.7rem minmax(0, 1fr);
     grid-template-areas:
       "topbar topbar topbar"
-      "photos stage controls";
+      "controls stage photos";
     gap: 0;
     padding: 0;
     background: #f2f4f4;
@@ -4143,13 +4164,13 @@ body.presenting .stage {
 
   .photo-panel {
     grid-area: photos;
-    border-right: 1px solid var(--line);
+    border-left: 1px solid var(--line);
     gap: 0.62rem;
   }
 
   .control-panel {
     grid-area: controls;
-    border-left: 1px solid var(--line);
+    border-right: 1px solid var(--line);
   }
 
   .control-panel .brand-block,
@@ -4416,11 +4437,11 @@ body.presenting .stage {
     padding-right: 0.2rem;
   }
 
-  .photo-layer-section {
+  .photo-section {
     margin-bottom: 0.42rem;
   }
 
-  .photo-layer-cards {
+  .photo-section-cards {
     gap: 0.28rem;
   }
 
@@ -4794,7 +4815,7 @@ body.presenting .stage {
     max-height: min(42rem, 68vh);
   }
 
-  .photo-layer-section {
+  .photo-section {
     margin-bottom: 0.45rem;
   }
 
@@ -4845,14 +4866,14 @@ body.presenting .stage {
 }
 
 .photo-panel:not(.has-media) .photo-filter-panel,
-.photo-panel:not(.has-media) .media-library-actions,
 .photo-panel:not(.has-active-slide) .media-library-slide-actions {
   display: none;
 }
 
-.photo-layer-section.is-empty-layer:not(.is-active-layer):not(:hover):not(.is-library-drop-target) .photo-layer-cards,
-.photo-layer-section.is-empty-layer:not(.is-active-layer):not(:hover):not(.is-library-drop-target) .photo-layer-drop {
-  display: none;
+.media-section-add {
+  flex: 0 0 auto;
+  padding-inline: 0.54rem;
+  white-space: nowrap;
 }
 
 .photo-list-card.is-reorder-before::before,

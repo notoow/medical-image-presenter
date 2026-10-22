@@ -16,12 +16,15 @@ const MIN_SLIDE_EXPORT_HEIGHT = 180;
 const MAX_SLIDE_EXPORT_DIMENSION = 7680;
 const SLIDE_LAYER_COUNT = 3;
 const DEFAULT_SLIDE_LAYER = 2;
+const DEFAULT_PHOTO_SECTION_ID = "photo-section-1";
+const DEFAULT_PHOTO_SECTION_NAME = "섹션 1";
 const LAYER_SLOT_BASE = 1_000_000;
 const LAYER_SLOT_PAGE_FACTOR = 10_000;
 const LAYER_SLOT_LAYER_FACTOR = 100;
 
 const state = {
   images: [],
+  photoSections: [{ id: DEFAULT_PHOTO_SECTION_ID, name: DEFAULT_PHOTO_SECTION_NAME }],
   slideSlots: [],
   slideCaptions: [],
   slidePageLayouts: [],
@@ -113,7 +116,8 @@ let stageResetIndicatorDeadline = 0;
 let photoSearchActivationQuery = "";
 let photoSearchActivationIndex = -1;
 let activeStageSlotDropTarget = null;
-let activePhotoLibraryDropLayer = null;
+let activePhotoLibraryDropSection = null;
+let pendingPhotoSectionUploadId = null;
 let lastInspectorContextKey = "";
 let activeGuideDrag = null;
 let activeSlotPan = null;
@@ -146,7 +150,6 @@ let zipCrcTable = null;
 let imageIndexDirty = true;
 let imageSortDirty = true;
 let lastAppliedSortMode = state.sortMode;
-let lastAppliedSortLayer = DEFAULT_SLIDE_LAYER;
 let imageByIdIndex = new Map();
 let usedCountsCacheVersion = -1;
 let usedCountsCache = new Map();
@@ -421,6 +424,56 @@ function getActiveSlideLayer() {
   return normalizeSlideLayerNumber(state.slideLayerIndex);
 }
 
+function createPhotoSectionId(seed = "section") {
+  const suffix = crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  return `photo-${seed}-${suffix}`;
+}
+
+function normalizePhotoSections(source = state.photoSections) {
+  const seen = new Set();
+  const sections = Array.isArray(source)
+    ? source.reduce((list, item, index) => {
+      let id = typeof item?.id === "string" ? item.id.trim() : "";
+      if (!id || seen.has(id)) {
+        id = list.length === 0 ? DEFAULT_PHOTO_SECTION_ID : createPhotoSectionId("section");
+      }
+      seen.add(id);
+      const requestedName = typeof item?.name === "string" ? item.name.trim().slice(0, 48) : "";
+      list.push({ id, name: requestedName || `섹션 ${index + 1}` });
+      return list;
+    }, [])
+    : [];
+
+  return sections.length > 0
+    ? sections
+    : [{ id: DEFAULT_PHOTO_SECTION_ID, name: DEFAULT_PHOTO_SECTION_NAME }];
+}
+
+function getPhotoSections() {
+  state.photoSections = normalizePhotoSections(state.photoSections);
+  return state.photoSections;
+}
+
+function normalizePhotoSectionId(sectionId) {
+  const sections = getPhotoSections();
+  const requestedId = typeof sectionId === "string" ? sectionId : "";
+  return sections.some((section) => section.id === requestedId) ? requestedId : sections[0].id;
+}
+
+function getPhotoSection(sectionId) {
+  const normalizedId = normalizePhotoSectionId(sectionId);
+  return getPhotoSections().find((section) => section.id === normalizedId) ?? getPhotoSections()[0];
+}
+
+function getImageSectionId(image) {
+  return normalizePhotoSectionId(image?.sectionId);
+}
+
+function getImagesForSection(sectionId) {
+  const normalizedId = normalizePhotoSectionId(sectionId);
+  return state.images.filter((image) => getImageSectionId(image) === normalizedId);
+}
+
 function createSlideLayerSettings(source = {}, fallbackPageIndex = state.pageIndex) {
   const numberOr = (value, fallback) => {
     const numericValue = Number(value);
@@ -477,9 +530,6 @@ function captureActiveSlideLayerSettings() {
     layoutMode: state.layoutMode,
     gridRows: state.gridRows,
     gridCols: state.gridCols,
-    sortMode: state.sortMode,
-    photoSearchQuery: state.photoSearchQuery,
-    photoFilterMode: state.photoFilterMode,
     fitMode: state.fitMode,
     backgroundEnabled: state.backgroundEnabled,
     zoom: state.zoom,
@@ -564,8 +614,8 @@ function syncSlideLayerEditorControls() {
   if (els.showGuides) els.showGuides.checked = state.guidesEnabled;
   if (els.autoplaySecondsValue) els.autoplaySecondsValue.textContent = `${state.autoplaySeconds.toFixed(1)}초`;
   if (els.imageFileName) {
-    const imageCount = getImagesForLayer().length;
-    els.imageFileName.textContent = imageCount > 0 ? `${imageCount}장 · ${getActiveSlideLayer()}번 레이어` : "선택된 사진 없음";
+    const imageCount = state.images.length;
+    els.imageFileName.textContent = imageCount > 0 ? `${imageCount}장 · 통합 라이브러리` : "선택된 사진 없음";
   }
   syncLayoutControls();
   updatePhotoFilterUi();
@@ -576,9 +626,6 @@ function applySlideLayerSettings(layer, { restorePage = true, fallbackPageIndex 
   state.layoutMode = settings.layoutMode;
   state.gridRows = settings.gridRows;
   state.gridCols = settings.gridCols;
-  state.sortMode = settings.sortMode;
-  state.photoSearchQuery = settings.photoSearchQuery;
-  state.photoFilterMode = settings.photoFilterMode;
   state.fitMode = settings.fitMode;
   state.backgroundEnabled = settings.backgroundEnabled;
   state.zoom = settings.zoom;
@@ -603,7 +650,6 @@ function applySlideLayerSettings(layer, { restorePage = true, fallbackPageIndex 
 
   imageSortDirty = true;
   lastAppliedSortMode = "";
-  lastAppliedSortLayer = normalizeSlideLayerNumber(layer);
   filterStyleCacheKey = "";
   backgroundFilterStyleCacheKey = "";
   selectedSlotUiKey = "";
@@ -618,6 +664,7 @@ function captureEditHistorySnapshot() {
   saveActiveSlideLayerSettings();
   return {
     images: state.images.map((image) => ({ ...image })),
+    photoSections: getPhotoSections().map((section) => ({ ...section })),
     slideSlots: [...state.slideSlots],
     slideCaptions: [...state.slideCaptions],
     slidePageLayouts: state.slidePageLayouts.map((layout) => createLayoutConfig(layout.mode, layout.rows, layout.cols)),
@@ -669,6 +716,7 @@ function restoreEditHistorySnapshot(snapshot) {
   isApplyingHistory = true;
   try {
     state.images = snapshot.images.map((image) => ({ ...image }));
+    state.photoSections = normalizePhotoSections(snapshot.photoSections);
     state.slideSlots = [...snapshot.slideSlots];
     state.slideCaptions = [...snapshot.slideCaptions];
     state.slidePageLayouts = snapshot.slidePageLayouts.map((layout) =>
@@ -886,7 +934,6 @@ function restoreSlideLayoutOverflowSlots(page, layer, slots, transforms) {
   const record = getSlideLayoutOverflowRecord(page, layer);
   if (!record) return 0;
 
-  const normalizedLayer = normalizeSlideLayerNumber(layer);
   let restoredCount = 0;
   Object.entries(record)
     .sort(([left], [right]) => Number(left) - Number(right))
@@ -898,8 +945,7 @@ function restoreSlideLayoutOverflowSlots(page, layer, slots, transforms) {
         offset < 0 ||
         offset >= slots.length ||
         slots[offset] ||
-        !image ||
-        getImageLayer(image) !== normalizedLayer
+        !image
       ) {
         return;
       }
@@ -911,7 +957,7 @@ function restoreSlideLayoutOverflowSlots(page, layer, slots, transforms) {
     });
 
   if (Object.keys(record).length === 0) {
-    delete ensureSlideLayoutOverflowStore()[getSlideLayoutOverflowKey(page, normalizedLayer)];
+    delete ensureSlideLayoutOverflowStore()[getSlideLayoutOverflowKey(page, layer)];
   }
 
   return restoredCount;
@@ -1109,8 +1155,7 @@ function writeSlotImageId(slotIndex, imageId) {
   const layerSlot = parseLayerSlotIndex(normalizedSlotIndex);
   if (imageId) {
     const image = getImageById(imageId);
-    const targetLayer = layerSlot?.layer ?? DEFAULT_SLIDE_LAYER;
-    if (!image || getImageLayer(image) !== targetLayer) return false;
+    if (!image) return false;
   }
   if (layerSlot) {
     const layerPage = getLayerSlidePage(layerSlot.page, layerSlot.layer, { create: true });
@@ -1478,76 +1523,95 @@ function getImageById(id) {
   return imageByIdIndex.get(id);
 }
 
-function getImageLayer(image) {
-  return normalizeSlideLayerNumber(image?.layer ?? DEFAULT_SLIDE_LAYER);
-}
-
-function getImagesForLayer(layer = getActiveSlideLayer()) {
-  const normalizedLayer = normalizeSlideLayerNumber(layer);
-  return state.images.filter((image) => getImageLayer(image) === normalizedLayer);
-}
-
 function createImageRecordId(seed = "image") {
   return crypto.randomUUID?.() ?? `${seed}-${Date.now()}-${Math.random()}`;
 }
 
-function migrateImageLayerOwnership() {
-  if (!Array.isArray(state.images) || state.images.length === 0) return false;
+function remapImageReferences(replacements) {
+  if (!(replacements instanceof Map) || replacements.size === 0) return false;
 
+  const resolveId = (imageId) => replacements.get(imageId) ?? imageId;
   let changed = false;
-  state.images = state.images.map((image) => {
-    const layer = getImageLayer(image);
-    if (image.layer === layer) return image;
-    changed = true;
-    return { ...image, layer };
+  state.slideSlots = state.slideSlots.map((imageId) => {
+    const nextId = resolveId(imageId);
+    if (nextId !== imageId) changed = true;
+    return nextId;
   });
 
-  const imageMap = new Map(state.images.map((image) => [image.id, image]));
-  const cloneMap = new Map();
-  const ensureOwnedImage = (imageId, layer) => {
-    if (!imageId) return null;
-    const source = imageMap.get(imageId);
-    if (!source || getImageLayer(source) === layer) return imageId;
-
-    const cloneKey = `${layer}:${imageId}`;
-    if (cloneMap.has(cloneKey)) return cloneMap.get(cloneKey);
-
-    const cloneId = createImageRecordId(source.name || "image");
-    const clone = {
-      ...source,
-      id: cloneId,
-      layer,
-      sourceImageId: source.sourceImageId ?? source.id,
-    };
-    state.images.push(clone);
-    imageMap.set(cloneId, clone);
-    cloneMap.set(cloneKey, cloneId);
-    changed = true;
-    return cloneId;
-  };
-
-  state.slideSlots = state.slideSlots.map((imageId) => ensureOwnedImage(imageId, DEFAULT_SLIDE_LAYER));
   Object.entries(ensureSlideLayerPagesStore()).forEach(([key, record]) => {
-    const parsed = parseSlideLayerKey(key);
-    if (!parsed || !Array.isArray(record?.slots)) return;
-    record.slots = record.slots.map((imageId) => ensureOwnedImage(imageId, parsed.layer));
+    if (!Array.isArray(record?.slots)) return;
+    const slots = record.slots.map((imageId) => {
+      const nextId = resolveId(imageId);
+      if (nextId !== imageId) changed = true;
+      return nextId;
+    });
+    state.slideLayerPages[key] = { ...record, slots };
   });
+
   Object.entries(ensureSlideLayoutOverflowStore()).forEach(([key, record]) => {
-    const parsed = parseSlideLayoutOverflowKey(key);
-    if (!parsed) return;
     const normalized = normalizeSlideLayoutOverflowRecord(record);
     Object.values(normalized).forEach((item) => {
-      item.imageId = ensureOwnedImage(item.imageId, parsed.layer);
+      const nextId = resolveId(item.imageId);
+      if (nextId !== item.imageId) {
+        item.imageId = nextId;
+        changed = true;
+      }
     });
     if (Object.keys(normalized).length > 0) state.slideLayoutOverflow[key] = normalized;
     else delete state.slideLayoutOverflow[key];
   });
 
-  if (changed) {
-    markImagesDirty();
-    markSlideSlotsDirty();
-  }
   return changed;
+}
+
+function migrateImageLibrary() {
+  const sections = getPhotoSections();
+  const sectionIds = new Set(sections.map((section) => section.id));
+  if (!Array.isArray(state.images) || state.images.length === 0) return false;
+
+  let changed = false;
+  const sourceIds = new Set(
+    state.images
+      .map((image) => image?.sourceImageId)
+      .filter((imageId) => typeof imageId === "string" && imageId.length > 0),
+  );
+  const canonicalByKey = new Map();
+  const replacements = new Map();
+  const images = [];
+
+  state.images.forEach((sourceImage) => {
+    const sectionId = sectionIds.has(sourceImage?.sectionId) ? sourceImage.sectionId : sections[0].id;
+    const image = sourceImage?.sectionId === sectionId ? sourceImage : { ...sourceImage, sectionId };
+    if (image !== sourceImage) changed = true;
+
+    const sourceRoot = typeof image.sourceImageId === "string" && image.sourceImageId.length > 0
+      ? image.sourceImageId
+      : sourceIds.has(image.id)
+        ? image.id
+        : "";
+    const duplicateKey = sourceRoot ? `source:${sourceRoot}` : `file:${getDuplicateKey(image)}`;
+    const canonical = canonicalByKey.get(duplicateKey);
+    if (canonical) {
+      replacements.set(image.id, canonical.id);
+      changed = true;
+      return;
+    }
+
+    canonicalByKey.set(duplicateKey, image);
+    images.push(image);
+  });
+
+  if (images.length !== state.images.length) {
+    state.images = images;
+    changed = true;
+  } else if (changed) {
+    state.images = images;
+  }
+
+  const slotsChanged = remapImageReferences(replacements);
+  if (changed) markImagesDirty();
+  if (slotsChanged) markSlideSlotsDirty();
+  return changed || slotsChanged;
 }
 
 function getUsedCounts() {
@@ -1719,8 +1783,7 @@ function ensureSlideSlots() {
 
     const normalized = normalizeSlideLayoutOverflowRecord(record);
     Object.entries(normalized).forEach(([offset, item]) => {
-      const image = imageByIdIndex.get(item.imageId);
-      if (image && getImageLayer(image) === parsed.layer) return;
+      if (imageByIdIndex.has(item.imageId)) return;
       delete normalized[offset];
       changed = true;
     });
@@ -1741,17 +1804,15 @@ function ensureSlideSlots() {
 }
 
 function sortImages() {
-  const activeLayer = getActiveSlideLayer();
   if (state.sortMode === "manual") {
     imageSortDirty = false;
     lastAppliedSortMode = state.sortMode;
-    lastAppliedSortLayer = activeLayer;
     return;
   }
 
-  if (!imageSortDirty && lastAppliedSortMode === state.sortMode && lastAppliedSortLayer === activeLayer) return;
+  if (!imageSortDirty && lastAppliedSortMode === state.sortMode) return;
 
-  const activeImages = getImagesForLayer(activeLayer).sort((a, b) => {
+  state.images = [...state.images].sort((a, b) => {
     if (state.sortMode === "date-asc") {
       return a.modifiedAt - b.modifiedAt || imageNameCollator.compare(a.name, b.name);
     }
@@ -1762,14 +1823,9 @@ function sortImages() {
 
     return imageNameCollator.compare(a.name, b.name);
   });
-  let activeImageIndex = 0;
-  state.images = state.images.map((image) =>
-    getImageLayer(image) === activeLayer ? activeImages[activeImageIndex++] : image,
-  );
   imageSortDirty = false;
   imageIndexDirty = true;
   lastAppliedSortMode = state.sortMode;
-  lastAppliedSortLayer = activeLayer;
 }
 
 function getFilterStyle() {
@@ -1883,24 +1939,6 @@ function renderSlideThumbLayerGrid(page, layer) {
             : `<button class="slide-thumb-empty layer-thumb-empty" type="button" data-slot-thumb-index="${slotIndex}">빈칸</button>`;
         })
         .join("")}
-    </div>
-  `;
-}
-
-function renderSlideThumbLayerStack(page) {
-  const currentLayer = getCurrentSlideLayerStatus()?.currentLayer ?? DEFAULT_SLIDE_LAYER;
-  return `
-    <div class="slide-thumb-layer-stack" style="--active-slide-layer:${currentLayer};">
-      ${Array.from({ length: SLIDE_LAYER_COUNT }, (_, index) => {
-        const layer = index + 1;
-        const isDefaultLayer = layer === DEFAULT_SLIDE_LAYER;
-        return `
-          <div class="slide-thumb-layer-frame ${layer === currentLayer ? "is-current-layer" : ""} ${isDefaultLayer ? "has-content-layer" : "is-empty-layer"}">
-            <span class="slide-thumb-layer-tag">${layer}</span>
-            ${isDefaultLayer ? renderSlideThumbGrid(page) : renderSlideThumbLayerGrid(page, layer)}
-          </div>
-        `;
-      }).join("")}
     </div>
   `;
 }
@@ -2335,12 +2373,6 @@ function updateSlideLayerIndicators() {
   nextButton.classList.toggle("is-available", status.hasNext);
   indicator?.classList.toggle("has-previous-layer", status.hasPrevious);
   indicator?.classList.toggle("has-next-layer", status.hasNext);
-  els.thumbnailRail?.querySelectorAll("[data-slide-layer-select]").forEach((button) => {
-    if (!(button instanceof HTMLButtonElement)) return;
-    const layer = Number(button.dataset.slideLayerSelect);
-    button.classList.toggle("is-active", layer === status.currentLayer);
-    button.setAttribute("aria-pressed", String(layer === status.currentLayer));
-  });
   if (output) output.textContent = `${status.currentLayer} / ${status.totalLayers}`;
 }
 
@@ -2547,30 +2579,8 @@ function syncThumbnailLayerPreview() {
 
 function syncPhotoListSelection() {
   if (!els.photoListPanel) return;
-
-  const selectedImageId =
-    Number.isFinite(state.selectedSlotIndex) && state.selectedSlotIndex >= 0
-      ? getSlotImageId(state.selectedSlotIndex)
-      : null;
-
-  if (
-    activePhotoListCard &&
-    (!selectedImageId ||
-      activePhotoListCard.dataset.imageId !== selectedImageId ||
-      !els.photoListPanel.contains(activePhotoListCard))
-  ) {
-    activePhotoListCard.classList.remove("is-active");
-    activePhotoListCard = null;
-  }
-
-  if (!selectedImageId) return;
-  if (activePhotoListCard?.dataset.imageId === selectedImageId) return;
-
-  const nextCard = els.photoListPanel.querySelector(`[data-image-id="${CSS.escape(selectedImageId)}"]`);
-  if (!(nextCard instanceof HTMLElement)) return;
-  nextCard.classList.add("is-active");
-  activePhotoListCard = nextCard;
-  revealPanelItem(nextCard);
+  activePhotoListCard?.classList.remove("is-active");
+  activePhotoListCard = null;
 }
 
 function updatePhotoFilterUi() {
@@ -2610,18 +2620,18 @@ function updatePhotoFilterCounts(
   usedCounts = getUsedCounts(),
   overflowPlacements = getSlideLayoutOverflowPlacements(),
 ) {
-  const layerImages = getImagesForLayer();
+  const libraryImages = state.images;
   const placementCounts = getPhotoPlacementCounts(usedCounts, overflowPlacements);
   const currentCount = getCurrentPagePhotoIds(overflowPlacements).size;
-  const placedCount = layerImages.reduce(
+  const placedCount = libraryImages.reduce(
     (count, image) => count + ((placementCounts.get(image.id) ?? 0) > 0 ? 1 : 0),
     0,
   );
   const labels = {
-    all: `전체 ${layerImages.length}`,
+    all: `전체 ${libraryImages.length}`,
     current: `현재 ${currentCount}`,
     placed: `배치 ${placedCount}`,
-    unplaced: `미배치 ${Math.max(0, layerImages.length - placedCount)}`,
+    unplaced: `미배치 ${Math.max(0, libraryImages.length - placedCount)}`,
   };
   [
     [els.photoFilterAllButton, "all"],
@@ -2635,11 +2645,11 @@ function updatePhotoFilterCounts(
 }
 
 function updatePhotoFilterSummary(filteredCount, totalCount) {
-  const layerLabel = "사진 라이브러리";
+  const layerLabel = "통합 사진 라이브러리";
   if (els.photoPanelTitle) {
     els.photoPanelTitle.textContent = layerLabel;
   }
-  els.photoPanel?.setAttribute("aria-label", `${getActiveSlideLayer()}번 레이어 사진 라이브러리`);
+  els.photoPanel?.setAttribute("aria-label", "통합 사진 라이브러리");
   if (els.photoFilterSummary) {
     els.photoFilterSummary.textContent = `${filteredCount} / ${totalCount}장`;
   }
@@ -2682,7 +2692,20 @@ function getFilteredImages(
   usedCounts = getUsedCounts(),
   overflowPlacements = getSlideLayoutOverflowPlacements(),
 ) {
-  return getFilteredImagesForLayer(getActiveSlideLayer(), usedCounts, overflowPlacements);
+  const query = state.photoSearchQuery.trim().toLocaleLowerCase("ko-KR");
+  const placementCounts = getPhotoPlacementCounts(usedCounts, overflowPlacements);
+  const currentPageImageIds = state.photoFilterMode === "current"
+    ? getCurrentPagePhotoIds(overflowPlacements)
+    : null;
+
+  return state.images.filter((image) => {
+    const placementCount = placementCounts.get(image.id) ?? 0;
+    if (state.photoFilterMode === "current" && !currentPageImageIds?.has(image.id)) return false;
+    if (state.photoFilterMode === "placed" && placementCount === 0) return false;
+    if (state.photoFilterMode === "unplaced" && placementCount > 0) return false;
+    if (!query) return true;
+    return image.name.toLocaleLowerCase("ko-KR").includes(query);
+  });
 }
 
 function getPagePhotoIdsForLayer(
@@ -2704,26 +2727,6 @@ function getPagePhotoIdsForLayer(
     }
   });
   return imageIds;
-}
-
-function getFilteredImagesForLayer(
-  layer,
-  usedCounts = getUsedCounts(),
-  overflowPlacements = getSlideLayoutOverflowPlacements(),
-) {
-  const query = state.photoSearchQuery.trim().toLocaleLowerCase("ko-KR");
-  const placementCounts = getPhotoPlacementCounts(usedCounts, overflowPlacements);
-  const currentPageImageIds = state.photoFilterMode === "current"
-    ? getPagePhotoIdsForLayer(layer, state.pageIndex, overflowPlacements)
-    : null;
-  return getImagesForLayer(layer).filter((image) => {
-    const placementCount = placementCounts.get(image.id) ?? 0;
-    if (state.photoFilterMode === "current" && !currentPageImageIds?.has(image.id)) return false;
-    if (state.photoFilterMode === "placed" && placementCount === 0) return false;
-    if (state.photoFilterMode === "unplaced" && placementCount > 0) return false;
-    if (!query) return true;
-    return image.name.toLocaleLowerCase("ko-KR").includes(query);
-  });
 }
 
 function getVisibleSlideSlotIndices() {
@@ -3053,6 +3056,7 @@ function goToSlideLayer(layer) {
   const fallbackPageIndex = existingSettings?.pageIndex > 0 ? existingSettings.pageIndex : 1;
   saveActiveSlideLayerSettings(status.currentLayer);
   state.slideLayerIndex = nextLayer;
+  state.selectedSlotIndex = null;
   applySlideLayerSettings(nextLayer, { fallbackPageIndex, restorePage: true, syncControls: true });
   render({ persist: false });
   queuePersistSettings();
@@ -3536,92 +3540,105 @@ function askDuplicateUpload(duplicates) {
   });
 }
 
-async function loadImageFiles(fileList, { targetSlotIndex = null, targetLayer = getActiveSlideLayer() } = {}) {
+async function loadImageFiles(
+  fileList,
+  {
+    targetSlotIndex = null,
+    targetSectionId = null,
+    autoPlace = targetSlotIndex !== null && targetSlotIndex !== undefined ? true : targetSectionId === null,
+  } = {},
+) {
   const imageFiles = getImageFiles(fileList);
   if (imageFiles.length === 0) return;
 
-  const uploadLayer = normalizeSlideLayerNumber(targetLayer);
-  const layerImages = getImagesForLayer(uploadLayer);
-  const layerImageByKey = new Map(layerImages.map((image) => [getDuplicateKey(image), image]));
-  const sharedImageByKey = new Map(state.images.map((image) => [getDuplicateKey(image), image]));
+  const targetSection = getPhotoSection(targetSectionId);
+  const imageByKey = new Map(state.images.map((image) => [getDuplicateKey(image), image]));
 
   showLoading("사진을 불러오는 중입니다", 0);
 
   try {
     const addedImages = [];
     const placementImageIds = [];
+    const sectionMoveIds = new Set();
     let reusedCount = 0;
 
     for (const [index, file] of imageFiles.entries()) {
       updateLoading(`사진 확인 중: ${file.name}`, index / imageFiles.length);
-      const duplicate = layerImageByKey.get(getDuplicateKey(file));
+      const duplicate = imageByKey.get(getDuplicateKey(file));
       if (duplicate) {
         placementImageIds.push(duplicate.id);
         reusedCount += 1;
+        if (!autoPlace && getImageSectionId(duplicate) !== targetSection.id) {
+          sectionMoveIds.add(duplicate.id);
+        }
         updateLoading(`기존 사진 배치 준비 중: ${file.name}`, (index + 1) / imageFiles.length);
         continue;
       }
 
-      const sharedImage = sharedImageByKey.get(getDuplicateKey(file));
-      const url = sharedImage?.url ?? await fileToDataUrl(file);
+      const url = await fileToDataUrl(file);
       const image = {
         id: createImageRecordId(file.name),
         name: file.name,
         size: file.size,
         modifiedAt: file.lastModified,
         url,
-        layer: uploadLayer,
-        ...(sharedImage ? { sourceImageId: sharedImage.sourceImageId ?? sharedImage.id } : {}),
+        sectionId: targetSection.id,
+        // Kept only so old standalone exports remain compatible with saved assets.
+        layer: DEFAULT_SLIDE_LAYER,
       };
       addedImages.push(image);
       placementImageIds.push(image.id);
-      layerImageByKey.set(getDuplicateKey(file), image);
-      sharedImageByKey.set(getDuplicateKey(file), image);
+      imageByKey.set(getDuplicateKey(file), image);
       updateLoading(`사진 등록 중: ${file.name}`, (index + 1) / imageFiles.length);
       await new Promise((resolve) => requestAnimationFrame(() => resolve()));
     }
 
-    updateLoading("슬라이드를 준비하는 중입니다", 1);
+    updateLoading(autoPlace ? "슬라이드를 준비하는 중입니다" : "사진 섹션을 정리하는 중입니다", 1);
 
     beginEditHistoryAction();
     if (addedImages.length > 0) {
       state.images = [...state.images, ...addedImages];
       markImagesDirty();
     }
-    if (getActiveSlideLayer() !== uploadLayer) {
-      saveActiveSlideLayerSettings();
-      state.slideLayerIndex = uploadLayer;
-      applySlideLayerSettings(uploadLayer, { restorePage: false, syncControls: true });
+    if (sectionMoveIds.size > 0) {
+      state.images = state.images.map((image) =>
+        sectionMoveIds.has(image.id) ? { ...image, sectionId: targetSection.id } : image,
+      );
+      markImagesDirty();
     }
-    const placement = autoPlaceUploadedImages(placementImageIds, {
-      layer: uploadLayer,
-      targetSlotIndex,
-      replaceTargetSlot: targetSlotIndex !== null && targetSlotIndex !== undefined && Number.isFinite(Number(targetSlotIndex)),
-    });
+    const placement = autoPlace
+      ? autoPlaceUploadedImages(placementImageIds, {
+        layer: getActiveSlideLayer(),
+        targetSlotIndex,
+        replaceTargetSlot: targetSlotIndex !== null && targetSlotIndex !== undefined && Number.isFinite(Number(targetSlotIndex)),
+      })
+      : { firstSlotIndex: null, filledEmptyCount: 0, appendedCount: 0, replacedTargetCount: 0 };
     const placedLocation = Number.isFinite(placement.firstSlotIndex)
       ? getSlotLocation(placement.firstSlotIndex)
       : null;
     state.selectedSlotIndex = Number.isFinite(placement.firstSlotIndex) ? placement.firstSlotIndex : null;
 
     els.imageFileName.textContent = reusedCount > 0
-      ? `${addedImages.length}장 등록 · 기존 ${reusedCount}장 배치`
+      ? `${addedImages.length}장 등록 · 기존 ${reusedCount}장 재사용`
       : `${addedImages.length}장 등록`;
 
-    state.slideLayerIndex = uploadLayer;
-    state.pageIndex = placedLocation?.page ?? state.pageIndex;
+    if (placedLocation) state.pageIndex = placedLocation.page;
     render();
     warmPreviewCache(addedImages);
     queuePersistAssets();
-    if (placement.replacedTargetCount > 0 && placement.appendedCount > 0) {
+    if (!autoPlace) {
+      const movedText = sectionMoveIds.size > 0 ? ` · 기존 ${sectionMoveIds.size}장 이동` : "";
+      showToast(`${targetSection.name}에 ${addedImages.length}장 추가${movedText}`);
+    } else if (placement.replacedTargetCount > 0 && placement.appendedCount > 0) {
       showToast(`놓은 칸을 바꾸고 빈칸 ${placement.filledEmptyCount}곳을 채운 뒤 ${placement.appendedCount}장을 이어 배치했습니다.`);
     } else if (placement.replacedTargetCount > 0) {
       showToast("놓은 칸의 사진을 바꿨습니다.");
     } else if (placement.filledEmptyCount > 0 && placement.appendedCount > 0) {
       showToast(`빈칸 ${placement.filledEmptyCount}곳을 먼저 채우고 ${placement.appendedCount}장을 이어 배치했습니다.`);
     } else if (reusedCount > 0 && addedImages.length === 0) {
-      showToast(`기존 사진 ${reusedCount}장을 현재 레이어의 빈칸에 배치했습니다.`);
+      showToast(`기존 사진 ${reusedCount}장을 현재 슬라이드 레이어의 빈칸에 배치했습니다.`);
     } else {
-      showToast(`${placementImageIds.length}장을 현재 레이어에 배치했습니다.`);
+      showToast(`${placementImageIds.length}장을 현재 슬라이드 레이어에 배치했습니다.`);
     }
   } finally {
     hideLoading();
@@ -3648,6 +3665,30 @@ function getStageSlotIndexAtPoint(clientX, clientY) {
     const slotIndex = Number(slot.dataset.slotIndex);
     if (Number.isFinite(slotIndex)) return slotIndex;
   }
+  return null;
+}
+
+function getPhotoSectionDropAtPoint(clientX, clientY) {
+  const hadFileDropOverlay = document.body.classList.contains("is-file-dragging");
+  const hadSectionDropState = document.body.classList.contains("is-photo-section-file-dragging");
+  if (hadFileDropOverlay) document.body.classList.remove("is-file-dragging");
+  if (hadSectionDropState) document.body.classList.remove("is-photo-section-file-dragging");
+  const elements = document.elementsFromPoint(clientX, clientY);
+  if (hadFileDropOverlay) document.body.classList.add("is-file-dragging");
+  if (hadSectionDropState) document.body.classList.add("is-photo-section-file-dragging");
+
+  for (const element of elements) {
+    const dropTarget = element instanceof Element ? element.closest("[data-photo-section-drop-id]") : null;
+    if (!(dropTarget instanceof HTMLElement) || !els.photoListPanel?.contains(dropTarget)) continue;
+    const section = dropTarget.closest(".photo-section");
+    if (!(section instanceof HTMLElement)) continue;
+    return {
+      section,
+      sectionId: dropTarget.dataset.photoSectionDropId ?? "",
+      position: dropTarget.dataset.photoSectionDropPosition ?? "after",
+    };
+  }
+
   return null;
 }
 
@@ -5053,7 +5094,11 @@ function autoPlaceUploadedImages(
 function resolvePhotoListTargetSlotIndex() {
   const selectedSlotIndex = Number(state.selectedSlotIndex);
   if (Number.isFinite(selectedSlotIndex) && selectedSlotIndex >= 0) {
-    return selectedSlotIndex;
+    const selectedLocation = getSlotLocation(selectedSlotIndex);
+    const selectedLayer = selectedLocation?.layer ?? DEFAULT_SLIDE_LAYER;
+    if (selectedLocation?.page === state.pageIndex && selectedLayer === getActiveSlideLayer()) {
+      return selectedSlotIndex;
+    }
   }
 
   const emptySlotIndex = findFirstEmptySlotIndexForPage(state.pageIndex);
@@ -5184,6 +5229,7 @@ function resetAllPhotosAndSlides() {
   photoListRenderKey = "";
 
   state.images = [];
+  state.photoSections = [{ id: DEFAULT_PHOTO_SECTION_ID, name: DEFAULT_PHOTO_SECTION_NAME }];
   state.slideSlots = [];
   state.slideCaptions = [];
   state.slidePageLayouts = [];
@@ -5205,6 +5251,7 @@ function resetAllPhotosAndSlides() {
 
   render();
   queuePersistAssets();
+  queuePersistSettings();
   showToast("사진과 슬라이드를 모두 초기화했습니다.");
 }
 
@@ -5988,25 +6035,10 @@ function renderThumbnails() {
       <div class="thumbnail-section">
         <div class="thumbnail-section-head">
           <strong>슬라이드 목록</strong>
-          <span class="thumbnail-section-hint">선택 · 순서 변경 · 레이어 편집</span>
+          <span class="thumbnail-section-hint">선택 · 순서 변경</span>
           <div class="slide-layer-indicator" aria-label="슬라이드 레이어 이동">
             <button type="button" data-slide-layer-prev aria-label="위 레이어" title="위 레이어">▲</button>
-            <div class="slide-layer-selector" role="group" aria-label="레이어 바로 선택">
-              ${Array.from({ length: SLIDE_LAYER_COUNT }, (_, index) => {
-                const layer = index + 1;
-                return `
-                  <button
-                    type="button"
-                    class="slide-layer-select ${layer === thumbnailLayer ? "is-active" : ""}"
-                    data-slide-layer-select="${layer}"
-                    aria-label="${layer}번 레이어 보기"
-                    aria-pressed="${layer === thumbnailLayer ? "true" : "false"}"
-                    title="${layer}번 레이어"
-                  >${layer}</button>
-                `;
-              }).join("")}
-            </div>
-            <output data-slide-layer-status aria-live="polite">1 / 1</output>
+            <output data-slide-layer-status aria-live="polite">${thumbnailLayer} / ${SLIDE_LAYER_COUNT}</output>
             <button type="button" data-slide-layer-next aria-label="아래 레이어" title="아래 레이어">▼</button>
           </div>
         </div>
@@ -6018,7 +6050,6 @@ function renderThumbnails() {
           </button>
           ${slidePages
             .map((page) => {
-              const thumbnailLayout = page.layout;
               const thumbnailCaption = page.caption;
               return `
                 <article
@@ -6046,12 +6077,6 @@ function renderThumbnails() {
                   </button>
                   <div class="slide-thumb-meta">
                     <span class="slide-thumb-label">${page.pageIndex}</span>
-                    <div class="slide-thumb-actions">
-                      <button class="slide-layout-chip ${thumbnailLayout.mode === "single" ? "is-active" : ""}" type="button" data-slide-layout="${page.pageIndex}:${thumbnailLayer}:single">1</button>
-                      <button class="slide-layout-chip ${thumbnailLayout.mode === "pair" ? "is-active" : ""}" type="button" data-slide-layout="${page.pageIndex}:${thumbnailLayer}:pair">2</button>
-                      <button class="slide-layout-chip ${thumbnailLayout.mode === "triple" ? "is-active" : ""}" type="button" data-slide-layout="${page.pageIndex}:${thumbnailLayer}:triple">3</button>
-                      <button class="slide-layout-chip ${thumbnailLayout.mode === "quad" ? "is-active" : ""}" type="button" data-slide-layout="${page.pageIndex}:${thumbnailLayer}:quad">4</button>
-                    </div>
                   </div>
                   <input
                     class="slide-caption-input"
@@ -6120,22 +6145,23 @@ function renderPhotoList() {
   const usedCounts = getUsedCounts();
   const placements = getImagePlacements();
   const overflowPlacements = getSlideLayoutOverflowPlacements();
-  const activeLayer = getActiveSlideLayer();
-  const activeLayerImages = getImagesForLayer(activeLayer);
-  const filteredActiveImages = getFilteredImagesForLayer(activeLayer, usedCounts, overflowPlacements);
+  const sections = getPhotoSections();
+  const filteredImages = getFilteredImages(usedCounts, overflowPlacements);
+  const filteredImageIds = new Set(filteredImages.map((image) => image.id));
+  const currentPageImageIds = getCurrentPagePhotoIds(overflowPlacements);
   updatePhotoFilterCounts(usedCounts, overflowPlacements);
-  updatePhotoFilterSummary(filteredActiveImages.length, activeLayerImages.length);
+  updatePhotoFilterSummary(filteredImages.length, state.images.length);
   const nextKey = [
     imagesVersion,
     slideSlotsVersion,
     layoutVersion,
     state.pageIndex,
-    state.slideLayerIndex,
     state.images.length,
     state.slideSlots.length,
     state.sortMode,
     state.photoSearchQuery,
     state.photoFilterMode,
+    sections.map((section) => `${section.id}:${section.name}`).join("|"),
     Array.from(selectedPhotoIds).sort().join(","),
   ].join(":");
 
@@ -6147,12 +6173,8 @@ function renderPhotoList() {
   unregisterRenderableImageNodesInRoot(els.photoListPanel);
   els.photoListPanel.innerHTML = "";
   activePhotoListCard = null;
-  const selectedSlotImageId =
-    Number.isFinite(state.selectedSlotIndex) && state.selectedSlotIndex >= 0
-      ? getSlotImageId(state.selectedSlotIndex)
-      : null;
 
-  const cardHtml = (image, index, layer, currentPageImageIds) => {
+  const cardHtml = (image, index, sectionId) => {
     const originalIndex = state.images.indexOf(image);
     const usedCount = usedCounts.get(image.id) ?? 0;
     const isOnCurrentPage = currentPageImageIds.has(image.id);
@@ -6185,12 +6207,12 @@ function renderPhotoList() {
     const statusBadge = usedCount > 0 ? "배치됨" : overflowList.length > 0 ? "보관됨" : "미배치";
     return `
       <article
-        class="photo-list-card ${usedCount > 0 ? "is-in-slide" : "is-unused"} ${overflowList.length > 0 ? "is-layout-overflow" : ""} ${selectedSlotImageId === image.id ? "is-active" : ""} ${selectedPhotoIds.has(image.id) ? "is-selected-for-batch" : ""} ${isOnCurrentPage ? "is-on-current-slide" : ""}"
+        class="photo-list-card ${usedCount > 0 ? "is-in-slide" : "is-unused"} ${overflowList.length > 0 ? "is-layout-overflow" : ""} ${selectedPhotoIds.has(image.id) ? "is-selected-for-batch" : ""}"
         draggable="true"
         tabindex="0"
         data-image-id="${image.id}"
         data-index="${originalIndex}"
-        data-layer="${layer}"
+        data-section-id="${sectionId}"
         title="${escapeHtml(image.name)}"
       >
         <img src="${getRenderableImageUrl(image)}" data-renderable-image-id="${image.id}" alt="" loading="lazy" decoding="async" />
@@ -6206,40 +6228,63 @@ function renderPhotoList() {
     `;
   };
 
-  const sectionHtml = Array.from({ length: SLIDE_LAYER_COUNT }, (_, index) => {
-    const layer = index + 1;
-    const layerImages = getImagesForLayer(layer);
-    const filteredImages = getFilteredImagesForLayer(layer, usedCounts, overflowPlacements);
-    const currentPageImageIds = getPagePhotoIdsForLayer(layer, state.pageIndex, overflowPlacements);
-    const isActiveLayer = layer === activeLayer;
+  const sectionHtml = sections.map((section) => {
+    const sectionImages = getImagesForSection(section.id);
+    const visibleImages = sectionImages.filter((image) => filteredImageIds.has(image.id));
     const isFiltering = state.photoSearchQuery.trim().length > 0 || state.photoFilterMode !== "all";
-    const cards = filteredImages
-      .map((image, cardIndex) => cardHtml(image, cardIndex, layer, currentPageImageIds))
+    const cards = visibleImages
+      .map((image, cardIndex) => cardHtml(image, cardIndex, section.id))
       .join("");
     const emptyText =
-      layerImages.length === 0
-        ? "사진을 이 레이어에 놓기"
+      sectionImages.length === 0
+        ? "사진을 이 섹션에 놓기"
         : isFiltering
           ? "조건에 맞는 사진이 없습니다."
           : "사진을 여기에 추가";
 
     return `
-      <section class="photo-layer-section ${isActiveLayer ? "is-active-layer" : ""} ${layerImages.length === 0 ? "is-empty-layer" : ""}" data-photo-library-layer="${layer}" data-photo-library-drop-layer="${layer}">
-        <header class="photo-layer-section-head">
-          <button class="photo-layer-switch" type="button" data-library-layer-select="${layer}" aria-pressed="${isActiveLayer}">
-            <span>${layer}번 레이어</span>
-            <strong>${layerImages.length}</strong>
-          </button>
-          <span>${isActiveLayer ? "현재 작업 중" : `${getSlideLayerPageCount(layer)}장`}</span>
+      <section
+        class="photo-section ${sectionImages.length === 0 ? "is-empty-section" : ""}"
+        data-photo-section-id="${section.id}"
+        data-photo-section-drop-id="${section.id}"
+        data-photo-section-drop-position="after"
+      >
+        <header class="photo-section-head">
+          <input
+            class="photo-section-name"
+            type="text"
+            value="${escapeHtml(section.name)}"
+            data-photo-section-name="${section.id}"
+            aria-label="사진 섹션 이름"
+          />
+          <div class="photo-section-tools">
+            <span>${sectionImages.length}장</span>
+            <button
+              class="photo-section-upload"
+              type="button"
+              data-upload-photo-section="${section.id}"
+              aria-label="${escapeHtml(section.name)}에 사진 추가"
+              title="이 섹션에 사진 추가"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4m0 0-4 4m4-4 4 4M5 20h14"/></svg>
+            </button>
+            <button
+              class="photo-section-add"
+              type="button"
+              data-add-photo-section-after="${section.id}"
+              aria-label="${escapeHtml(section.name)} 아래에 새 섹션 추가"
+              title="아래에 새 섹션 추가"
+            >+</button>
+          </div>
         </header>
-        <div class="photo-layer-drop photo-layer-drop-before" data-photo-library-drop-layer="${layer}" data-photo-library-drop-position="before">
-          <span>이 위에 추가</span>
+        <div class="photo-section-drop photo-section-drop-before" data-photo-section-drop-id="${section.id}" data-photo-section-drop-position="before">
+          <span>이 섹션 맨 앞에 넣기</span>
         </div>
-        <div class="photo-layer-cards" data-photo-library-drop-layer="${layer}">
-          ${cards || `<button class="photo-layer-empty-drop" type="button" data-library-layer-select="${layer}" data-photo-library-drop-layer="${layer}">${emptyText}</button>`}
+        <div class="photo-section-cards" data-photo-section-drop-id="${section.id}" data-photo-section-drop-position="after">
+          ${cards || `<button class="photo-section-empty-drop" type="button" data-photo-section-drop-id="${section.id}" data-photo-section-drop-position="after">${emptyText}</button>`}
         </div>
-        <div class="photo-layer-drop photo-layer-drop-after" data-photo-library-drop-layer="${layer}" data-photo-library-drop-position="after">
-          <span>이 아래에 추가</span>
+        <div class="photo-section-drop photo-section-drop-after" data-photo-section-drop-id="${section.id}" data-photo-section-drop-position="after">
+          <span>이 섹션 맨 뒤에 넣기</span>
         </div>
       </section>
     `;
@@ -6252,73 +6297,95 @@ function renderPhotoList() {
   syncPhotoListSelection();
 }
 
-function activatePhotoLibraryLayer(layer) {
-  const nextLayer = normalizeSlideLayerNumber(layer);
-  if (nextLayer === getActiveSlideLayer()) return false;
+function addPhotoSection({ afterSectionId = null } = {}) {
+  const sections = getPhotoSections();
+  const targetIndex = sections.findIndex((section) => section.id === afterSectionId);
+  const section = {
+    id: createPhotoSectionId("section"),
+    name: `섹션 ${sections.length + 1}`,
+  };
 
-  saveActiveSlideLayerSettings();
-  state.slideLayerIndex = nextLayer;
-  applySlideLayerSettings(nextLayer, { restorePage: true, syncControls: true });
-  ensureSlideLayerAnchor();
-  render();
+  beginEditHistoryAction();
+  state.photoSections = [...sections];
+  state.photoSections.splice(targetIndex >= 0 ? targetIndex + 1 : state.photoSections.length, 0, section);
+  photoListRenderKey = "";
+  render({ refreshGuidePanel: false, refreshThumbnails: false });
+  queuePersistSettings();
+  showToast(`${section.name}을 추가했습니다.`);
+  return section;
+}
+
+function renamePhotoSection(sectionId, nextName) {
+  const section = getPhotoSection(sectionId);
+  if (!section) return false;
+
+  const name = String(nextName ?? "").trim() || DEFAULT_PHOTO_SECTION_NAME;
+  if (name === section.name) return false;
+
+  beginEditHistoryAction();
+  state.photoSections = getPhotoSections().map((item) => (
+    item.id === sectionId ? { ...item, name } : item
+  ));
+  photoListRenderKey = "";
+  render({ refreshGuidePanel: false, refreshThumbnails: false });
+  queuePersistSettings();
   return true;
 }
 
-function copyPhotoToLibraryLayer(imageId, targetLayer) {
-  const source = getImageById(imageId);
-  const nextLayer = normalizeSlideLayerNumber(targetLayer);
-  if (!source || !imageId) return;
+function getDraggedPhotoIds(imageId) {
+  if (!imageId) return [];
+  const selectedIds = selectedPhotoIds.has(imageId) ? selectedPhotoIds : new Set([imageId]);
+  return state.images.filter((image) => selectedIds.has(image.id)).map((image) => image.id);
+}
 
-  const sourceLayer = getImageLayer(source);
-  if (sourceLayer === nextLayer) {
-    activatePhotoLibraryLayer(nextLayer);
-    return;
+function movePhotosToSection(
+  imageIds,
+  targetSectionId,
+  { targetImageId = null, position = "after" } = {},
+) {
+  const ids = new Set(imageIds);
+  const movingImages = state.images.filter((image) => ids.has(image.id));
+  if (movingImages.length === 0) return false;
+
+  const sectionId = normalizePhotoSectionId(targetSectionId);
+  const remainingImages = state.images.filter((image) => !ids.has(image.id));
+  const normalizedPosition = position === "before" ? "before" : "after";
+  let insertionIndex = -1;
+  const targetIndex = targetImageId
+    ? remainingImages.findIndex((image) => image.id === targetImageId)
+    : -1;
+
+  if (targetIndex >= 0) {
+    insertionIndex = normalizedPosition === "before" ? targetIndex : targetIndex + 1;
+  } else {
+    const sectionIndices = remainingImages
+      .map((image, index) => getImageSectionId(image) === sectionId ? index : -1)
+      .filter((index) => index >= 0);
+    if (sectionIndices.length > 0) {
+      insertionIndex = normalizedPosition === "before" ? sectionIndices[0] : sectionIndices.at(-1) + 1;
+    } else {
+      const sections = getPhotoSections();
+      const targetSectionIndex = sections.findIndex((section) => section.id === sectionId);
+      insertionIndex = remainingImages.findIndex((image) =>
+        sections.findIndex((section) => section.id === getImageSectionId(image)) > targetSectionIndex,
+      );
+      if (insertionIndex < 0) insertionIndex = remainingImages.length;
+    }
   }
 
   beginEditHistoryAction();
-  const duplicateKey = getDuplicateKey(source);
-  let targetImage = getImagesForLayer(nextLayer).find((image) => getDuplicateKey(image) === duplicateKey);
-  const created = !targetImage;
-  if (!targetImage) {
-    targetImage = {
-      ...source,
-      id: createImageRecordId(source.name || "image"),
-      layer: nextLayer,
-      sourceImageId: source.sourceImageId ?? source.id,
-    };
-    state.images = [...state.images, targetImage];
-    markImagesDirty();
-  }
-
-  saveActiveSlideLayerSettings();
-  state.slideLayerIndex = nextLayer;
-  applySlideLayerSettings(nextLayer, { restorePage: true, syncControls: true });
-  const placement = autoPlaceUploadedImages([targetImage.id], { layer: nextLayer });
-  const location = Number.isFinite(placement.firstSlotIndex)
-    ? getSlotLocation(placement.firstSlotIndex)
-    : null;
-  if (location) state.pageIndex = location.page;
-  state.selectedSlotIndex = Number.isFinite(placement.firstSlotIndex) ? placement.firstSlotIndex : null;
-  render();
-  if (created) warmPreviewCache([targetImage]);
+  remainingImages.splice(
+    insertionIndex,
+    0,
+    ...movingImages.map((image) => ({ ...image, sectionId })),
+  );
+  state.images = remainingImages;
+  markImagesDirty();
+  state.sortMode = "manual";
+  if (els.sortMode) els.sortMode.value = "manual";
+  render({ refreshGuidePanel: false, refreshThumbnails: false });
   queuePersistAssets();
-  showToast(created ? `${nextLayer}번 레이어에 사진을 복사해 배치했습니다.` : `${nextLayer}번 레이어의 기존 사진을 배치했습니다.`);
-}
-
-function isSequentialSlotComposition(layer = getActiveSlideLayer()) {
-  const layerImages = getImagesForLayer(layer);
-  const layerImageIds = new Set(layerImages.map((image) => image.id));
-  const compactSlots = getSlideLayerSlotIndices(layer).map(getSlotImageId).filter(Boolean);
-  if (compactSlots.length !== layerImages.length) return false;
-  return compactSlots.every((id) => layerImageIds.has(id));
-}
-
-function replaceSlideLayerSlotOrder(layer, imageIds) {
-  const slotIndices = getSlideLayerSlotIndices(layer);
-  slotIndices.forEach((slotIndex, index) => {
-    writeSlotImageId(slotIndex, imageIds[index] ?? null);
-  });
-  markSlideSlotsDirty();
+  return true;
 }
 
 function getAdjustedImageExportEntries(layer = getActiveSlideLayer()) {
@@ -6359,14 +6426,13 @@ function getAdjustedImageExportEntries(layer = getActiveSlideLayer()) {
 
 async function downloadAdjustedImages() {
   const activeLayer = getActiveSlideLayer();
-  if (getImagesForLayer(activeLayer).length === 0) {
+  const orderedImages = getAdjustedImageExportEntries(activeLayer);
+  if (orderedImages.length === 0) {
     alert("먼저 사진을 선택해주세요.");
     return;
   }
 
   const { brightness, contrast, saturate, hue } = state.filters;
-
-  const orderedImages = getAdjustedImageExportEntries(activeLayer);
 
   for (const [index, { item, slotIndex, storedTransform }] of orderedImages.entries()) {
     const image = await imageFromDataUrl(item.url);
@@ -6427,7 +6493,9 @@ els.logoInput.addEventListener("change", async () => {
 });
 
 els.imageInput.addEventListener("change", async () => {
-  await loadImageFiles(els.imageInput.files);
+  const targetSectionId = pendingPhotoSectionUploadId;
+  pendingPhotoSectionUploadId = null;
+  await loadImageFiles(els.imageInput.files, targetSectionId ? { targetSectionId, autoPlace: false } : {});
   els.imageInput.value = "";
 });
 
@@ -6775,13 +6843,6 @@ els.thumbnailRail?.addEventListener("click", (event) => {
     goToAdjacentSlideLayer(-1);
     return;
   }
-  const slideLayerSelectButton = target?.closest("[data-slide-layer-select]");
-  if (slideLayerSelectButton instanceof HTMLButtonElement) {
-    event.preventDefault();
-    event.stopPropagation();
-    goToSlideLayer(Number(slideLayerSelectButton.dataset.slideLayerSelect));
-    return;
-  }
   const slideLayerNextButton = target?.closest("[data-slide-layer-next]");
   if (slideLayerNextButton instanceof HTMLButtonElement) {
     event.preventDefault();
@@ -6808,21 +6869,6 @@ els.thumbnailRail?.addEventListener("click", (event) => {
     event.preventDefault();
     event.stopPropagation();
     duplicateSlidePage(Number(duplicateButton.dataset.duplicateSlide));
-    return;
-  }
-  const layoutButton = target?.closest("[data-slide-layout]");
-  if (layoutButton instanceof HTMLButtonElement) {
-    event.preventDefault();
-    event.stopPropagation();
-    const layoutParts = (layoutButton.dataset.slideLayout || "").split(":");
-    const [pageText, layerText, modeText] = layoutParts.length >= 3
-      ? layoutParts
-      : [layoutParts[0], String(getCurrentSlideLayerStatus()?.currentLayer ?? DEFAULT_SLIDE_LAYER), layoutParts[1]];
-    const page = Number(pageText);
-    const layer = Number(layerText);
-    const mode = modeText;
-    if (!Number.isFinite(page) || !mode) return;
-    setLayoutPreset(mode, page, { layer });
     return;
   }
   const deleteButton = target?.closest("[data-delete-slide]");
@@ -6987,49 +7033,50 @@ els.thumbnailRail?.addEventListener("contextmenu", (event) => {
   openSlideContextMenu(page, event.clientX, event.clientY);
 });
 
+function setPhotoLibraryDropTarget(section) {
+  if (activePhotoLibraryDropSection === section) return;
+  activePhotoLibraryDropSection?.classList.remove("is-library-drop-target");
+  activePhotoLibraryDropSection = section instanceof HTMLElement ? section : null;
+  activePhotoLibraryDropSection?.classList.add("is-library-drop-target");
+}
+
+function clearPhotoLibraryDropTarget() {
+  activePhotoLibraryDropSection?.classList.remove("is-library-drop-target");
+  activePhotoLibraryDropSection = null;
+  document.body.classList.remove("is-photo-section-file-dragging");
+}
+
 els.photoListPanel?.addEventListener("dragstart", (event) => {
   const target = event.target instanceof Element ? event.target.closest(".photo-list-card") : null;
   if (!(target instanceof HTMLElement) || !event.dataTransfer) return;
-  event.dataTransfer.setData("application/x-medical-presenter", target.dataset.imageId);
-  event.dataTransfer.setData("application/x-medical-source-layer", target.dataset.layer ?? "");
-  event.dataTransfer.setData("text/plain", target.dataset.index);
-  event.dataTransfer.effectAllowed = "copyMove";
+  event.dataTransfer.setData("application/x-medical-presenter", target.dataset.imageId ?? "");
+  event.dataTransfer.effectAllowed = "move";
+  event.dataTransfer.setDragImage(target, Math.min(target.offsetWidth / 2, 96), Math.min(target.offsetHeight / 2, 48));
 });
 
 els.photoListPanel?.addEventListener("dragover", (event) => {
   const target = event.target instanceof Element ? event.target.closest(".photo-list-card") : null;
-  const libraryDrop = target
-    ? null
-    : event.target instanceof Element
-      ? event.target.closest("[data-photo-library-drop-layer]")
-      : null;
-  if (libraryDrop instanceof HTMLElement) {
-    event.preventDefault();
-    if (hasDraggedFiles(event)) {
-      event.stopPropagation();
-      hideDropOverlay();
-    }
-    const section = libraryDrop.closest(".photo-layer-section");
-    if (activePhotoLibraryDropLayer !== section) {
-      activePhotoLibraryDropLayer?.classList.remove("is-library-drop-target");
-      activePhotoLibraryDropLayer = section instanceof HTMLElement ? section : null;
-      activePhotoLibraryDropLayer?.classList.add("is-library-drop-target");
-    }
-    return;
-  }
-  if (!(target instanceof HTMLElement)) return;
+  const sectionDrop = event.target instanceof Element
+    ? event.target.closest("[data-photo-section-drop-id]")
+    : null;
+  const section = (target ?? sectionDrop)?.closest(".photo-section");
+  if (!(section instanceof HTMLElement)) return;
+
   event.preventDefault();
-  const sourceLayer = Number(event.dataTransfer?.getData("application/x-medical-source-layer"));
-  const targetLayer = Number(target.dataset.layer);
-  if (Number.isFinite(sourceLayer) && Number.isFinite(targetLayer) && sourceLayer !== targetLayer) {
-    const section = target.closest(".photo-layer-section");
-    if (activePhotoLibraryDropLayer !== section) {
-      activePhotoLibraryDropLayer?.classList.remove("is-library-drop-target");
-      activePhotoLibraryDropLayer = section instanceof HTMLElement ? section : null;
-      activePhotoLibraryDropLayer?.classList.add("is-library-drop-target");
-    }
+  if (hasDraggedFiles(event)) {
+    event.stopPropagation();
+    hideDropOverlay();
+    document.body.classList.add("is-photo-section-file-dragging");
+    setPhotoLibraryDropTarget(section);
+    if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
     return;
   }
+
+  if (!(target instanceof HTMLElement)) {
+    setPhotoLibraryDropTarget(section);
+    return;
+  }
+
   const targetRect = target.getBoundingClientRect();
   activePhotoReorderPosition = event.clientY < targetRect.top + targetRect.height / 2 ? "before" : "after";
   if (activeReorderTarget !== target) {
@@ -7043,21 +7090,9 @@ els.photoListPanel?.addEventListener("dragover", (event) => {
 
 els.photoListPanel?.addEventListener("dragleave", (event) => {
   const target = event.target instanceof Element ? event.target.closest(".photo-list-card") : null;
-  const libraryDrop = target
-    ? null
-    : event.target instanceof Element
-      ? event.target.closest("[data-photo-library-drop-layer]")
-      : null;
-  if (libraryDrop instanceof HTMLElement) {
-    const nextDrop = event.relatedTarget instanceof Element
-      ? event.relatedTarget.closest("[data-photo-library-drop-layer]")
-      : null;
-    if (nextDrop?.closest(".photo-layer-section") === libraryDrop.closest(".photo-layer-section")) return;
-    const section = libraryDrop.closest(".photo-layer-section");
-    section?.classList.remove("is-library-drop-target");
-    if (activePhotoLibraryDropLayer === section) activePhotoLibraryDropLayer = null;
-    return;
-  }
+  const currentSection = (target ?? (event.target instanceof Element ? event.target.closest(".photo-section") : null))?.closest(".photo-section");
+  const nextSection = event.relatedTarget instanceof Element ? event.relatedTarget.closest(".photo-section") : null;
+  if (currentSection instanceof HTMLElement && currentSection !== nextSection) clearPhotoLibraryDropTarget();
   if (!(target instanceof HTMLElement)) return;
   const nextTarget = event.relatedTarget instanceof Element ? event.relatedTarget.closest(".photo-list-card") : null;
   if (nextTarget === target) return;
@@ -7067,90 +7102,67 @@ els.photoListPanel?.addEventListener("dragleave", (event) => {
 
 els.photoListPanel?.addEventListener("drop", async (event) => {
   const target = event.target instanceof Element ? event.target.closest(".photo-list-card") : null;
-  const libraryDrop = target
-    ? null
-    : event.target instanceof Element
-      ? event.target.closest("[data-photo-library-drop-layer]")
-      : null;
-  const targetLayer = Number(libraryDrop?.getAttribute("data-photo-library-drop-layer") ?? target?.dataset.layer);
+  const sectionDrop = event.target instanceof Element
+    ? event.target.closest("[data-photo-section-drop-id]")
+    : null;
+  const targetSectionId = sectionDrop?.getAttribute("data-photo-section-drop-id") ?? target?.dataset.sectionId;
+  if (!targetSectionId) return;
 
-  if (hasDraggedFiles(event) && Number.isFinite(targetLayer)) {
-    event.preventDefault();
-    event.stopPropagation();
-    activePhotoLibraryDropLayer?.classList.remove("is-library-drop-target");
-    activePhotoLibraryDropLayer = null;
-    hideDropOverlay();
-    await loadImageFiles(event.dataTransfer.files, { targetLayer });
-    return;
-  }
-
-  if (libraryDrop instanceof HTMLElement && Number.isFinite(targetLayer)) {
-    event.preventDefault();
-    activePhotoLibraryDropLayer?.classList.remove("is-library-drop-target");
-    activePhotoLibraryDropLayer = null;
-    const imageId = event.dataTransfer?.getData("application/x-medical-presenter");
-    if (imageId) copyPhotoToLibraryLayer(imageId, targetLayer);
-    return;
-  }
-
-  if (!(target instanceof HTMLElement)) return;
-  const draggedImageId = event.dataTransfer?.getData("application/x-medical-presenter");
-  const draggedSourceLayer = Number(event.dataTransfer?.getData("application/x-medical-source-layer"));
-  if (draggedImageId && Number.isFinite(targetLayer) && draggedSourceLayer !== targetLayer) {
-    event.preventDefault();
-    copyPhotoToLibraryLayer(draggedImageId, targetLayer);
-    return;
-  }
   event.preventDefault();
-  const reorderPosition = activeReorderTarget === target ? activePhotoReorderPosition : "after";
-  target.classList.remove("is-reorder-target", "is-reorder-before", "is-reorder-after");
+  if (hasDraggedFiles(event)) {
+    event.stopPropagation();
+    clearPhotoLibraryDropTarget();
+    hideDropOverlay();
+    await loadImageFiles(event.dataTransfer.files, { targetSectionId, autoPlace: false });
+    return;
+  }
+
+  const imageId = event.dataTransfer?.getData("application/x-medical-presenter");
+  if (!imageId) return;
+  const position = target
+    ? activeReorderTarget === target ? activePhotoReorderPosition : "after"
+    : sectionDrop?.getAttribute("data-photo-section-drop-position") ?? "after";
+  target?.classList.remove("is-reorder-target", "is-reorder-before", "is-reorder-after");
   if (activeReorderTarget === target) activeReorderTarget = null;
+  clearPhotoLibraryDropTarget();
 
-  const from = Number(event.dataTransfer?.getData("text/plain"));
-  const to = Number(target.dataset.index);
-  const sourceLayer = Number(event.dataTransfer?.getData("application/x-medical-source-layer"));
-  const cardLayer = Number(target.dataset.layer);
-  if (!Number.isFinite(from) || !Number.isFinite(to) || from === to || sourceLayer !== cardLayer) return;
-  if (getImageLayer(state.images[from]) !== sourceLayer || getImageLayer(state.images[to]) !== cardLayer) return;
-  if (getActiveSlideLayer() !== sourceLayer) {
-    saveActiveSlideLayerSettings();
-    state.slideLayerIndex = sourceLayer;
-    applySlideLayerSettings(sourceLayer, { restorePage: true, syncControls: true });
+  const imageIds = getDraggedPhotoIds(imageId);
+  if (movePhotosToSection(imageIds, targetSectionId, { targetImageId: target?.dataset.imageId ?? null, position })) {
+    const section = getPhotoSection(targetSectionId);
+    showToast(`${imageIds.length}장을 ${section.name}으로 옮겼습니다.`);
   }
-  const shouldUpdateSlots = isSequentialSlotComposition(sourceLayer);
-
-  const [moved] = state.images.splice(from, 1);
-  const insertionIndex =
-    from < to
-      ? reorderPosition === "after" ? to : to - 1
-      : reorderPosition === "after" ? to + 1 : to;
-  state.images.splice(insertionIndex, 0, moved);
-  markImagesDirty();
-
-  if (shouldUpdateSlots) {
-    replaceSlideLayerSlotOrder(sourceLayer, getImagesForLayer(sourceLayer).map((image) => image.id));
-  }
-
-  state.sortMode = "manual";
-  els.sortMode.value = "manual";
-  render();
-  queuePersistAssets();
 });
 
 els.photoListPanel?.addEventListener("dragend", () => {
   activeReorderTarget?.classList.remove("is-reorder-target", "is-reorder-before", "is-reorder-after");
   activeReorderTarget = null;
   activePhotoReorderPosition = "after";
-  activePhotoLibraryDropLayer?.classList.remove("is-library-drop-target");
-  activePhotoLibraryDropLayer = null;
+  clearPhotoLibraryDropTarget();
 });
 
 els.photoListPanel?.addEventListener("click", (event) => {
-  const layerSwitch = event.target instanceof Element ? event.target.closest("[data-library-layer-select]") : null;
-  if (layerSwitch instanceof HTMLButtonElement) {
+  const sectionUploadAction = event.target instanceof Element ? event.target.closest("[data-upload-photo-section]") : null;
+  if (sectionUploadAction instanceof HTMLButtonElement) {
     event.preventDefault();
-    const targetLayer = Number(layerSwitch.dataset.libraryLayerSelect);
-    if (Number.isFinite(targetLayer)) activatePhotoLibraryLayer(targetLayer);
+    event.stopPropagation();
+    pendingPhotoSectionUploadId = sectionUploadAction.dataset.uploadPhotoSection ?? null;
+    els.imageInput?.click();
+    return;
+  }
+
+  const addSectionButton = event.target instanceof Element ? event.target.closest("[data-add-photo-section-after]") : null;
+  if (addSectionButton instanceof HTMLButtonElement) {
+    event.preventDefault();
+    event.stopPropagation();
+    addPhotoSection({ afterSectionId: addSectionButton.dataset.addPhotoSectionAfter ?? null });
+    return;
+  }
+
+  const sectionUploadButton = event.target instanceof Element ? event.target.closest(".photo-section-empty-drop") : null;
+  if (sectionUploadButton instanceof HTMLButtonElement) {
+    event.preventDefault();
+    pendingPhotoSectionUploadId = sectionUploadButton.dataset.photoSectionDropId ?? null;
+    els.imageInput?.click();
     return;
   }
 
@@ -7192,11 +7204,6 @@ els.photoListPanel?.addEventListener("click", (event) => {
   selectedPhotoIds = new Set([imageId]);
   photoSelectionAnchorId = imageId;
 
-  const cardLayer = Number(card.dataset.layer);
-  if (Number.isFinite(cardLayer) && cardLayer !== getActiveSlideLayer()) {
-    activatePhotoLibraryLayer(cardLayer);
-  }
-
   const targetSlotIndex = resolvePhotoListTargetSlotIndex();
   if (Number.isFinite(targetSlotIndex)) {
     assignImageToSlot(targetSlotIndex, imageId);
@@ -7209,6 +7216,14 @@ els.photoListPanel?.addEventListener("click", (event) => {
   if (!location) return;
   goToPageWithSelection(location.page, slotIndex);
   showToast(`${getSlotDisplayLabel(slotIndex)}으로 이동했습니다.`);
+});
+
+els.photoListPanel?.addEventListener("change", (event) => {
+  const sectionNameInput = event.target instanceof HTMLInputElement
+    ? event.target.closest("[data-photo-section-name]")
+    : null;
+  if (!(sectionNameInput instanceof HTMLInputElement)) return;
+  renamePhotoSection(sectionNameInput.dataset.photoSectionName ?? "", sectionNameInput.value);
 });
 
 els.photoListPanel?.addEventListener("dblclick", (event) => {
@@ -7512,6 +7527,13 @@ els.resetFiltersButton.addEventListener("click", () => {
 window.addEventListener("dragenter", (event) => {
   if (!hasDraggedFiles(event)) return;
   event.preventDefault();
+  const sectionDrop = getPhotoSectionDropAtPoint(event.clientX, event.clientY);
+  if (sectionDrop) {
+    hideDropOverlay();
+    document.body.classList.add("is-photo-section-file-dragging");
+    setPhotoLibraryDropTarget(sectionDrop.section);
+    return;
+  }
   showDropOverlay();
 });
 
@@ -7519,12 +7541,21 @@ window.addEventListener("dragover", (event) => {
   if (!hasDraggedFiles(event)) return;
   event.preventDefault();
   event.dataTransfer.dropEffect = "copy";
+  const sectionDrop = getPhotoSectionDropAtPoint(event.clientX, event.clientY);
+  if (sectionDrop) {
+    hideDropOverlay();
+    document.body.classList.add("is-photo-section-file-dragging");
+    setPhotoLibraryDropTarget(sectionDrop.section);
+    return;
+  }
+  clearPhotoLibraryDropTarget();
   showDropOverlay();
 });
 
 window.addEventListener("dragleave", (event) => {
   if (!hasDraggedFiles(event)) return;
   if (event.relatedTarget && document.documentElement.contains(event.relatedTarget)) return;
+  clearPhotoLibraryDropTarget();
   hideDropOverlay();
 });
 
@@ -7532,8 +7563,19 @@ window.addEventListener("drop", async (event) => {
   if (!hasDraggedFiles(event)) return;
   event.preventDefault();
   const targetSlotIndex = getStageSlotIndexAtPoint(event.clientX, event.clientY);
+  const sectionDrop = targetSlotIndex === null
+    ? getPhotoSectionDropAtPoint(event.clientX, event.clientY)
+    : null;
+  clearPhotoLibraryDropTarget();
   hideDropOverlay();
-  await loadImageFiles(event.dataTransfer.files, { targetSlotIndex });
+  await loadImageFiles(
+    event.dataTransfer.files,
+    targetSlotIndex !== null
+      ? { targetSlotIndex }
+      : sectionDrop
+        ? { targetSectionId: sectionDrop.sectionId, autoPlace: false }
+        : {},
+  );
 });
 
 document.addEventListener("keydown", (event) => {
@@ -7710,6 +7752,17 @@ document.addEventListener("keydown", (event) => {
     return;
   }
 
+  if (
+    state.pageIndex > 0 &&
+    !event.shiftKey &&
+    !hasSlideShortcutModifier(event) &&
+    (event.key === "ArrowUp" || event.key === "ArrowDown")
+  ) {
+    event.preventDefault();
+    goToAdjacentSlideLayer(event.key === "ArrowDown" ? 1 : -1);
+    return;
+  }
+
   if (state.pageIndex > 0 && event.key === "Backspace") {
     const selectedSlotIndex = Number(state.selectedSlotIndex);
     if (Number.isFinite(selectedSlotIndex) && selectedSlotIndex >= 0) {
@@ -7779,14 +7832,13 @@ document.addEventListener("keydown", (event) => {
     return;
   }
 
-  if (event.key === "ArrowLeft" || event.key === "ArrowUp" || event.key.toLowerCase() === "p") {
+  if (event.key === "ArrowLeft" || event.key.toLowerCase() === "p") {
     event.preventDefault();
     goToPage(state.pageIndex - 1, { focusThumbnail: !isPresenting() });
   }
 
   if (
     event.key === "ArrowRight" ||
-    event.key === "ArrowDown" ||
     event.key === "PageDown" ||
     event.key === " " ||
     event.key.toLowerCase() === "n"
@@ -7919,6 +7971,7 @@ function getSettingsData() {
       date: new Date().toLocaleDateString("ko-KR"),
     },
     coverVisibility: state.coverVisibility,
+    photoSections: getPhotoSections(),
     slideSlots: state.slideSlots,
     slideCaptions: state.slideCaptions,
     slidePageLayouts: state.slidePageLayouts,
@@ -8793,6 +8846,7 @@ function applyPersistedState() {
     lastPersistedAssetsJson = savedAssets || "";
 
     state.images = Array.isArray(assets.images) ? assets.images : state.images;
+    state.photoSections = normalizePhotoSections(data.photoSections);
     markImagesDirty();
     state.logoUrl = assets.logoUrl || state.logoUrl;
     state.backgroundMusicUrl = assets.backgroundMusicUrl || "";
@@ -8859,7 +8913,7 @@ function applyPersistedState() {
       saveActiveSlideLayerSettings();
     }
     applyImageOrder(data.imageOrder);
-    migrateImageLayerOwnership();
+    migrateImageLibrary();
 
     syncSlideLayerEditorControls();
     syncSlideExportControls();
@@ -8914,7 +8968,7 @@ function applyPersistedState() {
     els.bgScaleValue.textContent = `${state.backgroundFilters.scale}%`;
     els.bgYValue.textContent = `${state.backgroundFilters.y}%`;
     if (state.logoUrl) els.logoFileName.textContent = "저장된 로고 불러옴";
-    if (getImagesForLayer().length > 0) els.imageFileName.textContent = `${getImagesForLayer().length}장 복원됨`;
+    if (state.images.length > 0) els.imageFileName.textContent = `${state.images.length}장 복원됨`;
     warmPreviewCache(state.images);
     return true;
   } catch {
@@ -9183,11 +9237,7 @@ function createStandaloneHtml(data) {
       state.slideLayoutOverflow[key] = normalized;
       return state.slideLayoutOverflow[key];
     };
-    const imageMatchesLayer = (imageId, layer) => {
-      const image = state.images.find((item) => item.id === imageId);
-      const imageLayer = Math.min(Math.max(Number(image?.layer ?? DEFAULT_SLIDE_LAYER) || DEFAULT_SLIDE_LAYER,1),SLIDE_LAYER_COUNT);
-      return Boolean(image && imageLayer === layer);
-    };
+    const imageExists = (imageId) => state.images.some((item) => item.id === imageId);
     const stashOverflow = (page, layer, slots, transforms, startOffset) => {
       const candidates = slots.map((imageId,index)=>({ imageId, offset:Number(startOffset)+index, transform:transforms?.[index]||null })).filter((item)=>item.imageId && Number.isInteger(item.offset) && item.offset>=0);
       if (!candidates.length) return;
@@ -9199,7 +9249,7 @@ function createStandaloneHtml(data) {
       if (!record) return;
       Object.entries(record).sort(([left],[right])=>Number(left)-Number(right)).forEach(([offsetText,item])=>{
         const offset = Number(offsetText);
-        if (!Number.isInteger(offset) || offset < 0 || offset >= slots.length || slots[offset] || !imageMatchesLayer(item.imageId, layer)) return;
+        if (!Number.isInteger(offset) || offset < 0 || offset >= slots.length || slots[offset] || !imageExists(item.imageId)) return;
         slots[offset] = item.imageId;
         transforms[offset] = item.transform && typeof item.transform === "object" ? { ...item.transform } : null;
         delete record[offset];
@@ -9223,10 +9273,10 @@ function createStandaloneHtml(data) {
       const pageNumber = Number(page);
       const layerNumber = Number(layer);
       const base = slidePages()[pageNumber - 1];
-      if (!base || layerNumber === DEFAULT_SLIDE_LAYER || layerNumber < 1 || layerNumber > SLIDE_LAYER_COUNT) return null;
+      if (!Number.isInteger(pageNumber) || pageNumber <= 0 || layerNumber === DEFAULT_SLIDE_LAYER || layerNumber < 1 || layerNumber > SLIDE_LAYER_COUNT) return null;
       const key = layerKey(pageNumber, layerNumber);
       const record = state.slideLayerPages[key];
-      const layout = normalizeLayout(record?.layout || base.layout || defaultLayout());
+      const layout = normalizeLayout(record?.layout || base?.layout || defaultLayout());
       const size = layoutSize(layout);
       const slots = Array.from({ length: size }, (_, offset) => (Array.isArray(record?.slots) ? record.slots[offset] : null) ?? null);
       const caption = record?.caption || "";
@@ -9242,6 +9292,19 @@ function createStandaloneHtml(data) {
         slotIndices: Array.from({ length: size }, (_, offset) => layerSlotIndex(pageNumber, layerNumber, offset)),
       };
     };
+    const getSlideLayerPageCount = (layer = currentLayer()) => {
+      const normalizedLayer = Math.min(Math.max(Number(layer) || DEFAULT_SLIDE_LAYER, 1), SLIDE_LAYER_COUNT);
+      if (normalizedLayer === DEFAULT_SLIDE_LAYER) return slidePages().length;
+      const storedPages = Object.keys(state.slideLayerPages).reduce((highest, key) => {
+        const [page, storedLayer] = key.split(":").map(Number);
+        return Number.isInteger(page) && page > 0 && storedLayer === normalizedLayer ? Math.max(highest, page) : highest;
+      }, 0);
+      const overflowPages = Object.keys(state.slideLayoutOverflow).reduce((highest, key) => {
+        const [page, storedLayer] = key.split(":").map(Number);
+        return Number.isInteger(page) && page > 0 && storedLayer === normalizedLayer ? Math.max(highest, page) : highest;
+      }, 0);
+      return Math.max(storedPages, overflowPages, slidePages().length > 0 ? 1 : 0);
+    };
     const defaultPageMeta = () => ({ start:0, pageSize: layoutSize(defaultLayout()), layout: defaultLayout(), slots: [], layer: DEFAULT_SLIDE_LAYER, slotIndices: [] });
     const basePageMeta = (page = state.pageIndex) => {
       const base = page > 0 ? slidePages()[page - 1] : null;
@@ -9251,7 +9314,7 @@ function createStandaloneHtml(data) {
     const currentPageMeta = () => {
       if (state.pageIndex <= 0) return defaultPageMeta();
       const layer = currentLayer();
-      return layer === DEFAULT_SLIDE_LAYER ? basePageMeta(state.pageIndex) : (layerPage(state.pageIndex, layer) || basePageMeta(state.pageIndex));
+      return layer === DEFAULT_SLIDE_LAYER ? basePageMeta(state.pageIndex) : layerPage(state.pageIndex, layer);
     };
     const pageLayout = (page = state.pageIndex) => page === state.pageIndex ? currentPageMeta().layout : basePageMeta(page).layout;
     function setPageLayout(mode){
@@ -9302,7 +9365,7 @@ function createStandaloneHtml(data) {
       }
       render();
     }
-    const totalPages = () => 1 + slidePages().length;
+    const totalPages = () => 1 + getSlideLayerPageCount();
     const $ = (id) => document.getElementById(id);
     const esc = (v) => String(v).replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#039;");
     const normalizeAutoplaySeconds = (value) => Math.min(Math.max(Number(Number(value).toFixed(1)) || 3, 1), 10);
