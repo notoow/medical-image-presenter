@@ -93,6 +93,8 @@ let guidePanelRenderKey = "";
 let activeThumbnailButton = null;
 let activeThumbnailSlotNode = null;
 let activePhotoListCard = null;
+let selectedPhotoIds = new Set();
+let photoSelectionAnchorId = null;
 let thumbnailPageButtonCache = new Map();
 let activeReorderTarget = null;
 let activeSlideReorderTarget = null;
@@ -202,6 +204,7 @@ const els = {
   layoutTwoButton: document.querySelector("#layoutTwoButton"),
   layoutThreeButton: document.querySelector("#layoutThreeButton"),
   layoutFourButton: document.querySelector("#layoutFourButton"),
+  applyLayoutToAllLayersButton: document.querySelector("#applyLayoutToAllLayersButton"),
   gridRows: document.querySelector("#gridRows"),
   gridCols: document.querySelector("#gridCols"),
   horizontalSplitButton: document.querySelector("#horizontalSplitButton"),
@@ -1241,6 +1244,31 @@ function getSlidePages() {
   });
 }
 
+// Each layer is an independent deck. The middle layer keeps the original compact
+// storage; the other layers only materialize pages the user has actually created.
+function getSlideLayerPageCount(layer = getActiveSlideLayer()) {
+  const normalizedLayer = normalizeSlideLayerNumber(layer);
+  if (normalizedLayer === DEFAULT_SLIDE_LAYER) return getSlidePageCount();
+
+  const storedPages = Object.keys(ensureSlideLayerPagesStore()).reduce((highest, key) => {
+    const parsed = parseSlideLayerKey(key);
+    return parsed?.layer === normalizedLayer ? Math.max(highest, parsed.page) : highest;
+  }, 0);
+  const overflowPages = Object.keys(ensureSlideLayoutOverflowStore()).reduce((highest, key) => {
+    const parsed = parseSlideLayoutOverflowKey(key);
+    return parsed?.layer === normalizedLayer ? Math.max(highest, parsed.page) : highest;
+  }, 0);
+  // A project with slides opens every layer with one blank working slide.
+  return Math.max(storedPages, overflowPages, getSlidePageCount() > 0 ? 1 : 0);
+}
+
+function getSlidePagesForLayer(layer = getActiveSlideLayer()) {
+  const normalizedLayer = normalizeSlideLayerNumber(layer);
+  if (normalizedLayer === DEFAULT_SLIDE_LAYER) return getSlidePages();
+  const count = getSlideLayerPageCount(normalizedLayer);
+  return Array.from({ length: count }, (_, index) => getLayerSlidePage(index + 1, normalizedLayer));
+}
+
 function getPageLayout(page = state.pageIndex) {
   if (!Number.isFinite(page) || page <= 0) {
     return getDefaultLayoutConfig();
@@ -1337,10 +1365,11 @@ function getCurrentPageSlotMeta() {
 }
 
 function getTotalPages() {
-  const nextKey = `${slideSlotsVersion}:${layoutVersion}:${state.slideSlots.length}:${state.slidePageLayouts.length}`;
+  const activeLayer = getActiveSlideLayer();
+  const nextKey = `${slideSlotsVersion}:${layoutVersion}:${activeLayer}:${state.slideSlots.length}:${state.slidePageLayouts.length}:${Object.keys(ensureSlideLayerPagesStore()).join(",")}:${Object.keys(ensureSlideLayoutOverflowStore()).join(",")}`;
   if (totalPagesCacheKey === nextKey) return cachedTotalPages;
 
-  cachedTotalPages = 1 + getSlidePageCount();
+  cachedTotalPages = 1 + getSlideLayerPageCount(activeLayer);
   totalPagesCacheKey = nextKey;
   return cachedTotalPages;
 }
@@ -1863,29 +1892,30 @@ function renderCover() {
   unregisterRenderableImageNodesInRoot(els.stage);
   activeStageSlotDropTarget = null;
   const metaItems = [
-    state.coverVisibility.hospitalName ? els.hospitalName.value : "",
-    state.coverVisibility.presenterName ? els.presenterName.value : "",
-    state.coverVisibility.date ? new Date().toLocaleDateString("ko-KR") : "",
+    state.coverVisibility.hospitalName ? { field: "hospitalName", value: els.hospitalName.value } : null,
+    state.coverVisibility.presenterName ? { field: "presenterName", value: els.presenterName.value } : null,
+    state.coverVisibility.date ? { field: null, value: new Date().toLocaleDateString("ko-KR") } : null,
   ].filter(Boolean);
 
   els.stage.className = "stage stage-cover";
   els.stage.innerHTML = `
     <div class="cover-card">
+      <div class="cover-layer-ribbon">레이어 ${getActiveSlideLayer()} · ${getSlideLayerPageCount()}장</div>
       ${
         state.coverVisibility.logo && state.logoUrl
           ? `<img class="cover-logo" src="${state.logoUrl}" alt="Hospital logo" />`
           : ""
       }
-      ${state.coverVisibility.title ? `<h2 class="cover-title">${escapeHtml(els.coverTitle.value)}</h2>` : ""}
+      ${state.coverVisibility.title ? `<h2 class="cover-title" contenteditable="true" data-cover-field="title">${escapeHtml(els.coverTitle.value)}</h2>` : ""}
       ${
         state.coverVisibility.subtitle
-          ? `<p class="cover-subtitle">${escapeHtml(els.coverSubtitle.value)}</p>`
+          ? `<p class="cover-subtitle" contenteditable="true" data-cover-field="subtitle">${escapeHtml(els.coverSubtitle.value)}</p>`
           : ""
       }
       ${
         metaItems.length > 0
           ? `<div class="cover-meta">${metaItems
-              .map((item) => `<span>${escapeHtml(item)}</span>`)
+              .map((item) => `<span ${item.field ? `contenteditable="true" data-cover-field="${item.field}"` : ""}>${escapeHtml(item.value)}</span>`)
               .join("")}</div>`
           : ""
       }
@@ -1998,18 +2028,15 @@ function renderSlide() {
   const { start, slots: pageSlots, layout, slotIndices, caption: slideCaption = "" } = getCurrentPageSlotMeta();
   const trimmedCaption = slideCaption.trim();
   const isEmptySlide = pageSlots.length > 0 && !pageSlots.some(Boolean);
-  const layerStatus = getCurrentSlideLayerStatus();
-  const isLayerSlide = layerStatus && layerStatus.currentLayer !== DEFAULT_SLIDE_LAYER;
   const layoutClass = layout.mode === "custom" ? "layout-custom" : `layout-${layout.mode}`;
 
-  els.stage.className = `stage layout-${layout.mode} has-stage-index`;
+  els.stage.className = `stage layout-${layout.mode}`;
 
   if (pageSlots.length === 0) {
     visibleSlideCardCache = new Map();
     visibleGuideCache = new Map();
     unregisterRenderableImageNodesInRoot(els.stage);
     els.stage.innerHTML = `
-      ${getStageIndexBadgeHtml()}
       <div class="empty-state">
         <div>
           <h2>사진을 선택하면 여기에 슬라이드가 만들어집니다.</h2>
@@ -2025,7 +2052,6 @@ function renderSlide() {
   activeStageSlotDropTarget = null;
   unregisterRenderableImageNodesInRoot(els.stage);
   els.stage.innerHTML = `
-    ${getStageIndexBadgeHtml()}
     <div
       class="slide-grid ${layoutClass}"
       style="--grid-cols:${layout.cols}; --grid-rows:${layout.rows};"
@@ -2037,16 +2063,6 @@ function renderSlide() {
         })
         .join("")}
     </div>
-    ${
-      isLayerSlide && isEmptySlide
-        ? `
-          <div class="layer-empty-note">
-            <strong>${layerStatus.currentLayer}번 레이어</strong>
-            <span>빈 슬라이드</span>
-          </div>
-        `
-        : ""
-    }
     ${
       !isEmptySlide
         ? `
@@ -2151,9 +2167,10 @@ function syncDeckStatus() {
   }
 
   syncLayoutControls();
-  const hasCurrentSlide = state.pageIndex > 0 && getSlidePageCount() > 0;
+  const activeLayerPageCount = getSlideLayerPageCount();
+  const hasCurrentSlide = state.pageIndex > 0 && activeLayerPageCount > 0;
   const canMoveSlidePrev = hasCurrentSlide && state.pageIndex > 1;
-  const canMoveSlideNext = hasCurrentSlide && state.pageIndex < getSlidePageCount();
+  const canMoveSlideNext = hasCurrentSlide && state.pageIndex < activeLayerPageCount;
   els.slideQuickActions?.classList.toggle("is-hidden", !hasCurrentSlide);
   if (els.moveSlidePrevButton) els.moveSlidePrevButton.disabled = !canMoveSlidePrev;
   if (els.moveSlideNextButton) els.moveSlideNextButton.disabled = !canMoveSlideNext;
@@ -2943,7 +2960,9 @@ function goToSlideLayer(layer) {
     return true;
   }
 
-  const fallbackPageIndex = state.pageIndex;
+  // A layer remembers its own last page. A fresh layer always opens at page 1.
+  const existingSettings = ensureSlideLayerSettingsStore()[String(nextLayer)];
+  const fallbackPageIndex = existingSettings?.pageIndex > 0 ? existingSettings.pageIndex : 1;
   saveActiveSlideLayerSettings(status.currentLayer);
   state.slideLayerIndex = nextLayer;
   applySlideLayerSettings(nextLayer, { fallbackPageIndex, restorePage: true, syncControls: true });
@@ -4422,14 +4441,14 @@ function syncLayoutControls() {
   els.layoutMode.value = layout.mode;
 }
 
-function applyLayoutToPage(page, mode, rows, cols, { layer = null } = {}) {
+function applyLayoutToPage(page, mode, rows, cols, { layer = null, recordHistory = true, renderAfter = true, announce = true } = {}) {
   if (!Number.isFinite(page) || page <= 0) {
-    beginEditHistoryAction();
+    if (recordHistory) beginEditHistoryAction();
     state.layoutMode = createLayoutConfig(mode, rows, cols).mode;
     state.gridRows = createLayoutConfig(mode, rows, cols).rows;
     state.gridCols = createLayoutConfig(mode, rows, cols).cols;
     markLayoutDirty();
-    render();
+    if (renderAfter) render();
     return;
   }
 
@@ -4441,7 +4460,7 @@ function applyLayoutToPage(page, mode, rows, cols, { layer = null } = {}) {
       ? getCurrentSlideLayerStatus()?.currentLayer
       : DEFAULT_SLIDE_LAYER;
   if (activeLayer && activeLayer !== DEFAULT_SLIDE_LAYER) {
-    beginEditHistoryAction();
+    if (recordHistory) beginEditHistoryAction();
     const layerPage = getLayerSlidePage(page, activeLayer, { create: true });
     if (!layerPage) return;
 
@@ -4497,10 +4516,10 @@ function applyLayoutToPage(page, mode, rows, cols, { layer = null } = {}) {
     markSlideSlotsDirty();
     markLayoutDirty();
     if (page === state.pageIndex) state.slideLayerIndex = activeLayer;
-    render();
-    if (stashedCount > 0) {
+    if (renderAfter) render();
+    if (announce && stashedCount > 0) {
       showToast(`사진 ${stashedCount}장을 분할 보관했습니다. 칸을 다시 늘리면 원래 위치로 복원됩니다.`);
-    } else if (restoredCount > 0) {
+    } else if (announce && restoredCount > 0) {
       showToast(`분할 보관 사진 ${restoredCount}장을 원래 칸에 복원했습니다.`);
     }
     return;
@@ -4521,7 +4540,7 @@ function applyLayoutToPage(page, mode, rows, cols, { layer = null } = {}) {
   const targetPage = pages[page - 1];
   if (!targetPage) return;
 
-  beginEditHistoryAction();
+  if (recordHistory) beginEditHistoryAction();
   const selectedLocation =
     Number.isFinite(state.selectedSlotIndex) && state.selectedSlotIndex >= 0
       ? getSlotLocation(Number(state.selectedSlotIndex))
@@ -4582,10 +4601,10 @@ function applyLayoutToPage(page, mode, rows, cols, { layer = null } = {}) {
   markSlideSlotsDirty();
   markLayoutDirty();
   normalizeSlideCaptions();
-  render();
-  if (stashedCount > 0) {
+  if (renderAfter) render();
+  if (announce && stashedCount > 0) {
     showToast(`사진 ${stashedCount}장을 분할 보관했습니다. 칸을 다시 늘리면 원래 위치로 복원됩니다.`);
-  } else if (restoredCount > 0) {
+  } else if (announce && restoredCount > 0) {
     showToast(`분할 보관 사진 ${restoredCount}장을 원래 칸에 복원했습니다.`);
   }
 }
@@ -4603,6 +4622,22 @@ function setGrid(rows, cols, mode = "custom", page = state.pageIndex, options = 
   }
 
   applyLayoutToPage(page, nextLayout.mode, nextLayout.rows, nextLayout.cols, options);
+}
+
+function applyCurrentLayoutToAllLayers() {
+  if (state.pageIndex <= 0) return;
+  const layout = getCurrentPageSlotMeta().layout;
+  beginEditHistoryAction();
+  Array.from({ length: SLIDE_LAYER_COUNT }, (_, index) => index + 1).forEach((layer) => {
+    applyLayoutToPage(state.pageIndex, layout.mode, layout.rows, layout.cols, {
+      layer,
+      recordHistory: false,
+      renderAfter: false,
+      announce: false,
+    });
+  });
+  render();
+  showToast("현재 분할을 모든 레이어에 적용했습니다.");
 }
 
 function setLayoutPreset(mode, page = state.pageIndex, options = {}) {
@@ -4745,7 +4780,7 @@ function findNextEmptySlotIndex(fromSlotIndex = -1) {
 
 function getSlideLayerSlotIndices(layer = getActiveSlideLayer()) {
   const normalizedLayer = normalizeSlideLayerNumber(layer);
-  return getSlidePages().flatMap((page) => {
+  return getSlidePagesForLayer(normalizedLayer).flatMap((page) => {
     if (normalizedLayer === DEFAULT_SLIDE_LAYER) {
       return Array.from({ length: page.pageSize }, (_, offset) => page.start + offset);
     }
@@ -4759,29 +4794,31 @@ function getSlideLayerSlotIndices(layer = getActiveSlideLayer()) {
 function appendSlidePageForLayer(layer, preferredLayout = getDefaultLayoutConfig()) {
   const normalizedLayer = normalizeSlideLayerNumber(layer);
   const targetLayout = createLayoutConfig(preferredLayout?.mode, preferredLayout?.rows, preferredLayout?.cols);
+  if (normalizedLayer !== DEFAULT_SLIDE_LAYER) {
+    const page = getSlideLayerPageCount(normalizedLayer) + 1;
+    const targetPageSize = getPageSizeForLayout(targetLayout);
+    state.slideLayerPages[getSlideLayerKey(page, normalizedLayer)] = {
+      layout: targetLayout,
+      slots: Array(targetPageSize).fill(null),
+      caption: "",
+    };
+    markSlideSlotsDirty();
+    markLayoutDirty();
+    return Array.from({ length: targetPageSize }, (_, offset) => getLayerSlotIndex(page, normalizedLayer, offset));
+  }
   const existingPages = getSlidePages();
   const existingCapacity = existingPages.reduce((sum, page) => sum + page.pageSize, 0);
   while (state.slideSlots.length < existingCapacity) state.slideSlots.push(null);
 
-  const baseLayout = normalizedLayer === DEFAULT_SLIDE_LAYER ? targetLayout : getDefaultLayoutConfig();
+  const baseLayout = targetLayout;
   const basePageSize = getPageSizeForLayout(baseLayout);
   state.slidePageLayouts.push(baseLayout);
   state.slideSlots.push(...Array(basePageSize).fill(null));
   state.slideCaptions.push("");
   const page = state.slidePageLayouts.length;
 
-  if (normalizedLayer === DEFAULT_SLIDE_LAYER) {
-    const start = state.slideSlots.length - basePageSize;
-    return Array.from({ length: basePageSize }, (_, offset) => start + offset);
-  }
-
-  const targetPageSize = getPageSizeForLayout(targetLayout);
-  state.slideLayerPages[getSlideLayerKey(page, normalizedLayer)] = {
-    layout: targetLayout,
-    slots: Array(targetPageSize).fill(null),
-    caption: "",
-  };
-  return Array.from({ length: targetPageSize }, (_, offset) => getLayerSlotIndex(page, normalizedLayer, offset));
+  const start = state.slideSlots.length - basePageSize;
+  return Array.from({ length: basePageSize }, (_, offset) => start + offset);
 }
 
 function autoPlaceUploadedImages(
@@ -5192,14 +5229,61 @@ function captureSlidePageSnapshot(page = state.pageIndex) {
   };
 }
 
+function remapOnlyLayerPages(layer, mapper) {
+  const targetLayer = normalizeSlideLayerNumber(layer);
+  remapSlideLayerPages((page, candidateLayer) => {
+    if (candidateLayer !== targetLayer) return { page };
+    return mapper(page);
+  });
+}
+
+function insertLayerSlidePage(referencePage, position = "after", { duplicate = false } = {}) {
+  const layer = getActiveSlideLayer();
+  if (layer === DEFAULT_SLIDE_LAYER) return false;
+  const pages = getSlidePagesForLayer(layer);
+  const referenceIndex = Number(referencePage) - 1;
+  if (!Number.isInteger(referenceIndex) || referenceIndex < 0 || referenceIndex >= pages.length) return false;
+  const insertedPage = position === "before" ? referenceIndex + 1 : referenceIndex + 2;
+  const source = pages[referenceIndex];
+  beginEditHistoryAction();
+  remapOnlyLayerPages(layer, (page) => (page >= insertedPage ? { page: page + 1 } : { page }));
+  const sourceCopy = duplicate ? getLayerSlidePage(referenceIndex + 1, layer) : null;
+  const layout = sourceCopy?.layout ?? source.layout;
+  state.slideLayerPages[getSlideLayerKey(insertedPage, layer)] = {
+    layout: createLayoutConfig(layout.mode, layout.rows, layout.cols),
+    slots: duplicate ? [...sourceCopy.slots] : Array(getPageSizeForLayout(layout)).fill(null),
+    caption: duplicate ? sourceCopy.caption : "",
+  };
+  markSlideSlotsDirty();
+  markLayoutDirty();
+  state.selectedSlotIndex = null;
+  goToPage(insertedPage);
+  return true;
+}
+
 function reorderSlidePage(fromPage, toPage) {
-  const pages = getSlidePages();
+  const activeLayer = getActiveSlideLayer();
+  const pages = getSlidePagesForLayer(activeLayer);
   const fromIndex = Number(fromPage) - 1;
   const toIndex = Number(toPage) - 1;
   if (!Number.isFinite(fromIndex) || !Number.isFinite(toIndex) || fromIndex < 0 || toIndex < 0) return;
   if (fromIndex === toIndex || fromIndex >= pages.length || toIndex >= pages.length) return;
   const fromPageNumber = fromIndex + 1;
   const toPageNumber = toIndex + 1;
+  if (activeLayer !== DEFAULT_SLIDE_LAYER) {
+    beginEditHistoryAction();
+    remapOnlyLayerPages(activeLayer, (layerPage) => {
+      if (layerPage === fromPageNumber) return { page: toPageNumber };
+      if (fromPageNumber < toPageNumber && layerPage > fromPageNumber && layerPage <= toPageNumber) return { page: layerPage - 1 };
+      if (fromPageNumber > toPageNumber && layerPage >= toPageNumber && layerPage < fromPageNumber) return { page: layerPage + 1 };
+      return { page: layerPage };
+    });
+    markSlideSlotsDirty();
+    state.selectedSlotIndex = null;
+    goToPage(toPageNumber);
+    showToast("현재 레이어 안에서 슬라이드 순서를 바꿨습니다.");
+    return;
+  }
   beginEditHistoryAction();
   const selectedImageId =
     Number.isFinite(state.selectedSlotIndex) && state.selectedSlotIndex >= 0
@@ -5427,6 +5511,12 @@ function clearSlidePage(page = state.pageIndex, { layer = getActiveSlideLayer() 
 }
 
 function insertSlidePage(referencePage, position = "after", { announce = true } = {}) {
+  if (getActiveSlideLayer() !== DEFAULT_SLIDE_LAYER) {
+    if (insertLayerSlidePage(referencePage, position) && announce) {
+      showToast(position === "before" ? "현재 레이어 앞에 빈 슬라이드를 추가했습니다." : "현재 레이어 뒤에 빈 슬라이드를 추가했습니다.");
+    }
+    return;
+  }
   const pages = getSlidePages();
   const referenceIndex = Number(referencePage) - 1;
   if (!Number.isFinite(referenceIndex) || referenceIndex < 0 || referenceIndex >= pages.length) return;
@@ -5469,7 +5559,16 @@ function insertSlidePage(referencePage, position = "after", { announce = true } 
 }
 
 function addSlidePageAtEnd() {
-  const pages = getSlidePages();
+  const activeLayer = getActiveSlideLayer();
+  const pages = getSlidePagesForLayer(activeLayer);
+  if (activeLayer !== DEFAULT_SLIDE_LAYER) {
+    beginEditHistoryAction();
+    appendSlidePageForLayer(activeLayer, getDefaultLayoutConfig());
+    state.selectedSlotIndex = null;
+    goToPage(pages.length + 1);
+    showToast("현재 레이어 끝에 빈 슬라이드를 추가했습니다.");
+    return;
+  }
   if (pages.length === 0) {
     beginEditHistoryAction();
     const layout = getDefaultLayoutConfig();
@@ -5490,6 +5589,11 @@ function addSlidePageAtEnd() {
 }
 
 function duplicateSlidePage(page) {
+  const activeLayer = getActiveSlideLayer();
+  if (activeLayer !== DEFAULT_SLIDE_LAYER) {
+    if (insertLayerSlidePage(page, "after", { duplicate: true })) showToast("현재 레이어의 슬라이드를 복제했습니다.");
+    return;
+  }
   const pages = getSlidePages();
   const pageIndex = Number(page) - 1;
   if (!Number.isFinite(pageIndex) || pageIndex < 0 || pageIndex >= pages.length) return;
@@ -5537,10 +5641,25 @@ function duplicateSlidePage(page) {
 }
 
 function deleteSlidePage(page) {
-  const pages = getSlidePages();
+  const activeLayer = getActiveSlideLayer();
+  const pages = getSlidePagesForLayer(activeLayer);
   const pageIndex = Number(page) - 1;
   if (!Number.isFinite(pageIndex) || pageIndex < 0 || pageIndex >= pages.length) return;
   const pageNumber = pageIndex + 1;
+  if (activeLayer !== DEFAULT_SLIDE_LAYER) {
+    beginEditHistoryAction();
+    remapOnlyLayerPages(activeLayer, (layerPage) => {
+      if (layerPage === pageNumber) return null;
+      return layerPage > pageNumber ? { page: layerPage - 1 } : { page: layerPage };
+    });
+    markSlideSlotsDirty();
+    markLayoutDirty();
+    state.selectedSlotIndex = null;
+    const nextCount = pages.length - 1;
+    goToPage(nextCount > 0 ? Math.min(pageNumber, nextCount) : 0);
+    showToast("현재 레이어에서 슬라이드를 삭제했습니다.");
+    return;
+  }
   beginEditHistoryAction();
   const selectedImageId =
     Number.isFinite(state.selectedSlotIndex) && state.selectedSlotIndex >= 0
@@ -5698,7 +5817,8 @@ function updateGuide(index, percent) {
 function renderThumbnails() {
   if (!els.thumbnailRail) return;
 
-  const slidePages = getSlidePages();
+  const thumbnailLayer = getCurrentSlideLayerStatus()?.currentLayer ?? DEFAULT_SLIDE_LAYER;
+  const slidePages = getSlidePagesForLayer(thumbnailLayer);
 
   if (state.images.length === 0 && slidePages.length === 0) {
     thumbnailRenderKey = "empty";
@@ -5728,7 +5848,6 @@ function renderThumbnails() {
     activeThumbnailButton = null;
     thumbnailPageButtonCache = new Map();
     unregisterRenderableImageNodesInRoot(els.thumbnailRail);
-    const thumbnailLayer = getCurrentSlideLayerStatus()?.currentLayer ?? DEFAULT_SLIDE_LAYER;
     const thumbnailHtml = `
       <div class="thumbnail-section">
         <div class="thumbnail-section-head">
@@ -5763,10 +5882,8 @@ function renderThumbnails() {
           </button>
           ${slidePages
             .map((page) => {
-              const thumbnailLayerPage =
-                thumbnailLayer !== DEFAULT_SLIDE_LAYER ? getLayerSlidePage(page.pageIndex, thumbnailLayer) : null;
-              const thumbnailLayout = thumbnailLayerPage?.layout ?? page.layout;
-              const thumbnailCaption = thumbnailLayerPage?.caption ?? page.caption;
+              const thumbnailLayout = page.layout;
+              const thumbnailCaption = page.caption;
               return `
                 <article
                   class="slide-thumb slide-thumb-editor"
@@ -5783,14 +5900,16 @@ function renderThumbnails() {
                     aria-label="${page.pageIndex}페이지 순서 변경"
                     title="드래그해서 순서 변경"
                   >...</button>
-                  <div
-                    class="slide-thumb-open has-layer-preview ${state.slideLayerIndex > 1 ? "has-layer-before" : ""} ${state.slideLayerIndex < SLIDE_LAYER_COUNT ? "has-layer-after" : ""}"
+                  <button
+                    class="slide-thumb-open"
                     data-page="${page.pageIndex}"
+                    type="button"
+                    aria-label="${page.pageIndex}번 슬라이드 열기"
                   >
-                    ${renderSlideThumbLayerStack(page)}
-                  </div>
+                    ${thumbnailLayer === DEFAULT_SLIDE_LAYER ? renderSlideThumbGrid(page) : renderSlideThumbLayerGrid(page, thumbnailLayer)}
+                  </button>
                   <div class="slide-thumb-meta">
-                    <span class="slide-thumb-label">#${page.pageIndex}</span>
+                    <span class="slide-thumb-label">${page.pageIndex}</span>
                     <div class="slide-thumb-actions">
                       <button class="slide-layout-chip ${thumbnailLayout.mode === "single" ? "is-active" : ""}" type="button" data-slide-layout="${page.pageIndex}:${thumbnailLayer}:single">1</button>
                       <button class="slide-layout-chip ${thumbnailLayout.mode === "pair" ? "is-active" : ""}" type="button" data-slide-layout="${page.pageIndex}:${thumbnailLayer}:pair">2</button>
@@ -5891,6 +6010,7 @@ function renderPhotoList() {
     state.sortMode,
     state.photoSearchQuery,
     state.photoFilterMode,
+    Array.from(selectedPhotoIds).sort().join(","),
   ].join(":");
 
   if (photoListRenderKey === nextKey) return;
@@ -5948,8 +6068,9 @@ function renderPhotoList() {
     const statusBadge = usedCount > 0 ? "배치됨" : overflowList.length > 0 ? "보관됨" : "미배치";
     return `
       <article
-        class="photo-list-card ${usedCount > 0 ? "is-in-slide" : "is-unused"} ${overflowList.length > 0 ? "is-layout-overflow" : ""} ${selectedSlotImageId === image.id ? "is-active" : ""} ${isOnCurrentPage ? "is-on-current-slide" : ""}"
+        class="photo-list-card ${usedCount > 0 ? "is-in-slide" : "is-unused"} ${overflowList.length > 0 ? "is-layout-overflow" : ""} ${selectedSlotImageId === image.id ? "is-active" : ""} ${selectedPhotoIds.has(image.id) ? "is-selected-for-batch" : ""} ${isOnCurrentPage ? "is-on-current-slide" : ""}"
         draggable="true"
+        tabindex="0"
         data-image-id="${image.id}"
         data-index="${originalIndex}"
         title="${escapeHtml(image.name)}"
@@ -6152,6 +6273,15 @@ els.guideListPanel?.addEventListener("click", (event) => {
 });
 
 els.stage?.addEventListener("input", (event) => {
+  const coverField = event.target instanceof HTMLElement ? event.target.closest("[data-cover-field]") : null;
+  if (coverField instanceof HTMLElement) {
+    const input = els[coverField.dataset.coverField];
+    if (input instanceof HTMLInputElement || input instanceof HTMLTextAreaElement) {
+      input.value = coverField.textContent?.replace(/\n+/g, " ").trim() ?? "";
+      queuePersistSettings();
+    }
+    return;
+  }
   const input = event.target instanceof HTMLTextAreaElement ? event.target.closest("[data-empty-slide-caption]") : null;
   if (input instanceof HTMLTextAreaElement) {
     const page = Number(input.dataset.emptySlideCaption);
@@ -6745,6 +6875,27 @@ els.photoListPanel?.addEventListener("click", (event) => {
   const imageId = card.dataset.imageId;
   if (!imageId) return;
 
+  if (event.ctrlKey || event.metaKey || event.shiftKey) {
+    const visibleIds = Array.from(els.photoListPanel.querySelectorAll(".photo-list-card"))
+      .map((item) => item.dataset.imageId)
+      .filter(Boolean);
+    if (event.shiftKey && photoSelectionAnchorId && visibleIds.includes(photoSelectionAnchorId)) {
+      const start = visibleIds.indexOf(photoSelectionAnchorId);
+      const end = visibleIds.indexOf(imageId);
+      visibleIds.slice(Math.min(start, end), Math.max(start, end) + 1).forEach((id) => selectedPhotoIds.add(id));
+    } else if (selectedPhotoIds.has(imageId)) {
+      selectedPhotoIds.delete(imageId);
+    } else {
+      selectedPhotoIds.add(imageId);
+    }
+    photoSelectionAnchorId = imageId;
+    renderPhotoList();
+    return;
+  }
+
+  selectedPhotoIds = new Set([imageId]);
+  photoSelectionAnchorId = imageId;
+
   const targetSlotIndex = resolvePhotoListTargetSlotIndex();
   if (Number.isFinite(targetSlotIndex)) {
     assignImageToSlot(targetSlotIndex, imageId);
@@ -6860,6 +7011,7 @@ els.layoutOneButton.addEventListener("click", () => setLayoutPreset("single", st
 els.layoutTwoButton.addEventListener("click", () => setLayoutPreset("pair", state.pageIndex, { layer: getLayoutTargetLayer() }));
 els.layoutThreeButton.addEventListener("click", () => setLayoutPreset("triple", state.pageIndex, { layer: getLayoutTargetLayer() }));
 els.layoutFourButton.addEventListener("click", () => setLayoutPreset("quad", state.pageIndex, { layer: getLayoutTargetLayer() }));
+els.applyLayoutToAllLayersButton?.addEventListener("click", applyCurrentLayoutToAllLayers);
 els.horizontalSplitButton.addEventListener("click", () =>
   setGrid(1, Math.max(2, Number(els.gridCols.value)), "custom", state.pageIndex, { layer: getLayoutTargetLayer() }),
 );
@@ -7072,7 +7224,8 @@ document.addEventListener("keydown", (event) => {
   const isTyping =
     target instanceof HTMLInputElement ||
     target instanceof HTMLTextAreaElement ||
-    target instanceof HTMLSelectElement;
+    target instanceof HTMLSelectElement ||
+    target instanceof HTMLElement && target.isContentEditable;
 
   if (hasSlideShortcutModifier(event) && event.key.toLowerCase() === "k") {
     event.preventDefault();
@@ -7092,6 +7245,18 @@ document.addEventListener("keydown", (event) => {
   }
 
   if (isTyping) return;
+
+  if (hasSlideShortcutModifier(event) && event.key.toLowerCase() === "a" && els.photoListPanel?.contains(target)) {
+    event.preventDefault();
+    selectedPhotoIds = new Set(
+      Array.from(els.photoListPanel.querySelectorAll(".photo-list-card"))
+        .map((card) => card.dataset.imageId)
+        .filter(Boolean),
+    );
+    photoSelectionAnchorId = null;
+    renderPhotoList();
+    return;
+  }
 
   if (event.key === "?" || (event.shiftKey && event.key === "/")) {
     event.preventDefault();
@@ -7288,8 +7453,8 @@ document.addEventListener("keydown", (event) => {
 
   if (
     state.pageIndex > 0 &&
+    hasSlideShortcutModifier(event) &&
     !event.shiftKey &&
-    !hasSlideShortcutModifier(event) &&
     (event.key === "ArrowUp" || event.key === "ArrowDown") &&
     goToAdjacentSlideLayer(event.key === "ArrowDown" ? 1 : -1)
   ) {
@@ -7297,13 +7462,14 @@ document.addEventListener("keydown", (event) => {
     return;
   }
 
-  if (event.key === "ArrowLeft" || event.key.toLowerCase() === "p") {
+  if (event.key === "ArrowLeft" || event.key === "ArrowUp" || event.key.toLowerCase() === "p") {
     event.preventDefault();
     goToPage(state.pageIndex - 1, { focusThumbnail: !isPresenting() });
   }
 
   if (
     event.key === "ArrowRight" ||
+    event.key === "ArrowDown" ||
     event.key === "PageDown" ||
     event.key === " " ||
     event.key.toLowerCase() === "n"

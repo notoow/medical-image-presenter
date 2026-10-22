@@ -4,3 +4,6 @@ dist/
 .tools/
 *.log
 *.tmp
+private-retouch/
+
+__pycache__/
