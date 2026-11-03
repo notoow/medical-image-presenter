@@ -1,0 +1,13 @@
+{
+  "policy": "Korean pages use ko; all other page languages use en. Titles and descriptions retain the page language.",
+  "ko": {
+    "width": 1730,
+    "height": 909,
+    "url": "https://notoow.github.io/medical-image-presenter/assets/medical-image-presenter-og-12ce82ac5036.jpg"
+  },
+  "en": {
+    "width": 1730,
+    "height": 909,
+    "url": "https://notoow.github.io/medical-image-presenter/assets/medical-image-presenter-og-en-86e3458aebdf.jpg"
+  }
+}
